@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package agent;
+
+import "google/protobuf/any.proto";
+
+option go_package = ".;agent";
+
+message AgentInfo {
+  string agent_id = 1;
+  string hostname = 2;
+  string ip = 3;
+}
+
+message Query {
+  string query_id = 1;
+  string command = 2;
+}
+
+message QueryResult {
+  string query_id = 1;
+  google.protobuf.Any result = 2;
+}
+
+message AgentMessage {
+  oneof payload {
+    AgentInfo agent_info = 1;
+    QueryResult query_result = 2;
+  }
+}
+
+message ServerMessage {
+  Query query = 1;
+}
+
+service AgentService {
+  rpc Connect(stream AgentMessage) returns (stream ServerMessage);
+}
