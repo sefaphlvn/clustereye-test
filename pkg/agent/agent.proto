@@ -7,9 +7,13 @@ import "google/protobuf/any.proto";
 option go_package = ".;agent";
 
 message AgentInfo {
-  string agent_id = 1;
-  string hostname = 2;
-  string ip = 3;
+  string key = 1;
+  string agent_id = 2;
+  string hostname = 3;
+  string ip = 4;
+  string platform = 5;
+  bool auth = 6;
+  string test = 7;
 }
 
 message Query {

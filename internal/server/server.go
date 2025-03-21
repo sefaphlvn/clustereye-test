@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -14,23 +13,24 @@ import (
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/lib/pq"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
+// AgentConnection, bir agent ile olan bağlantıyı temsil eder
 type AgentConnection struct {
-	stream pb.AgentService_ConnectServer
-	info   *pb.AgentInfo
+	Stream pb.AgentService_ConnectServer
+	Info   *pb.AgentInfo
 }
 
+// QueryResponse, bir sorgu sonucunu ve sonuç kanalını içerir
 type QueryResponse struct {
 	Result     string
 	ResultChan chan *pb.QueryResult
 }
 
+// Server, ClusterEye sunucusunu temsil eder
 type Server struct {
 	pb.UnimplementedAgentServiceServer
 	mu          sync.RWMutex
@@ -40,6 +40,7 @@ type Server struct {
 	db          *sql.DB                   // PostgreSQL veritabanı bağlantısı
 }
 
+// NewServer, yeni bir sunucu nesnesi oluşturur
 func NewServer(db *sql.DB) *Server {
 	return &Server{
 		agents:      make(map[string]*AgentConnection),
@@ -48,6 +49,7 @@ func NewServer(db *sql.DB) *Server {
 	}
 }
 
+// Connect, agent'ların bağlanması için kullanılan gRPC stream metodudur
 func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 	var currentAgentID string
 
@@ -68,8 +70,8 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 
 			s.mu.Lock()
 			s.agents[currentAgentID] = &AgentConnection{
-				stream: stream,
-				info:   agentInfo,
+				Stream: stream,
+				Info:   agentInfo,
 			}
 			s.mu.Unlock()
 
@@ -91,6 +93,7 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 	}
 }
 
+// SendQuery, belirli bir agent'a sorgu gönderir ve cevabı bekler
 func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command string) (*pb.QueryResult, error) {
 	s.mu.RLock()
 	agentConn, ok := s.agents[agentID]
@@ -119,7 +122,7 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command string
 	}()
 
 	// Sorguyu agent'a gönder
-	err := agentConn.stream.Send(&pb.ServerMessage{
+	err := agentConn.Stream.Send(&pb.ServerMessage{
 		Query: &pb.Query{
 			QueryId: queryID,
 			Command: command,
@@ -171,117 +174,15 @@ func (s *Server) GetStatusPostgres(ctx context.Context, _ *structpb.Struct) (*st
 	return value, nil
 }
 
-func main() {
-	// PostgreSQL veritabanı bağlantısı
-	db, err := sql.Open("postgres", "postgres://postgres:Dkjf334utre1@143.198.61.173/clustereye?sslmode=disable")
-	if err != nil {
-		log.Fatalf("Veritabanı bağlantısı kurulamadı: %v", err)
+// GetConnectedAgents bağlı tüm agent'ların listesini döndürür
+func (s *Server) GetConnectedAgents() map[string]*pb.AgentInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	result := make(map[string]*pb.AgentInfo)
+	for id, agent := range s.agents {
+		result[id] = agent.Info
 	}
-	defer db.Close()
-
-	// Bağlantıyı test et
-	if err := db.Ping(); err != nil {
-		log.Fatalf("Veritabanı bağlantı testi başarısız: %v", err)
-	}
-
-	// gRPC Server başlat
-	listener, err := net.Listen("tcp", ":50051")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	grpcServer := grpc.NewServer()
-	server := NewServer(db)
-	pb.RegisterAgentServiceServer(grpcServer, server)
-
-	go func() {
-		log.Println("Cloud API gRPC server çalışıyor: :50051")
-		if err := grpcServer.Serve(listener); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	// HTTP Gin API Server başlat
-	router := gin.Default()
-
-	// Agent'a sorgu göndermek için endpoint (query param ile)
-	router.POST("/api/send-query", func(c *gin.Context) {
-		agentID := c.Query("agent_id")
-
-		if agentID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "agent_id query param gerekli"})
-			return
-		}
-
-		var req struct {
-			QueryID string `json:"query_id"`
-			Command string `json:"command"`
-		}
-
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Geçersiz JSON verisi"})
-			return
-		}
-
-		// Context oluştur (request'in iptal edilmesi durumunda kullanılacak)
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
-		defer cancel()
-
-		// Sorguyu gönder ve cevabı bekle
-		result, err := server.SendQuery(ctx, agentID, req.QueryID, req.Command)
-		if err != nil {
-			if err == context.DeadlineExceeded {
-				c.JSON(http.StatusGatewayTimeout, gin.H{"error": "Sorgu zaman aşımına uğradı"})
-			} else {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Agent bulunamadı veya bağlantı kapalı"})
-			}
-			return
-		}
-
-		// Any tipindeki sonucu çözümle
-		var structResult structpb.Struct
-		if err := result.Result.UnmarshalTo(&structResult); err != nil {
-			// Hata durumunda orijinal veriyi gönder
-			c.JSON(http.StatusOK, gin.H{
-				"status":   "Sorgu tamamlandı",
-				"agent_id": agentID,
-				"query_id": result.QueryId,
-				"result":   result.Result,
-			})
-			return
-		}
-
-		// Struct'tan Go Map'ine dönüştür
-		resultMap := structResult.AsMap()
-
-		c.JSON(http.StatusOK, gin.H{
-			"status":   "Sorgu tamamlandı",
-			"agent_id": agentID,
-			"query_id": result.QueryId,
-			"result":   resultMap,
-		})
-	})
-
-	// PostgreSQL durum bilgilerini almak için HTTP endpoint
-	router.GET("/api/postgres-status", func(c *gin.Context) {
-		// gRPC metodunu çağır
-		resp, err := server.GetStatusPostgres(c.Request.Context(), &structpb.Struct{})
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		// Value'yu JSON'a dönüştür
-		jsonBytes, err := json.Marshal(resp.AsInterface())
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "JSON dönüştürme hatası"})
-			return
-		}
-
-		// JSON verisini doğrudan gönder
-		c.Data(http.StatusOK, "application/json", jsonBytes)
-	})
-
-	log.Println("HTTP Gin server çalışıyor: :8080")
-	router.Run(":8080")
-}
+	
+	return result
+} 

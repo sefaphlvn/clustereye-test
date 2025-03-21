@@ -1,0 +1,9 @@
+key: xxx-xxx-xxx-xxx
+name: agent1
+postgresql:
+  user: ""
+  pass: ""
+  port: "5432"
+  cluster: postgrescls
+grpc:
+  server_address: localhost:50051

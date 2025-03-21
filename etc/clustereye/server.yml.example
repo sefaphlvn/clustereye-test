@@ -1,0 +1,16 @@
+server:
+  name: ClusterEye
+
+grpc:
+  address: :50051
+
+http:
+  address: :8080
+
+database:
+  host: 143.198.61.173
+  port: 5432
+  user: postgres
+  password: Dkjf334utre1
+  dbname: clustereye
+  sslmode: disable 

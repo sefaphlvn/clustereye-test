@@ -1,0 +1,17 @@
+key: agent_key
+name: Agent
+
+grpc:
+  server_address: localhost:50051
+
+postgresql:
+  user: postgres
+  pass: postgres
+  port: 5432
+  cluster: postgres
+
+mongo:
+  user: mongo
+  pass: mongo
+  port: 27017
+  replset: rs0 
