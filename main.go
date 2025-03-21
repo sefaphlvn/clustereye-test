@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"log"
 	"net"
@@ -12,7 +14,10 @@ import (
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 
 	"github.com/gin-gonic/gin"
+	_ "github.com/lib/pq"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -32,12 +37,14 @@ type Server struct {
 	agents      map[string]*AgentConnection
 	queryMu     sync.RWMutex
 	queryResult map[string]*QueryResponse // query_id -> QueryResponse
+	db          *sql.DB                   // PostgreSQL veritabanı bağlantısı
 }
 
-func NewServer() *Server {
+func NewServer(db *sql.DB) *Server {
 	return &Server{
 		agents:      make(map[string]*AgentConnection),
 		queryResult: make(map[string]*QueryResponse),
+		db:          db,
 	}
 }
 
@@ -71,12 +78,12 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 		case *pb.AgentMessage_QueryResult:
 			queryResult := payload.QueryResult
 			log.Printf("Agent %s sorguya cevap verdi: %+v", currentAgentID, queryResult)
-			
+
 			// Sorgu sonucunu ilgili kanal üzerinden ilet
 			s.queryMu.RLock()
 			queryResp, ok := s.queryResult[queryResult.QueryId]
 			s.queryMu.RUnlock()
-			
+
 			if ok && queryResp.ResultChan != nil {
 				queryResp.ResultChan <- queryResult
 			}
@@ -95,7 +102,7 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command string
 
 	// Sorgu cevabı için bir kanal oluştur
 	resultChan := make(chan *pb.QueryResult, 1)
-	
+
 	// Haritaya ekle
 	s.queryMu.Lock()
 	s.queryResult[queryID] = &QueryResponse{
@@ -134,7 +141,49 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command string
 	}
 }
 
+// GetStatusPostgres, PostgreSQL veritabanından durum bilgilerini çeker
+func (s *Server) GetStatusPostgres(ctx context.Context, _ *structpb.Struct) (*structpb.Value, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT json_agg(sub.jsondata) FROM (SELECT jsondata FROM postgres_data ORDER BY id) AS sub")
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Veritabanı sorgusu başarısız: %v", err)
+	}
+	defer rows.Close()
+
+	var jsonData []byte
+	if rows.Next() {
+		err := rows.Scan(&jsonData)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "Veri okuma hatası: %v", err)
+		}
+	}
+
+	// JSON verisini structpb.Value'ya dönüştür
+	var jsonValue interface{}
+	if err := json.Unmarshal(jsonData, &jsonValue); err != nil {
+		return nil, status.Errorf(codes.Internal, "JSON ayrıştırma hatası: %v", err)
+	}
+
+	value, err := structpb.NewValue(jsonValue)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Veri dönüştürme hatası: %v", err)
+	}
+
+	return value, nil
+}
+
 func main() {
+	// PostgreSQL veritabanı bağlantısı
+	db, err := sql.Open("postgres", "postgres://postgres:Dkjf334utre1@143.198.61.173/clustereye?sslmode=disable")
+	if err != nil {
+		log.Fatalf("Veritabanı bağlantısı kurulamadı: %v", err)
+	}
+	defer db.Close()
+
+	// Bağlantıyı test et
+	if err := db.Ping(); err != nil {
+		log.Fatalf("Veritabanı bağlantı testi başarısız: %v", err)
+	}
+
 	// gRPC Server başlat
 	listener, err := net.Listen("tcp", ":50051")
 	if err != nil {
@@ -142,7 +191,7 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer()
-	server := NewServer()
+	server := NewServer(db)
 	pb.RegisterAgentServiceServer(grpcServer, server)
 
 	go func() {
@@ -194,10 +243,10 @@ func main() {
 		if err := result.Result.UnmarshalTo(&structResult); err != nil {
 			// Hata durumunda orijinal veriyi gönder
 			c.JSON(http.StatusOK, gin.H{
-				"status":    "Sorgu tamamlandı",
-				"agent_id":  agentID,
-				"query_id":  result.QueryId,
-				"result":    result.Result,
+				"status":   "Sorgu tamamlandı",
+				"agent_id": agentID,
+				"query_id": result.QueryId,
+				"result":   result.Result,
 			})
 			return
 		}
@@ -206,11 +255,31 @@ func main() {
 		resultMap := structResult.AsMap()
 
 		c.JSON(http.StatusOK, gin.H{
-			"status":    "Sorgu tamamlandı",
-			"agent_id":  agentID,
-			"query_id":  result.QueryId,
-			"result":    resultMap,
+			"status":   "Sorgu tamamlandı",
+			"agent_id": agentID,
+			"query_id": result.QueryId,
+			"result":   resultMap,
 		})
+	})
+
+	// PostgreSQL durum bilgilerini almak için HTTP endpoint
+	router.GET("/api/postgres-status", func(c *gin.Context) {
+		// gRPC metodunu çağır
+		resp, err := server.GetStatusPostgres(c.Request.Context(), &structpb.Struct{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Value'yu JSON'a dönüştür
+		jsonBytes, err := json.Marshal(resp.AsInterface())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "JSON dönüştürme hatası"})
+			return
+		}
+
+		// JSON verisini doğrudan gönder
+		c.Data(http.StatusOK, "application/json", jsonBytes)
 	})
 
 	log.Println("HTTP Gin server çalışıyor: :8080")
