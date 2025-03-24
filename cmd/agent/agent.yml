@@ -1,9 +1,15 @@
-key: xxx-xxx-xxx-xxx
-name: agent1
-postgresql:
-  user: ""
-  pass: ""
-  port: "5432"
-  cluster: postgrescls
+key: xxxx-xxxx-xxxx-xxxx
+name: Agent
 grpc:
   server_address: localhost:50051
+postgresql:
+  host: localhost
+  user: bariss
+  pass: postgres
+  port: 5432
+  cluster: postgres
+mongo:
+  user: mongo
+  pass: mongo
+  port: 27017
+  replset: rs0

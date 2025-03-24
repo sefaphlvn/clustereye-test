@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"log"
 	"net"
 	"net/http"
+	"sync"
 
 	"github.com/sefaphlvn/clustereye-test/internal/api"
 	"github.com/sefaphlvn/clustereye-test/internal/config"
@@ -14,6 +17,37 @@ import (
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
 )
+
+// AgentConnection, bağlı bir agent'ı temsil eder
+type AgentConnection struct {
+	stream pb.AgentService_ConnectServer
+	info   *pb.AgentInfo
+}
+
+// QueryResponse, sorgu sonuçlarını temsil eder
+type QueryResponse struct {
+	Result     string
+	ResultChan chan *pb.QueryResult
+}
+
+type Server struct {
+	pb.UnimplementedAgentServiceServer
+	mu          sync.RWMutex
+	agents      map[string]*AgentConnection
+	queryMu     sync.RWMutex
+	queryResult map[string]*QueryResponse
+	db          *sql.DB
+	companyRepo *database.CompanyRepository
+}
+
+func NewServer(db *sql.DB) *Server {
+	return &Server{
+		agents:      make(map[string]*AgentConnection),
+		queryResult: make(map[string]*QueryResponse),
+		db:          db,
+		companyRepo: database.NewCompanyRepository(db),
+	}
+}
 
 func main() {
 	// Konfigürasyon yükleniyor
@@ -48,7 +82,7 @@ func main() {
 
 	// HTTP Gin API Server başlat
 	router := gin.Default()
-	
+
 	// API handler'larını kaydet
 	api.RegisterHandlers(router, serverInstance)
 
@@ -57,4 +91,98 @@ func main() {
 	if err := http.ListenAndServe(cfg.HTTP.Address, router); err != nil {
 		log.Fatal(err)
 	}
-} 
+}
+
+// Connect, agent'ların bağlanması için stream açar
+func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
+	var currentAgentID string
+	var companyID int
+
+	for {
+		in, err := stream.Recv()
+		if err != nil {
+			log.Printf("Agent %s bağlantısı kapandı: %v", currentAgentID, err)
+			s.mu.Lock()
+			delete(s.agents, currentAgentID)
+			s.mu.Unlock()
+			return err
+		}
+
+		switch payload := in.Payload.(type) {
+		case *pb.AgentMessage_AgentInfo:
+			agentInfo := payload.AgentInfo
+
+			// Agent anahtarını doğrula
+			company, err := s.companyRepo.ValidateAgentKey(context.Background(), agentInfo.Key)
+			if err != nil {
+				// Hata durumunda agent'a bildir
+				errMsg := "Geçersiz agent anahtarı"
+				if err == database.ErrKeyExpired {
+					errMsg = "Agent anahtarı süresi dolmuş"
+				}
+
+				// Hata mesajını agent'a gönder
+				stream.Send(&pb.ServerMessage{
+					Payload: &pb.ServerMessage_Error{
+						Error: &pb.Error{
+							Code:    "AUTH_ERROR",
+							Message: errMsg,
+						},
+					},
+				})
+
+				log.Printf("Agent kimlik doğrulama hatası: %v", err)
+				return err
+			}
+
+			// Agent ID'yi belirle
+			currentAgentID = agentInfo.AgentId
+			companyID = company.ID
+
+			// Agent'ı kaydet
+			err = s.companyRepo.RegisterAgent(
+				context.Background(),
+				companyID,
+				currentAgentID,
+				agentInfo.Hostname,
+				agentInfo.Ip,
+			)
+
+			if err != nil {
+				log.Printf("Agent kaydedilemedi: %v", err)
+				stream.Send(&pb.ServerMessage{
+					Payload: &pb.ServerMessage_Error{
+						Error: &pb.Error{
+							Code:    "REGISTRATION_ERROR",
+							Message: "Agent kaydedilemedi",
+						},
+					},
+				})
+				return err
+			}
+
+			// Agent'ı bağlantı listesine ekle
+			s.mu.Lock()
+			s.agents[currentAgentID] = &AgentConnection{
+				stream: stream,
+				info:   agentInfo,
+			}
+			s.mu.Unlock()
+
+			// Başarılı kayıt mesajı gönder
+			stream.Send(&pb.ServerMessage{
+				Payload: &pb.ServerMessage_Registration{
+					Registration: &pb.RegistrationResult{
+						Status:  "success",
+						Message: "Agent başarıyla kaydedildi",
+					},
+				},
+			})
+
+			log.Printf("Yeni Agent bağlandı: %+v (Firma: %s)", agentInfo, company.CompanyName)
+
+		case *pb.AgentMessage_QueryResult:
+			// Mevcut sorgu sonucu işleme kodu...
+		}
+	}
+}

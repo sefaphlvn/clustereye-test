@@ -39,6 +39,7 @@ type AgentConfig struct {
 
 	// PostgreSQL Bağlantı Bilgileri
 	PostgreSQL struct {
+		Host    string `yaml:"host"`
 		User    string `yaml:"user"`
 		Pass    string `yaml:"pass"`
 		Port    string `yaml:"port"`
@@ -204,4 +205,4 @@ func getConfigPath(filename string) string {
 
 	// Dosya bulunamadıysa, çalışma dizinine yaz
 	return filename
-} 
+}

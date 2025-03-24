@@ -2,11 +2,15 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"log"
 	"net"
 	"os"
+	"runtime"
 	"time"
 
+	_ "github.com/lib/pq" // PostgreSQL sürücüsü
 	"github.com/sefaphlvn/clustereye-test/internal/config"
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 
@@ -39,10 +43,10 @@ func main() {
 	// Sistem bilgilerini al
 	hostname, _ := os.Hostname()
 	ip := getLocalIP()
-	
+
 	// Kimlik doğrulama ayarlarını al
 	postgreAuth := cfg.PostgreSQL.Auth
-	
+
 	// Test veritabanı bağlantısı
 	testResult := testDBConnection(cfg)
 
@@ -86,7 +90,7 @@ func main() {
 					log.Printf("Sonuç haritası oluşturulamadı: %v", err)
 					continue
 				}
-				
+
 				// structpb'yi Any'e dönüştür
 				anyResult, err := anypb.New(resultMap)
 				if err != nil {
@@ -117,7 +121,7 @@ func main() {
 	}
 }
 
-// processQuery, gelen sorguyu işler ve sonuç döndürür
+// processQuery, gelen sorguyu işler ve sonucu hesaplar
 func processQuery(command string) map[string]interface{} {
 	// Bu basitçe bir test yanıtı, gerçek uygulamada burada komut çalıştırılabilir
 	return map[string]interface{}{
@@ -130,8 +134,43 @@ func processQuery(command string) map[string]interface{} {
 
 // testDBConnection, konfigürasyondaki veritabanı bilgileriyle test bağlantısı yapar
 func testDBConnection(cfg *config.AgentConfig) string {
-	// Bu bir örnek fonksiyondur. Gerçek uygulamada burada PostgreSQL veya MongoDB
-	// bağlantısı test edilebilir. Şimdilik başarılı döndürelim.
+	// PostgreSQL bağlantı bilgilerini yapılandırma dosyasından al
+	connStr := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		cfg.PostgreSQL.Host,
+		cfg.PostgreSQL.Port,
+		cfg.PostgreSQL.User,
+		cfg.PostgreSQL.Pass,
+		"postgres", // Varsayılan veritabanı adı
+	)
+
+	// Veritabanına bağlan
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		errMsg := fmt.Sprintf("fail:connection_error:%v", err)
+		log.Printf("PostgreSQL bağlantısı açılamadı: %v", err)
+		return errMsg
+	}
+	defer db.Close()
+
+	// Bağlantıyı test et
+	err = db.Ping()
+	if err != nil {
+		errMsg := fmt.Sprintf("fail:ping_error:%v", err)
+		log.Printf("PostgreSQL bağlantı testi başarısız: %v", err)
+		return errMsg
+	}
+
+	// Basit bir sorgu çalıştır
+	var version string
+	err = db.QueryRow("SELECT version()").Scan(&version)
+	if err != nil {
+		errMsg := fmt.Sprintf("fail:query_error:%v", err)
+		log.Printf("PostgreSQL sorgusu başarısız: %v", err)
+		return errMsg
+	}
+
+	log.Printf("PostgreSQL bağlantısı başarılı. Versiyon: %s", version)
 	return "success"
 }
 
@@ -149,4 +188,8 @@ func getLocalIP() string {
 		}
 	}
 	return ""
-} 
+}
+
+func getPlatformInfo() string {
+	return fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)
+}

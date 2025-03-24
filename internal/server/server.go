@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sefaphlvn/clustereye-test/internal/database"
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 
 	"github.com/gin-gonic/gin"
@@ -38,6 +39,7 @@ type Server struct {
 	queryMu     sync.RWMutex
 	queryResult map[string]*QueryResponse // query_id -> QueryResponse
 	db          *sql.DB                   // PostgreSQL veritabanı bağlantısı
+	companyRepo *database.CompanyRepository
 }
 
 // NewServer, yeni bir sunucu nesnesi oluşturur
@@ -46,12 +48,14 @@ func NewServer(db *sql.DB) *Server {
 		agents:      make(map[string]*AgentConnection),
 		queryResult: make(map[string]*QueryResponse),
 		db:          db,
+		companyRepo: database.NewCompanyRepository(db),
 	}
 }
 
 // Connect, agent'ların bağlanması için kullanılan gRPC stream metodudur
 func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 	var currentAgentID string
+	var companyID int
 
 	for {
 		in, err := stream.Recv()
@@ -66,8 +70,57 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 		switch payload := in.Payload.(type) {
 		case *pb.AgentMessage_AgentInfo:
 			agentInfo := payload.AgentInfo
-			currentAgentID = agentInfo.AgentId
 
+			// Agent anahtarını doğrula
+			company, err := s.companyRepo.ValidateAgentKey(context.Background(), agentInfo.Key)
+			if err != nil {
+				// Hata durumunda agent'a bildir
+				errMsg := "Geçersiz agent anahtarı"
+				if err == database.ErrKeyExpired {
+					errMsg = "Agent anahtarı süresi dolmuş"
+				}
+
+				// Hata mesajını agent'a gönder
+				stream.Send(&pb.ServerMessage{
+					Payload: &pb.ServerMessage_Error{
+						Error: &pb.Error{
+							Code:    "AUTH_ERROR",
+							Message: errMsg,
+						},
+					},
+				})
+
+				log.Printf("Agent kimlik doğrulama hatası: %v", err)
+				return err
+			}
+
+			// Agent ID'yi belirle
+			currentAgentID = agentInfo.AgentId
+			companyID = company.ID
+
+			// Agent'ı kaydet
+			err = s.companyRepo.RegisterAgent(
+				context.Background(),
+				companyID,
+				currentAgentID,
+				agentInfo.Hostname,
+				agentInfo.Ip,
+			)
+
+			if err != nil {
+				log.Printf("Agent kaydedilemedi: %v", err)
+				stream.Send(&pb.ServerMessage{
+					Payload: &pb.ServerMessage_Error{
+						Error: &pb.Error{
+							Code:    "REGISTRATION_ERROR",
+							Message: "Agent kaydedilemedi",
+						},
+					},
+				})
+				return err
+			}
+
+			// Agent'ı bağlantı listesine ekle
 			s.mu.Lock()
 			s.agents[currentAgentID] = &AgentConnection{
 				Stream: stream,
@@ -75,7 +128,17 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 			}
 			s.mu.Unlock()
 
-			log.Printf("Yeni Agent bağlandı: %+v", agentInfo)
+			// Başarılı kayıt mesajı gönder
+			stream.Send(&pb.ServerMessage{
+				Payload: &pb.ServerMessage_Registration{
+					Registration: &pb.RegistrationResult{
+						Status:  "success",
+						Message: "Agent başarıyla kaydedildi",
+					},
+				},
+			})
+
+			log.Printf("Yeni Agent bağlandı ve kaydedildi: %+v (Firma: %s)", agentInfo, company.CompanyName)
 
 		case *pb.AgentMessage_QueryResult:
 			queryResult := payload.QueryResult
@@ -123,9 +186,11 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command string
 
 	// Sorguyu agent'a gönder
 	err := agentConn.Stream.Send(&pb.ServerMessage{
-		Query: &pb.Query{
-			QueryId: queryID,
-			Command: command,
+		Payload: &pb.ServerMessage_Query{
+			Query: &pb.Query{
+				QueryId: queryID,
+				Command: command,
+			},
 		},
 	})
 
@@ -178,11 +243,11 @@ func (s *Server) GetStatusPostgres(ctx context.Context, _ *structpb.Struct) (*st
 func (s *Server) GetConnectedAgents() map[string]*pb.AgentInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	result := make(map[string]*pb.AgentInfo)
 	for id, agent := range s.agents {
 		result[id] = agent.Info
 	}
-	
+
 	return result
-} 
+}
