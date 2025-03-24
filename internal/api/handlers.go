@@ -28,7 +28,7 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 	status := v1.Group("/status")
 	{
 		// PostgreSQL durum bilgilerini getir
-		status.GET("/postgres-status", getPostgresStatus(server))
+		status.GET("/postgres", getPostgresStatus(server))
 	}
 }
 

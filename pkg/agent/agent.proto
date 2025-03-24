@@ -14,6 +14,8 @@ message AgentInfo {
   string platform = 5;
   bool auth = 6;
   string test = 7;
+  string postgres_user = 8;
+  string postgres_pass = 9;
 }
 
 message Query {

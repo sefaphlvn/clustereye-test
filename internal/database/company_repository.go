@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"time"
 )
 
@@ -95,4 +96,53 @@ func (r *CompanyRepository) RegisterAgent(ctx context.Context, companyID int, ag
 
 	_, err := r.db.ExecContext(ctx, query, companyID, agentID, hostname, ip)
 	return err
+}
+
+// SavePostgresConnInfo, PostgreSQL bağlantı bilgilerini kaydeder
+func (r *CompanyRepository) SavePostgresConnInfo(ctx context.Context, hostname, cluster, username, password string) error {
+	log.Printf("SavePostgresConnInfo çağrıldı: hostname=%s, cluster=%s, user=%s", hostname, cluster, username)
+
+	// Önce kaydın var olup olmadığını kontrol et
+	var count int
+	countQuery := "SELECT COUNT(*) FROM postgres_conninfo WHERE nodename = $1"
+	err := r.db.QueryRowContext(ctx, countQuery, hostname).Scan(&count)
+	if err != nil {
+		log.Printf("Kayıt sayısı sorgusu hatası: %v", err)
+		return err
+	}
+
+	log.Printf("Mevcut kayıt sayısı: %d", count)
+
+	var query string
+	var args []interface{}
+
+	if count > 0 {
+		// Kayıt varsa güncelle
+		query = `
+			UPDATE postgres_conninfo 
+			SET clustername = $2, username = $3, password = $4, send_diskalert = true, silence_until = NULL
+			WHERE nodename = $1
+		`
+		args = []interface{}{hostname, cluster, username, password}
+		log.Printf("Güncelleme sorgusu hazırlandı")
+	} else {
+		// Kayıt yoksa ekle
+		query = `
+			INSERT INTO postgres_conninfo (nodename, clustername, username, password, send_diskalert)
+			VALUES ($1, $2, $3, $4, true)
+		`
+		args = []interface{}{hostname, cluster, username, password}
+		log.Printf("Ekleme sorgusu hazırlandı")
+	}
+
+	result, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		log.Printf("Sorgu yürütme hatası: %v", err)
+		return err
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("Etkilenen satır sayısı: %d", rowsAffected)
+
+	return nil
 }

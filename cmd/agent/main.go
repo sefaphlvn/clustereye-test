@@ -19,6 +19,14 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
+// PostgreSQL test sonucunu ve bilgilerini JSON olarak hazırla
+type PostgresInfo struct {
+	Status   string `json:"status"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+	Cluster  string `json:"cluster"`
+}
+
 func main() {
 	// Konfigürasyonu yükle
 	cfg, err := config.LoadAgentConfig()
@@ -47,19 +55,22 @@ func main() {
 	// Kimlik doğrulama ayarlarını al
 	postgreAuth := cfg.PostgreSQL.Auth
 
-	// Test veritabanı bağlantısı
+	// PostgreSQL bağlantı testi yap
 	testResult := testDBConnection(cfg)
 
 	// Agent bilgilerini gönder
 	agentInfo := &pb.AgentMessage{
 		Payload: &pb.AgentMessage_AgentInfo{
 			AgentInfo: &pb.AgentInfo{
-				Key:      cfg.Key,
-				AgentId:  "agent_" + hostname,
-				Hostname: hostname,
-				Ip:       ip,
-				Auth:     postgreAuth,
-				Test:     testResult,
+				Key:          cfg.Key,
+				AgentId:      "agent_" + hostname,
+				Hostname:     hostname,
+				Ip:           ip,
+				Platform:     cfg.PostgreSQL.Cluster,
+				Auth:         postgreAuth,
+				Test:         testResult,
+				PostgresUser: cfg.PostgreSQL.User,
+				PostgresPass: cfg.PostgreSQL.Pass,
 			},
 		},
 	}

@@ -14,10 +14,19 @@ import (
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lib/pq"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 )
+
+// PostgresInfo, PostgreSQL test sonucunu ve bilgilerini temsil eder
+type PostgresInfo struct {
+	Status   string `json:"status"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+	Cluster  string `json:"cluster"`
+}
 
 // AgentConnection, bir agent ile olan bağlantıyı temsil eder
 type AgentConnection struct {
@@ -118,6 +127,34 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 					},
 				})
 				return err
+			}
+
+			// PostgreSQL bağlantı bilgilerini kaydet
+			log.Printf("PostgreSQL bilgileri kaydediliyor: hostname=%s, cluster=%s, user=%s",
+				agentInfo.Hostname, agentInfo.Platform, agentInfo.PostgresUser)
+
+			// Veritabanı bağlantısını kontrol et
+			if err := s.checkDatabaseConnection(); err != nil {
+				log.Printf("Veritabanı bağlantı hatası: %v", err)
+			}
+
+			// PostgreSQL bilgilerini kaydet
+			err = s.companyRepo.SavePostgresConnInfo(
+				context.Background(),
+				agentInfo.Hostname,
+				agentInfo.Platform,     // Platform alanını cluster adı olarak kullanıyoruz
+				agentInfo.PostgresUser, // Agent'dan gelen kullanıcı adı
+				agentInfo.PostgresPass, // Agent'dan gelen şifre
+			)
+
+			if err != nil {
+				log.Printf("PostgreSQL bağlantı bilgileri kaydedilemedi: %v", err)
+				// Hata detaylarını göster
+				if pgErr, ok := err.(*pq.Error); ok {
+					log.Printf("PostgreSQL hata detayları: %+v", pgErr)
+				}
+			} else {
+				log.Printf("PostgreSQL bağlantı bilgileri kaydedildi: %s", agentInfo.Hostname)
 			}
 
 			// Agent'ı bağlantı listesine ekle
@@ -250,4 +287,14 @@ func (s *Server) GetConnectedAgents() map[string]*pb.AgentInfo {
 	}
 
 	return result
+}
+
+// Veritabanı bağlantısını kontrol et
+func (s *Server) checkDatabaseConnection() error {
+	err := s.db.Ping()
+	if err != nil {
+		log.Printf("Veritabanı bağlantı hatası: %v", err)
+		return err
+	}
+	return nil
 }
