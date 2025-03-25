@@ -84,8 +84,29 @@ message ErrorResponse {
   Error error = 1;
 }
 
+// Server'dan agent'a gönderilecek mesajlar
+message ServerMessage {
+  oneof payload {
+    Query query = 1;
+    Error error = 2;
+    RegistrationResult registration = 3;
+  }
+}
+
+// Eski mesaj yapıları (geriye dönük uyumluluk için)
+message AgentMessage {
+  oneof payload {
+    AgentInfo agent_info = 1;
+    QueryResult query_result = 2;
+    PostgresInfo postgres_info = 3;
+  }
+}
+
 service AgentService {
-  // Agent kaydı için kullanılacak servis
+  // Eski bağlantı metodu (geriye dönük uyumluluk için)
+  rpc Connect(stream AgentMessage) returns (stream ServerMessage);
+  
+  // Yeni metodlar...
   rpc Register(RegisterRequest) returns (RegisterResponse);
   
   // Query işlemleri için kullanılacak servis
