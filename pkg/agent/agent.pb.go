@@ -462,32 +462,28 @@ func (x *RegistrationResult) GetMessage() string {
 	return ""
 }
 
-type AgentMessage struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Payload:
-	//
-	//	*AgentMessage_AgentInfo
-	//	*AgentMessage_QueryResult
-	//	*AgentMessage_PostgresInfo
-	Payload       isAgentMessage_Payload `protobuf_oneof:"payload"`
+// Sadece agent kaydı için kullanılacak mesajlar
+type RegisterRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentInfo     *AgentInfo             `protobuf:"bytes,1,opt,name=agent_info,json=agentInfo,proto3" json:"agent_info,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *AgentMessage) Reset() {
-	*x = AgentMessage{}
+func (x *RegisterRequest) Reset() {
+	*x = RegisterRequest{}
 	mi := &file_agent_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AgentMessage) String() string {
+func (x *RegisterRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AgentMessage) ProtoMessage() {}
+func (*RegisterRequest) ProtoMessage() {}
 
-func (x *AgentMessage) ProtoReflect() protoreflect.Message {
+func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_agent_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -499,93 +495,39 @@ func (x *AgentMessage) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use AgentMessage.ProtoReflect.Descriptor instead.
-func (*AgentMessage) Descriptor() ([]byte, []int) {
+// Deprecated: Use RegisterRequest.ProtoReflect.Descriptor instead.
+func (*RegisterRequest) Descriptor() ([]byte, []int) {
 	return file_agent_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *AgentMessage) GetPayload() isAgentMessage_Payload {
+func (x *RegisterRequest) GetAgentInfo() *AgentInfo {
 	if x != nil {
-		return x.Payload
+		return x.AgentInfo
 	}
 	return nil
 }
 
-func (x *AgentMessage) GetAgentInfo() *AgentInfo {
-	if x != nil {
-		if x, ok := x.Payload.(*AgentMessage_AgentInfo); ok {
-			return x.AgentInfo
-		}
-	}
-	return nil
-}
-
-func (x *AgentMessage) GetQueryResult() *QueryResult {
-	if x != nil {
-		if x, ok := x.Payload.(*AgentMessage_QueryResult); ok {
-			return x.QueryResult
-		}
-	}
-	return nil
-}
-
-func (x *AgentMessage) GetPostgresInfo() *PostgresInfo {
-	if x != nil {
-		if x, ok := x.Payload.(*AgentMessage_PostgresInfo); ok {
-			return x.PostgresInfo
-		}
-	}
-	return nil
-}
-
-type isAgentMessage_Payload interface {
-	isAgentMessage_Payload()
-}
-
-type AgentMessage_AgentInfo struct {
-	AgentInfo *AgentInfo `protobuf:"bytes,1,opt,name=agent_info,json=agentInfo,proto3,oneof"`
-}
-
-type AgentMessage_QueryResult struct {
-	QueryResult *QueryResult `protobuf:"bytes,2,opt,name=query_result,json=queryResult,proto3,oneof"`
-}
-
-type AgentMessage_PostgresInfo struct {
-	PostgresInfo *PostgresInfo `protobuf:"bytes,3,opt,name=postgres_info,json=postgresInfo,proto3,oneof"`
-}
-
-func (*AgentMessage_AgentInfo) isAgentMessage_Payload() {}
-
-func (*AgentMessage_QueryResult) isAgentMessage_Payload() {}
-
-func (*AgentMessage_PostgresInfo) isAgentMessage_Payload() {}
-
-type ServerMessage struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Payload:
-	//
-	//	*ServerMessage_Query
-	//	*ServerMessage_Error
-	//	*ServerMessage_Registration
-	Payload       isServerMessage_Payload `protobuf_oneof:"payload"`
+type RegisterResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Registration  *RegistrationResult    `protobuf:"bytes,1,opt,name=registration,proto3" json:"registration,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ServerMessage) Reset() {
-	*x = ServerMessage{}
+func (x *RegisterResponse) Reset() {
+	*x = RegisterResponse{}
 	mi := &file_agent_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ServerMessage) String() string {
+func (x *RegisterResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ServerMessage) ProtoMessage() {}
+func (*RegisterResponse) ProtoMessage() {}
 
-func (x *ServerMessage) ProtoReflect() protoreflect.Message {
+func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_agent_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -597,66 +539,240 @@ func (x *ServerMessage) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ServerMessage.ProtoReflect.Descriptor instead.
-func (*ServerMessage) Descriptor() ([]byte, []int) {
+// Deprecated: Use RegisterResponse.ProtoReflect.Descriptor instead.
+func (*RegisterResponse) Descriptor() ([]byte, []int) {
 	return file_agent_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *ServerMessage) GetPayload() isServerMessage_Payload {
+func (x *RegisterResponse) GetRegistration() *RegistrationResult {
 	if x != nil {
-		return x.Payload
+		return x.Registration
 	}
 	return nil
 }
 
-func (x *ServerMessage) GetQuery() *Query {
+// Query için kullanılacak mesajlar
+type QueryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Query         *Query                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueryRequest) Reset() {
+	*x = QueryRequest{}
+	mi := &file_agent_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryRequest) ProtoMessage() {}
+
+func (x *QueryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[8]
 	if x != nil {
-		if x, ok := x.Payload.(*ServerMessage_Query); ok {
-			return x.Query
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
 		}
+		return ms
 	}
-	return nil
+	return mi.MessageOf(x)
 }
 
-func (x *ServerMessage) GetError() *Error {
+// Deprecated: Use QueryRequest.ProtoReflect.Descriptor instead.
+func (*QueryRequest) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *QueryRequest) GetQuery() *Query {
 	if x != nil {
-		if x, ok := x.Payload.(*ServerMessage_Error); ok {
-			return x.Error
-		}
+		return x.Query
 	}
 	return nil
 }
 
-func (x *ServerMessage) GetRegistration() *RegistrationResult {
+type QueryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Result        *QueryResult           `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueryResponse) Reset() {
+	*x = QueryResponse{}
+	mi := &file_agent_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryResponse) ProtoMessage() {}
+
+func (x *QueryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[9]
 	if x != nil {
-		if x, ok := x.Payload.(*ServerMessage_Registration); ok {
-			return x.Registration
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
 		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueryResponse.ProtoReflect.Descriptor instead.
+func (*QueryResponse) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *QueryResponse) GetResult() *QueryResult {
+	if x != nil {
+		return x.Result
 	}
 	return nil
 }
 
-type isServerMessage_Payload interface {
-	isServerMessage_Payload()
+// PostgreSQL bilgileri için kullanılacak mesajlar
+type PostgresInfoRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
-type ServerMessage_Query struct {
-	Query *Query `protobuf:"bytes,1,opt,name=query,proto3,oneof"`
+func (x *PostgresInfoRequest) Reset() {
+	*x = PostgresInfoRequest{}
+	mi := &file_agent_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
-type ServerMessage_Error struct {
-	Error *Error `protobuf:"bytes,2,opt,name=error,proto3,oneof"`
+func (x *PostgresInfoRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
 }
 
-type ServerMessage_Registration struct {
-	Registration *RegistrationResult `protobuf:"bytes,3,opt,name=registration,proto3,oneof"`
+func (*PostgresInfoRequest) ProtoMessage() {}
+
+func (x *PostgresInfoRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
 }
 
-func (*ServerMessage_Query) isServerMessage_Payload() {}
+// Deprecated: Use PostgresInfoRequest.ProtoReflect.Descriptor instead.
+func (*PostgresInfoRequest) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{10}
+}
 
-func (*ServerMessage_Error) isServerMessage_Payload() {}
+func (x *PostgresInfoRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
 
-func (*ServerMessage_Registration) isServerMessage_Payload() {}
+type PostgresInfoResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PostgresInfo  *PostgresInfo          `protobuf:"bytes,1,opt,name=postgres_info,json=postgresInfo,proto3" json:"postgres_info,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PostgresInfoResponse) Reset() {
+	*x = PostgresInfoResponse{}
+	mi := &file_agent_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PostgresInfoResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PostgresInfoResponse) ProtoMessage() {}
+
+func (x *PostgresInfoResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PostgresInfoResponse.ProtoReflect.Descriptor instead.
+func (*PostgresInfoResponse) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *PostgresInfoResponse) GetPostgresInfo() *PostgresInfo {
+	if x != nil {
+		return x.PostgresInfo
+	}
+	return nil
+}
+
+// Genel hata mesajı
+type ErrorResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Error         *Error                 `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ErrorResponse) Reset() {
+	*x = ErrorResponse{}
+	mi := &file_agent_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ErrorResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ErrorResponse) ProtoMessage() {}
+
+func (x *ErrorResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ErrorResponse.ProtoReflect.Descriptor instead.
+func (*ErrorResponse) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ErrorResponse) GetError() *Error {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
 
 var File_agent_proto protoreflect.FileDescriptor
 
@@ -700,20 +816,28 @@ const file_agent_proto_rawDesc = "" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"F\n" +
 	"\x12RegistrationResult\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\xc1\x01\n" +
-	"\fAgentMessage\x121\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"B\n" +
+	"\x0fRegisterRequest\x12/\n" +
 	"\n" +
-	"agent_info\x18\x01 \x01(\v2\x10.agent.AgentInfoH\x00R\tagentInfo\x127\n" +
-	"\fquery_result\x18\x02 \x01(\v2\x12.agent.QueryResultH\x00R\vqueryResult\x12:\n" +
-	"\rpostgres_info\x18\x03 \x01(\v2\x13.agent.PostgresInfoH\x00R\fpostgresInfoB\t\n" +
-	"\apayload\"\xa7\x01\n" +
-	"\rServerMessage\x12$\n" +
-	"\x05query\x18\x01 \x01(\v2\f.agent.QueryH\x00R\x05query\x12$\n" +
-	"\x05error\x18\x02 \x01(\v2\f.agent.ErrorH\x00R\x05error\x12?\n" +
-	"\fregistration\x18\x03 \x01(\v2\x19.agent.RegistrationResultH\x00R\fregistrationB\t\n" +
-	"\apayload2H\n" +
-	"\fAgentService\x128\n" +
-	"\aConnect\x12\x13.agent.AgentMessage\x1a\x14.agent.ServerMessage(\x010\x01B0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
+	"agent_info\x18\x01 \x01(\v2\x10.agent.AgentInfoR\tagentInfo\"Q\n" +
+	"\x10RegisterResponse\x12=\n" +
+	"\fregistration\x18\x01 \x01(\v2\x19.agent.RegistrationResultR\fregistration\"2\n" +
+	"\fQueryRequest\x12\"\n" +
+	"\x05query\x18\x01 \x01(\v2\f.agent.QueryR\x05query\";\n" +
+	"\rQueryResponse\x12*\n" +
+	"\x06result\x18\x01 \x01(\v2\x12.agent.QueryResultR\x06result\"0\n" +
+	"\x13PostgresInfoRequest\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\"P\n" +
+	"\x14PostgresInfoResponse\x128\n" +
+	"\rpostgres_info\x18\x01 \x01(\v2\x13.agent.PostgresInfoR\fpostgresInfo\"3\n" +
+	"\rErrorResponse\x12\"\n" +
+	"\x05error\x18\x01 \x01(\v2\f.agent.ErrorR\x05error2\xe6\x02\n" +
+	"\fAgentService\x12;\n" +
+	"\bRegister\x12\x16.agent.RegisterRequest\x1a\x17.agent.RegisterResponse\x129\n" +
+	"\fExecuteQuery\x12\x13.agent.QueryRequest\x1a\x14.agent.QueryResponse\x12K\n" +
+	"\x10SendPostgresInfo\x12\x1a.agent.PostgresInfoRequest\x1a\x1b.agent.PostgresInfoResponse\x12>\n" +
+	"\rStreamQueries\x12\x13.agent.QueryRequest\x1a\x14.agent.QueryResponse(\x010\x01\x12Q\n" +
+	"\x12StreamPostgresInfo\x12\x1a.agent.PostgresInfoRequest\x1a\x1b.agent.PostgresInfoResponse(\x010\x01B0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
 
 var (
 	file_agent_proto_rawDescOnce sync.Once
@@ -727,33 +851,46 @@ func file_agent_proto_rawDescGZIP() []byte {
 	return file_agent_proto_rawDescData
 }
 
-var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_agent_proto_goTypes = []any{
-	(*AgentInfo)(nil),          // 0: agent.AgentInfo
-	(*PostgresInfo)(nil),       // 1: agent.PostgresInfo
-	(*Query)(nil),              // 2: agent.Query
-	(*QueryResult)(nil),        // 3: agent.QueryResult
-	(*Error)(nil),              // 4: agent.Error
-	(*RegistrationResult)(nil), // 5: agent.RegistrationResult
-	(*AgentMessage)(nil),       // 6: agent.AgentMessage
-	(*ServerMessage)(nil),      // 7: agent.ServerMessage
-	(*any1.Any)(nil),           // 8: google.protobuf.Any
+	(*AgentInfo)(nil),            // 0: agent.AgentInfo
+	(*PostgresInfo)(nil),         // 1: agent.PostgresInfo
+	(*Query)(nil),                // 2: agent.Query
+	(*QueryResult)(nil),          // 3: agent.QueryResult
+	(*Error)(nil),                // 4: agent.Error
+	(*RegistrationResult)(nil),   // 5: agent.RegistrationResult
+	(*RegisterRequest)(nil),      // 6: agent.RegisterRequest
+	(*RegisterResponse)(nil),     // 7: agent.RegisterResponse
+	(*QueryRequest)(nil),         // 8: agent.QueryRequest
+	(*QueryResponse)(nil),        // 9: agent.QueryResponse
+	(*PostgresInfoRequest)(nil),  // 10: agent.PostgresInfoRequest
+	(*PostgresInfoResponse)(nil), // 11: agent.PostgresInfoResponse
+	(*ErrorResponse)(nil),        // 12: agent.ErrorResponse
+	(*any1.Any)(nil),             // 13: google.protobuf.Any
 }
 var file_agent_proto_depIdxs = []int32{
-	8, // 0: agent.QueryResult.result:type_name -> google.protobuf.Any
-	0, // 1: agent.AgentMessage.agent_info:type_name -> agent.AgentInfo
-	3, // 2: agent.AgentMessage.query_result:type_name -> agent.QueryResult
-	1, // 3: agent.AgentMessage.postgres_info:type_name -> agent.PostgresInfo
-	2, // 4: agent.ServerMessage.query:type_name -> agent.Query
-	4, // 5: agent.ServerMessage.error:type_name -> agent.Error
-	5, // 6: agent.ServerMessage.registration:type_name -> agent.RegistrationResult
-	6, // 7: agent.AgentService.Connect:input_type -> agent.AgentMessage
-	7, // 8: agent.AgentService.Connect:output_type -> agent.ServerMessage
-	8, // [8:9] is the sub-list for method output_type
-	7, // [7:8] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	13, // 0: agent.QueryResult.result:type_name -> google.protobuf.Any
+	0,  // 1: agent.RegisterRequest.agent_info:type_name -> agent.AgentInfo
+	5,  // 2: agent.RegisterResponse.registration:type_name -> agent.RegistrationResult
+	2,  // 3: agent.QueryRequest.query:type_name -> agent.Query
+	3,  // 4: agent.QueryResponse.result:type_name -> agent.QueryResult
+	1,  // 5: agent.PostgresInfoResponse.postgres_info:type_name -> agent.PostgresInfo
+	4,  // 6: agent.ErrorResponse.error:type_name -> agent.Error
+	6,  // 7: agent.AgentService.Register:input_type -> agent.RegisterRequest
+	8,  // 8: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
+	10, // 9: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
+	8,  // 10: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
+	10, // 11: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
+	7,  // 12: agent.AgentService.Register:output_type -> agent.RegisterResponse
+	9,  // 13: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
+	11, // 14: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
+	9,  // 15: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
+	11, // 16: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
+	12, // [12:17] is the sub-list for method output_type
+	7,  // [7:12] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_agent_proto_init() }
@@ -761,23 +898,13 @@ func file_agent_proto_init() {
 	if File_agent_proto != nil {
 		return
 	}
-	file_agent_proto_msgTypes[6].OneofWrappers = []any{
-		(*AgentMessage_AgentInfo)(nil),
-		(*AgentMessage_QueryResult)(nil),
-		(*AgentMessage_PostgresInfo)(nil),
-	}
-	file_agent_proto_msgTypes[7].OneofWrappers = []any{
-		(*ServerMessage_Query)(nil),
-		(*ServerMessage_Error)(nil),
-		(*ServerMessage_Registration)(nil),
-	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

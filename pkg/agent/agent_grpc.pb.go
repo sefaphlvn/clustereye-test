@@ -19,14 +19,26 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AgentService_Connect_FullMethodName = "/agent.AgentService/Connect"
+	AgentService_Register_FullMethodName           = "/agent.AgentService/Register"
+	AgentService_ExecuteQuery_FullMethodName       = "/agent.AgentService/ExecuteQuery"
+	AgentService_SendPostgresInfo_FullMethodName   = "/agent.AgentService/SendPostgresInfo"
+	AgentService_StreamQueries_FullMethodName      = "/agent.AgentService/StreamQueries"
+	AgentService_StreamPostgresInfo_FullMethodName = "/agent.AgentService/StreamPostgresInfo"
 )
 
 // AgentServiceClient is the client API for AgentService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AgentServiceClient interface {
-	Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentMessage, ServerMessage], error)
+	// Agent kaydı için kullanılacak servis
+	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
+	// Query işlemleri için kullanılacak servis
+	ExecuteQuery(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (*QueryResponse, error)
+	// PostgreSQL bilgilerini göndermek için kullanılacak servis
+	SendPostgresInfo(ctx context.Context, in *PostgresInfoRequest, opts ...grpc.CallOption) (*PostgresInfoResponse, error)
+	// Sürekli veri akışı gerektiren durumlar için stream servisleri
+	StreamQueries(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[QueryRequest, QueryResponse], error)
+	StreamPostgresInfo(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PostgresInfoRequest, PostgresInfoResponse], error)
 }
 
 type agentServiceClient struct {
@@ -37,24 +49,75 @@ func NewAgentServiceClient(cc grpc.ClientConnInterface) AgentServiceClient {
 	return &agentServiceClient{cc}
 }
 
-func (c *agentServiceClient) Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentMessage, ServerMessage], error) {
+func (c *agentServiceClient) Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &AgentService_ServiceDesc.Streams[0], AgentService_Connect_FullMethodName, cOpts...)
+	out := new(RegisterResponse)
+	err := c.cc.Invoke(ctx, AgentService_Register_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[AgentMessage, ServerMessage]{ClientStream: stream}
+	return out, nil
+}
+
+func (c *agentServiceClient) ExecuteQuery(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (*QueryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QueryResponse)
+	err := c.cc.Invoke(ctx, AgentService_ExecuteQuery_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) SendPostgresInfo(ctx context.Context, in *PostgresInfoRequest, opts ...grpc.CallOption) (*PostgresInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PostgresInfoResponse)
+	err := c.cc.Invoke(ctx, AgentService_SendPostgresInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) StreamQueries(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[QueryRequest, QueryResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &AgentService_ServiceDesc.Streams[0], AgentService_StreamQueries_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[QueryRequest, QueryResponse]{ClientStream: stream}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type AgentService_ConnectClient = grpc.BidiStreamingClient[AgentMessage, ServerMessage]
+type AgentService_StreamQueriesClient = grpc.BidiStreamingClient[QueryRequest, QueryResponse]
+
+func (c *agentServiceClient) StreamPostgresInfo(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PostgresInfoRequest, PostgresInfoResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &AgentService_ServiceDesc.Streams[1], AgentService_StreamPostgresInfo_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[PostgresInfoRequest, PostgresInfoResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentService_StreamPostgresInfoClient = grpc.BidiStreamingClient[PostgresInfoRequest, PostgresInfoResponse]
 
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
 type AgentServiceServer interface {
-	Connect(grpc.BidiStreamingServer[AgentMessage, ServerMessage]) error
+	// Agent kaydı için kullanılacak servis
+	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
+	// Query işlemleri için kullanılacak servis
+	ExecuteQuery(context.Context, *QueryRequest) (*QueryResponse, error)
+	// PostgreSQL bilgilerini göndermek için kullanılacak servis
+	SendPostgresInfo(context.Context, *PostgresInfoRequest) (*PostgresInfoResponse, error)
+	// Sürekli veri akışı gerektiren durumlar için stream servisleri
+	StreamQueries(grpc.BidiStreamingServer[QueryRequest, QueryResponse]) error
+	StreamPostgresInfo(grpc.BidiStreamingServer[PostgresInfoRequest, PostgresInfoResponse]) error
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -65,8 +128,20 @@ type AgentServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedAgentServiceServer struct{}
 
-func (UnimplementedAgentServiceServer) Connect(grpc.BidiStreamingServer[AgentMessage, ServerMessage]) error {
-	return status.Errorf(codes.Unimplemented, "method Connect not implemented")
+func (UnimplementedAgentServiceServer) Register(context.Context, *RegisterRequest) (*RegisterResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Register not implemented")
+}
+func (UnimplementedAgentServiceServer) ExecuteQuery(context.Context, *QueryRequest) (*QueryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExecuteQuery not implemented")
+}
+func (UnimplementedAgentServiceServer) SendPostgresInfo(context.Context, *PostgresInfoRequest) (*PostgresInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendPostgresInfo not implemented")
+}
+func (UnimplementedAgentServiceServer) StreamQueries(grpc.BidiStreamingServer[QueryRequest, QueryResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method StreamQueries not implemented")
+}
+func (UnimplementedAgentServiceServer) StreamPostgresInfo(grpc.BidiStreamingServer[PostgresInfoRequest, PostgresInfoResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method StreamPostgresInfo not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -89,12 +164,73 @@ func RegisterAgentServiceServer(s grpc.ServiceRegistrar, srv AgentServiceServer)
 	s.RegisterService(&AgentService_ServiceDesc, srv)
 }
 
-func _AgentService_Connect_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(AgentServiceServer).Connect(&grpc.GenericServerStream[AgentMessage, ServerMessage]{ServerStream: stream})
+func _AgentService_Register_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).Register(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_Register_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).Register(ctx, req.(*RegisterRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_ExecuteQuery_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ExecuteQuery(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ExecuteQuery_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ExecuteQuery(ctx, req.(*QueryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_SendPostgresInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PostgresInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).SendPostgresInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_SendPostgresInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).SendPostgresInfo(ctx, req.(*PostgresInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_StreamQueries_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(AgentServiceServer).StreamQueries(&grpc.GenericServerStream[QueryRequest, QueryResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type AgentService_ConnectServer = grpc.BidiStreamingServer[AgentMessage, ServerMessage]
+type AgentService_StreamQueriesServer = grpc.BidiStreamingServer[QueryRequest, QueryResponse]
+
+func _AgentService_StreamPostgresInfo_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(AgentServiceServer).StreamPostgresInfo(&grpc.GenericServerStream[PostgresInfoRequest, PostgresInfoResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentService_StreamPostgresInfoServer = grpc.BidiStreamingServer[PostgresInfoRequest, PostgresInfoResponse]
 
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -102,11 +238,30 @@ type AgentService_ConnectServer = grpc.BidiStreamingServer[AgentMessage, ServerM
 var AgentService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "agent.AgentService",
 	HandlerType: (*AgentServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Register",
+			Handler:    _AgentService_Register_Handler,
+		},
+		{
+			MethodName: "ExecuteQuery",
+			Handler:    _AgentService_ExecuteQuery_Handler,
+		},
+		{
+			MethodName: "SendPostgresInfo",
+			Handler:    _AgentService_SendPostgresInfo_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "Connect",
-			Handler:       _AgentService_Connect_Handler,
+			StreamName:    "StreamQueries",
+			Handler:       _AgentService_StreamQueries_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "StreamPostgresInfo",
+			Handler:       _AgentService_StreamPostgresInfo_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

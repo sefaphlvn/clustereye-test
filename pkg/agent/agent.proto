@@ -52,22 +52,49 @@ message RegistrationResult {
   string message = 2;
 }
 
-message AgentMessage {
-  oneof payload {
-    AgentInfo agent_info = 1;
-    QueryResult query_result = 2;
-    PostgresInfo postgres_info = 3;
-  }
+// Sadece agent kaydı için kullanılacak mesajlar
+message RegisterRequest {
+  AgentInfo agent_info = 1;
 }
 
-message ServerMessage {
-  oneof payload {
-    Query query = 1;
-    Error error = 2;
-    RegistrationResult registration = 3;
-  }
+message RegisterResponse {
+  RegistrationResult registration = 1;
+}
+
+// Query için kullanılacak mesajlar
+message QueryRequest {
+  Query query = 1;
+}
+
+message QueryResponse {
+  QueryResult result = 1;
+}
+
+// PostgreSQL bilgileri için kullanılacak mesajlar
+message PostgresInfoRequest {
+  string agent_id = 1;
+}
+
+message PostgresInfoResponse {
+  PostgresInfo postgres_info = 1;
+}
+
+// Genel hata mesajı
+message ErrorResponse {
+  Error error = 1;
 }
 
 service AgentService {
-  rpc Connect(stream AgentMessage) returns (stream ServerMessage);
+  // Agent kaydı için kullanılacak servis
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  
+  // Query işlemleri için kullanılacak servis
+  rpc ExecuteQuery(QueryRequest) returns (QueryResponse);
+  
+  // PostgreSQL bilgilerini göndermek için kullanılacak servis
+  rpc SendPostgresInfo(PostgresInfoRequest) returns (PostgresInfoResponse);
+  
+  // Sürekli veri akışı gerektiren durumlar için stream servisleri
+  rpc StreamQueries(stream QueryRequest) returns (stream QueryResponse);
+  rpc StreamPostgresInfo(stream PostgresInfoRequest) returns (stream PostgresInfoResponse);
 }
