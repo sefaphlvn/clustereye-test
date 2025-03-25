@@ -18,6 +18,20 @@ message AgentInfo {
   string postgres_pass = 9;
 }
 
+message PostgresInfo {
+  string cluster_name = 1;
+  string ip = 2;
+  string hostname = 3;
+  string node_status = 4;
+  string pg_version = 5;
+  string location = 6;
+  string pg_bouncer_status = 7;
+  string pg_service_status = 8;
+  int64 replication_lag_sec = 9;
+  string free_disk = 10;
+  int32 fd_percent = 11;
+}
+
 message Query {
   string query_id = 1;
   string command = 2;
@@ -42,6 +56,7 @@ message AgentMessage {
   oneof payload {
     AgentInfo agent_info = 1;
     QueryResult query_result = 2;
+    PostgresInfo postgres_info = 3;
   }
 }
 

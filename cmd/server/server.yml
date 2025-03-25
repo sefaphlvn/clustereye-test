@@ -7,7 +7,7 @@ http:
 database:
   host: localhost
   port: 5432
-  user: bariss
-  password: postgres
+  user: postgres
+  password: Dkjf334utre1
   dbname: clustereye
   sslmode: disable 
