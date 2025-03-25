@@ -643,7 +643,7 @@ func (x *QueryResponse) GetResult() *QueryResult {
 // PostgreSQL bilgileri için kullanılacak mesajlar
 type PostgresInfoRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	PostgresInfo  *PostgresInfo          `protobuf:"bytes,1,opt,name=postgres_info,json=postgresInfo,proto3" json:"postgres_info,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -678,16 +678,16 @@ func (*PostgresInfoRequest) Descriptor() ([]byte, []int) {
 	return file_agent_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *PostgresInfoRequest) GetAgentId() string {
+func (x *PostgresInfoRequest) GetPostgresInfo() *PostgresInfo {
 	if x != nil {
-		return x.AgentId
+		return x.PostgresInfo
 	}
-	return ""
+	return nil
 }
 
 type PostgresInfoResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PostgresInfo  *PostgresInfo          `protobuf:"bytes,1,opt,name=postgres_info,json=postgresInfo,proto3" json:"postgres_info,omitempty"`
+	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -722,11 +722,11 @@ func (*PostgresInfoResponse) Descriptor() ([]byte, []int) {
 	return file_agent_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *PostgresInfoResponse) GetPostgresInfo() *PostgresInfo {
+func (x *PostgresInfoResponse) GetStatus() string {
 	if x != nil {
-		return x.PostgresInfo
+		return x.Status
 	}
-	return nil
+	return ""
 }
 
 // Genel hata mesajı
@@ -825,11 +825,11 @@ const file_agent_proto_rawDesc = "" +
 	"\fQueryRequest\x12\"\n" +
 	"\x05query\x18\x01 \x01(\v2\f.agent.QueryR\x05query\";\n" +
 	"\rQueryResponse\x12*\n" +
-	"\x06result\x18\x01 \x01(\v2\x12.agent.QueryResultR\x06result\"0\n" +
-	"\x13PostgresInfoRequest\x12\x19\n" +
-	"\bagent_id\x18\x01 \x01(\tR\aagentId\"P\n" +
-	"\x14PostgresInfoResponse\x128\n" +
-	"\rpostgres_info\x18\x01 \x01(\v2\x13.agent.PostgresInfoR\fpostgresInfo\"3\n" +
+	"\x06result\x18\x01 \x01(\v2\x12.agent.QueryResultR\x06result\"O\n" +
+	"\x13PostgresInfoRequest\x128\n" +
+	"\rpostgres_info\x18\x01 \x01(\v2\x13.agent.PostgresInfoR\fpostgresInfo\".\n" +
+	"\x14PostgresInfoResponse\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\"3\n" +
 	"\rErrorResponse\x12\"\n" +
 	"\x05error\x18\x01 \x01(\v2\f.agent.ErrorR\x05error2\xe6\x02\n" +
 	"\fAgentService\x12;\n" +
@@ -874,7 +874,7 @@ var file_agent_proto_depIdxs = []int32{
 	5,  // 2: agent.RegisterResponse.registration:type_name -> agent.RegistrationResult
 	2,  // 3: agent.QueryRequest.query:type_name -> agent.Query
 	3,  // 4: agent.QueryResponse.result:type_name -> agent.QueryResult
-	1,  // 5: agent.PostgresInfoResponse.postgres_info:type_name -> agent.PostgresInfo
+	1,  // 5: agent.PostgresInfoRequest.postgres_info:type_name -> agent.PostgresInfo
 	4,  // 6: agent.ErrorResponse.error:type_name -> agent.Error
 	6,  // 7: agent.AgentService.Register:input_type -> agent.RegisterRequest
 	8,  // 8: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest

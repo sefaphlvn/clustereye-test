@@ -72,11 +72,11 @@ message QueryResponse {
 
 // PostgreSQL bilgileri için kullanılacak mesajlar
 message PostgresInfoRequest {
-  string agent_id = 1;
+   PostgresInfo postgres_info = 1;
 }
 
 message PostgresInfoResponse {
-  PostgresInfo postgres_info = 1;
+  string status = 1;
 }
 
 // Genel hata mesajı
