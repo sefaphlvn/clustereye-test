@@ -115,7 +115,7 @@ service AgentService {
   // PostgreSQL bilgilerini göndermek için kullanılacak servis
   rpc SendPostgresInfo(PostgresInfoRequest) returns (PostgresInfoResponse);
   
-  // Sürekli veri akışı gerektiren durumlar için stream servisleri
+  // Sürekli veri akışı gerektiren durumlar için stream servisleri.
   rpc StreamQueries(stream QueryRequest) returns (stream QueryResponse);
   rpc StreamPostgresInfo(stream PostgresInfoRequest) returns (stream PostgresInfoResponse);
 }
