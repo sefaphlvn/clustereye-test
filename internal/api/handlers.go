@@ -29,6 +29,8 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 	{
 		// PostgreSQL durum bilgilerini getir
 		status.GET("/postgres", getPostgresStatus(server))
+		// Agent durum bilgilerini getir
+		status.GET("/agents", getAgentStatus(server))
 	}
 }
 
@@ -37,31 +39,10 @@ func getAgents(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		agents := server.GetConnectedAgents()
 
-		// API yanıtı oluştur
-		response := make([]map[string]interface{}, 0, len(agents))
-		for id, info := range agents {
-			agentData := map[string]interface{}{
-				"agent_id": id,
-				"hostname": info.Hostname,
-				"ip":       info.Ip,
-			}
-
-			// Opsiyonel alanları kontrol et ve ekle
-			if info.Platform != "" {
-				agentData["platform"] = info.Platform
-			}
-
-			if info.Key != "" {
-				agentData["key"] = info.Key
-			}
-
-			response = append(response, agentData)
-		}
-
 		c.JSON(http.StatusOK, gin.H{
 			"status": "success",
 			"data": gin.H{
-				"agents": response,
+				"agents": agents,
 			},
 		})
 	}
@@ -146,6 +127,21 @@ func getPostgresStatus(server *server.Server) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "success",
 			"data":   result.AsInterface(),
+		})
+	}
+}
+
+// getAgentStatus, bağlı agent'ların durumunu getirir
+func getAgentStatus(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// gRPC bağlantılarından agent durumlarını al
+		agents := server.GetConnectedAgents()
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"agents": agents,
+			},
 		})
 	}
 }

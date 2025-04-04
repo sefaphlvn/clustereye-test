@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v3.12.4
-// source: agent.proto.
+// source: agent.proto
 
 package agent
 
@@ -31,15 +31,10 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AgentServiceClient interface {
-	// Eski bağlantı metodu (geriye dönük uyumluluk için)
 	Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentMessage, ServerMessage], error)
-	// Yeni metodlar...
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
-	// Query işlemleri için kullanılacak servis
 	ExecuteQuery(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (*QueryResponse, error)
-	// PostgreSQL bilgilerini göndermek için kullanılacak servis
 	SendPostgresInfo(ctx context.Context, in *PostgresInfoRequest, opts ...grpc.CallOption) (*PostgresInfoResponse, error)
-	// Sürekli veri akışı gerektiren durumlar için stream servisleri
 	StreamQueries(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[QueryRequest, QueryResponse], error)
 	StreamPostgresInfo(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PostgresInfoRequest, PostgresInfoResponse], error)
 }
@@ -125,15 +120,10 @@ type AgentService_StreamPostgresInfoClient = grpc.BidiStreamingClient[PostgresIn
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
 type AgentServiceServer interface {
-	// Eski bağlantı metodu (geriye dönük uyumluluk için)
 	Connect(grpc.BidiStreamingServer[AgentMessage, ServerMessage]) error
-	// Yeni metodlar...
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
-	// Query işlemleri için kullanılacak servis
 	ExecuteQuery(context.Context, *QueryRequest) (*QueryResponse, error)
-	// PostgreSQL bilgilerini göndermek için kullanılacak servis
 	SendPostgresInfo(context.Context, *PostgresInfoRequest) (*PostgresInfoResponse, error)
-	// Sürekli veri akışı gerektiren durumlar için stream servisleri
 	StreamQueries(grpc.BidiStreamingServer[QueryRequest, QueryResponse]) error
 	StreamPostgresInfo(grpc.BidiStreamingServer[PostgresInfoRequest, PostgresInfoResponse]) error
 	mustEmbedUnimplementedAgentServiceServer()

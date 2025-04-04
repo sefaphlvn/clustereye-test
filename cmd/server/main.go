@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/sefaphlvn/clustereye-test/internal/api"
 	"github.com/sefaphlvn/clustereye-test/internal/config"
@@ -14,6 +15,7 @@ import (
 	"github.com/sefaphlvn/clustereye-test/internal/server"
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
 )
@@ -82,6 +84,16 @@ func main() {
 
 	// HTTP Gin API Server başlat
 	router := gin.Default()
+
+	// CORS middleware'ini yapılandır
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "https://your-production-domain.com"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 
 	// API handler'larını kaydet
 	api.RegisterHandlers(router, serverInstance)

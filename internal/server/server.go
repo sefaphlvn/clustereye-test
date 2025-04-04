@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -58,9 +60,12 @@ func NewServer(db *sql.DB) *Server {
 	}
 }
 
-// Connect, agent'ların bağlanması için kullanılan gRPC stream metodudur
+// Connect, agent'ların bağlanması için stream açar
 func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 	var currentAgentID string
+	var companyID int
+
+	log.Println("Yeni agent bağlantı isteği alındı")
 
 	for {
 		in, err := stream.Recv()
@@ -75,33 +80,18 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 		switch payload := in.Payload.(type) {
 		case *pb.AgentMessage_AgentInfo:
 			agentInfo := payload.AgentInfo
+			log.Printf("Agent bilgileri alındı - ID: %s, Hostname: %s", agentInfo.AgentId, agentInfo.Hostname)
 
 			// Agent anahtarını doğrula
 			company, err := s.companyRepo.ValidateAgentKey(context.Background(), agentInfo.Key)
 			if err != nil {
-				// Hata durumunda agent'a bildir
-				errMsg := "Geçersiz agent anahtarı"
-				if err == database.ErrKeyExpired {
-					errMsg = "Agent anahtarı süresi dolmuş"
-				}
-
-				// Hata mesajını agent'a gönder
-				stream.Send(&pb.ServerMessage{
-					Payload: &pb.ServerMessage_Error{
-						Error: &pb.Error{
-							Code:    "AUTH_ERROR",
-							Message: errMsg,
-						},
-					},
-				})
-
 				log.Printf("Agent kimlik doğrulama hatası: %v", err)
 				return err
 			}
 
 			// Agent ID'yi belirle
 			currentAgentID = agentInfo.AgentId
-			companyID := company.ID // Kullanılmayan değişkeni düzelttik
+			companyID = company.ID
 
 			// Agent'ı kaydet
 			err = s.companyRepo.RegisterAgent(
@@ -114,44 +104,7 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 
 			if err != nil {
 				log.Printf("Agent kaydedilemedi: %v", err)
-				stream.Send(&pb.ServerMessage{
-					Payload: &pb.ServerMessage_Error{
-						Error: &pb.Error{
-							Code:    "REGISTRATION_ERROR",
-							Message: "Agent kaydedilemedi",
-						},
-					},
-				})
 				return err
-			}
-
-			// PostgreSQL bağlantı bilgilerini kaydet
-			log.Printf("PostgreSQL bilgileri kaydediliyor: hostname=%s, cluster=%s, user=%s",
-				agentInfo.Hostname, agentInfo.Platform, agentInfo.PostgresUser)
-
-			// Veritabanı bağlantısını kontrol et
-			if err := s.checkDatabaseConnection(); err != nil {
-				log.Printf("Veritabanı bağlantı hatası: %v", err)
-			}
-
-			// PostgreSQL bilgilerini kaydet
-			err = s.companyRepo.SavePostgresConnInfo(
-				context.Background(),
-				agentInfo.Hostname,
-				agentInfo.Platform,     // Platform alanını cluster adı olarak kullanıyoruz
-				agentInfo.PostgresUser, // Agent'dan gelen kullanıcı adı
-				agentInfo.PostgresPass, // Agent'dan gelen şifre
-			)
-
-			if err != nil {
-				log.Printf("PostgreSQL bağlantı bilgileri kaydedilemedi: %v", err)
-				// Hata detaylarını göster
-				// pq paketi eksik olduğu için bu kısmı yorum satırına alıyoruz
-				// if pgErr, ok := err.(*pq.Error); ok {
-				//     log.Printf("PostgreSQL hata detayları: %+v", pgErr)
-				// }
-			} else {
-				log.Printf("PostgreSQL bağlantı bilgileri kaydedildi: %s", agentInfo.Hostname)
 			}
 
 			// Agent'ı bağlantı listesine ekle
@@ -161,6 +114,7 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 				Info:   agentInfo,
 			}
 			s.mu.Unlock()
+			log.Printf("Agent bağlantı listesine eklendi - ID: %s, Toplam bağlantı: %d", currentAgentID, len(s.agents))
 
 			// Başarılı kayıt mesajı gönder
 			stream.Send(&pb.ServerMessage{
@@ -172,7 +126,7 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 				},
 			})
 
-			log.Printf("Yeni Agent bağlandı ve kaydedildi: %+v (Firma: %s)", agentInfo, company.CompanyName)
+			log.Printf("Agent başarıyla kaydedildi ve bağlandı: %s (Firma: %s)", currentAgentID, company.CompanyName)
 
 		case *pb.AgentMessage_QueryResult:
 			queryResult := payload.QueryResult
@@ -192,11 +146,13 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 
 // Register, agent'ın kaydı için kullanılan gRPC metodudur
 func (s *Server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
+	log.Println("Register metodu çağrıldı")
 	agentInfo := req.AgentInfo
 
 	// Agent anahtarını doğrula
 	company, err := s.companyRepo.ValidateAgentKey(ctx, agentInfo.Key)
 	if err != nil {
+		log.Printf("Agent kimlik doğrulama hatası: %v", err)
 		return &pb.RegisterResponse{
 			Registration: &pb.RegistrationResult{
 				Status:  "error",
@@ -215,6 +171,7 @@ func (s *Server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 	)
 
 	if err != nil {
+		log.Printf("Agent kaydedilemedi: %v", err)
 		return &pb.RegisterResponse{
 			Registration: &pb.RegistrationResult{
 				Status:  "error",
@@ -222,6 +179,32 @@ func (s *Server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 			},
 		}, nil
 	}
+
+	// PostgreSQL bağlantı bilgilerini kaydet
+	log.Printf("PostgreSQL bilgileri kaydediliyor: hostname=%s, cluster=%s, user=%s",
+		agentInfo.Hostname, agentInfo.Platform, agentInfo.PostgresUser)
+
+	// Veritabanı bağlantısını kontrol et
+	if err := s.checkDatabaseConnection(); err != nil {
+		log.Printf("Veritabanı bağlantı hatası: %v", err)
+	}
+
+	// PostgreSQL bilgilerini kaydet
+	err = s.companyRepo.SavePostgresConnInfo(
+		ctx,
+		agentInfo.Hostname,
+		agentInfo.Platform,     // Platform alanını cluster adı olarak kullanıyoruz
+		agentInfo.PostgresUser, // Agent'dan gelen kullanıcı adı
+		agentInfo.PostgresPass, // Agent'dan gelen şifre
+	)
+
+	if err != nil {
+		log.Printf("PostgreSQL bağlantı bilgileri kaydedilemedi: %v", err)
+	} else {
+		log.Printf("PostgreSQL bağlantı bilgileri kaydedildi: %s", agentInfo.Hostname)
+	}
+
+	log.Printf("Yeni Agent bağlandı ve kaydedildi: %+v (Firma: %s)", agentInfo, company.CompanyName)
 
 	return &pb.RegisterResponse{
 		Registration: &pb.RegistrationResult{
@@ -243,11 +226,165 @@ func (s *Server) ExecuteQuery(ctx context.Context, req *pb.QueryRequest) (*pb.Qu
 }
 
 func (s *Server) SendPostgresInfo(ctx context.Context, req *pb.PostgresInfoRequest) (*pb.PostgresInfoResponse, error) {
-	// PostgreSQL bilgilerini işleme mantığı
-	// ...
+	log.Println("SendPostgresInfo metodu çağrıldı")
+
+	// Gelen PostgreSQL bilgilerini logla
+	pgInfo := req.PostgresInfo
+	log.Printf("PostgreSQL bilgileri alındı: %+v", pgInfo)
+
+	// Daha detaylı loglama
+	log.Printf("Cluster: %s, IP: %s, Hostname: %s", pgInfo.ClusterName, pgInfo.Ip, pgInfo.Hostname)
+	log.Printf("Node Durumu: %s, PG Sürümü: %s, Konum: %s", pgInfo.NodeStatus, pgInfo.PgVersion, pgInfo.Location)
+	log.Printf("PGBouncer Durumu: %s, PG Servis Durumu: %s", pgInfo.PgBouncerStatus, pgInfo.PgServiceStatus)
+	log.Printf("Replikasyon Gecikmesi: %d saniye, Boş Disk: %s, FD Yüzdesi: %d%%",
+		pgInfo.ReplicationLagSec, pgInfo.FreeDisk, pgInfo.FdPercent)
+
+	// Veritabanına kaydetme işlemi
+	// Bu kısmı ihtiyacınıza göre geliştirebilirsiniz
+	err := s.savePostgresInfoToDatabase(ctx, pgInfo)
+	if err != nil {
+		log.Printf("PostgreSQL bilgileri veritabanına kaydedilemedi: %v", err)
+		return &pb.PostgresInfoResponse{
+			Status: "error",
+		}, nil
+	}
+
+	log.Printf("PostgreSQL bilgileri başarıyla işlendi ve kaydedildi")
+
 	return &pb.PostgresInfoResponse{
 		Status: "success",
 	}, nil
+}
+
+// PostgreSQL bilgilerini veritabanına kaydetmek için yardımcı fonksiyon
+func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.PostgresInfo) error {
+	// Önce mevcut kaydı kontrol et
+	var existingData []byte
+	var id int
+
+	checkQuery := `
+		SELECT id, jsondata FROM public.postgres_data 
+		WHERE clustername = $1 
+		ORDER BY id DESC LIMIT 1
+	`
+
+	err := s.db.QueryRowContext(ctx, checkQuery, pgInfo.ClusterName).Scan(&id, &existingData)
+
+	// Yeni node verisi
+	pgData := map[string]interface{}{
+		"ClusterName":       pgInfo.ClusterName,
+		"Location":          pgInfo.Location,
+		"FDPercent":         pgInfo.FdPercent,
+		"FreeDisk":          pgInfo.FreeDisk,
+		"Hostname":          pgInfo.Hostname,
+		"IP":                pgInfo.Ip,
+		"NodeStatus":        pgInfo.NodeStatus,
+		"PGBouncerStatus":   pgInfo.PgBouncerStatus,
+		"PGServiceStatus":   pgInfo.PgServiceStatus,
+		"PGVersion":         pgInfo.PgVersion,
+		"ReplicationLagSec": pgInfo.ReplicationLagSec,
+	}
+
+	var jsonData []byte
+
+	if err == nil {
+		// Mevcut kayıt var, güncelle
+		var existingJSON map[string][]interface{}
+		if err := json.Unmarshal(existingData, &existingJSON); err != nil {
+			log.Printf("Mevcut JSON ayrıştırma hatası: %v", err)
+			return err
+		}
+
+		// Cluster array'ini al
+		clusterData, ok := existingJSON[pgInfo.ClusterName]
+		if !ok {
+			// Eğer cluster verisi yoksa yeni oluştur
+			clusterData = []interface{}{}
+		}
+
+		// Node'u bul ve güncelle
+		nodeFound := false
+		for i, node := range clusterData {
+			nodeMap, ok := node.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			// Hostname ve IP ile node eşleşmesi kontrol et
+			if nodeMap["Hostname"] == pgInfo.Hostname && nodeMap["IP"] == pgInfo.Ip {
+				// Sadece değişen alanları güncelle
+				nodeFound = true
+
+				// Mevcut değerleri koru, sadece değişenleri güncelle
+				for key, newValue := range pgData {
+					if currentValue, exists := nodeMap[key]; !exists || currentValue != newValue {
+						nodeMap[key] = newValue
+					}
+				}
+
+				clusterData[i] = nodeMap
+				break
+			}
+		}
+
+		// Eğer node bulunamadıysa yeni ekle
+		if !nodeFound {
+			clusterData = append(clusterData, pgData)
+			log.Printf("Yeni node eklendi: %s", pgInfo.Hostname)
+		}
+
+		existingJSON[pgInfo.ClusterName] = clusterData
+
+		// JSON'ı güncelle
+		jsonData, err = json.Marshal(existingJSON)
+		if err != nil {
+			log.Printf("JSON dönüştürme hatası: %v", err)
+			return err
+		}
+
+		// Veritabanını güncelle
+		updateQuery := `
+			UPDATE public.postgres_data 
+			SET jsondata = $1 
+			WHERE id = $2
+		`
+
+		_, err = s.db.ExecContext(ctx, updateQuery, jsonData, id)
+		if err != nil {
+			log.Printf("Veritabanı güncelleme hatası: %v", err)
+			return err
+		}
+
+		log.Printf("PostgreSQL node bilgileri başarıyla güncellendi")
+	} else {
+		// İlk kayıt oluştur
+		outerJSON := map[string][]interface{}{
+			pgInfo.ClusterName: {pgData},
+		}
+
+		jsonData, err = json.Marshal(outerJSON)
+		if err != nil {
+			log.Printf("JSON dönüştürme hatası: %v", err)
+			return err
+		}
+
+		insertQuery := `
+			INSERT INTO public.postgres_data (
+				jsondata, clustername
+			) VALUES ($1, $2)
+		`
+
+		_, err = s.db.ExecContext(ctx, insertQuery, jsonData, pgInfo.ClusterName)
+		if err != nil {
+			log.Printf("Veritabanı ekleme hatası: %v", err)
+			return err
+		}
+
+		log.Printf("PostgreSQL node bilgileri başarıyla veritabanına kaydedildi")
+	}
+
+	log.Printf("Kaydedilen/Güncellenen JSON: %s", string(jsonData))
+	return nil
 }
 
 func (s *Server) StreamQueries(stream pb.AgentService_StreamQueriesServer) error {
@@ -292,17 +429,77 @@ func (s *Server) GetStatusPostgres(ctx context.Context, _ *structpb.Struct) (*st
 	return value, nil
 }
 
-// GetConnectedAgents bağlı tüm agent'ların listesini döndürür
-func (s *Server) GetConnectedAgents() map[string]*pb.AgentInfo {
+// GetConnectedAgents, aktif gRPC bağlantılarındaki agent'ları döndürür
+func (s *Server) GetConnectedAgents() []map[string]interface{} {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	result := make(map[string]*pb.AgentInfo)
-	for id, agent := range s.agents {
-		result[id] = agent.Info
+	log.Printf("Aktif gRPC bağlantıları: %d", len(s.agents))
+
+	// Istanbul zaman dilimini al
+	loc, err := time.LoadLocation("Europe/Istanbul")
+	if err != nil {
+		log.Printf("Zaman dilimi yüklenemedi: %v", err)
+		loc = time.UTC
 	}
 
-	return result
+	agents := make([]map[string]interface{}, 0)
+	for id, conn := range s.agents {
+		if conn == nil || conn.Info == nil {
+			log.Printf("Geçersiz agent bağlantısı: %s", id)
+			continue
+		}
+
+		log.Printf("Agent bulundu - ID: %s, Hostname: %s", id, conn.Info.Hostname)
+		agent := map[string]interface{}{
+			"id":         id,
+			"hostname":   conn.Info.Hostname,
+			"ip":         conn.Info.Ip,
+			"status":     "connected",
+			"last_seen":  time.Now().In(loc).Format("2006-01-02T15:04:05-07:00"),
+			"connection": "grpc",
+		}
+		agents = append(agents, agent)
+	}
+	return agents
+}
+
+// GetAgentStatusFromDB, veritabanından agent durumlarını alır
+func (s *Server) GetAgentStatusFromDB(ctx context.Context) ([]map[string]interface{}, error) {
+	query := `
+		SELECT hostname, last_seen 
+		FROM agents 
+		WHERE last_seen > NOW() - INTERVAL '1 minute'
+	`
+
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("veritabanı sorgusu başarısız: %v", err)
+	}
+	defer rows.Close()
+
+	agents := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var hostname string
+		var lastSeen time.Time
+		if err := rows.Scan(&hostname, &lastSeen); err != nil {
+			return nil, fmt.Errorf("satır okuma hatası: %v", err)
+		}
+
+		agent := map[string]interface{}{
+			"hostname":   hostname,
+			"last_seen":  lastSeen.Format(time.RFC3339),
+			"status":     "active",
+			"connection": "db",
+		}
+		agents = append(agents, agent)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("satır okuma hatası: %v", err)
+	}
+
+	return agents, nil
 }
 
 // Veritabanı bağlantısını kontrol et
@@ -318,9 +515,14 @@ func (s *Server) checkDatabaseConnection() error {
 // SendQuery, belirli bir agent'a sorgu gönderir ve cevabı bekler
 func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command string) (*pb.QueryResult, error) {
 	s.mu.RLock()
-	agentConn, ok := s.agents[agentID]
-	s.mu.RUnlock()
+	defer s.mu.RUnlock()
 
+	// Agent ID'sini kontrol et ve gerekirse düzelt
+	if !strings.HasPrefix(agentID, "agent_") {
+		agentID = "agent_" + agentID
+	}
+
+	agentConn, ok := s.agents[agentID]
 	if !ok {
 		return nil, fmt.Errorf("agent bulunamadı: %s", agentID)
 	}
@@ -360,6 +562,34 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command string
 	// Cevabı bekle (timeout ile)
 	select {
 	case result := <-resultChan:
+		// Protobuf sonucunu JSON formatına dönüştür
+		if result.Result != nil {
+			log.Printf("Received result type: %s", result.Result.TypeUrl)
+
+			// Protobuf struct'ı parse et
+			var structValue structpb.Struct
+			if err := result.Result.UnmarshalTo(&structValue); err != nil {
+				log.Printf("Error unmarshaling to struct: %v", err)
+				return result, nil
+			}
+
+			// Struct'ı map'e dönüştür
+			resultMap := structValue.AsMap()
+			log.Printf("Result map: %+v", resultMap)
+
+			// Map'i JSON'a dönüştür
+			jsonBytes, err := json.Marshal(resultMap)
+			if err != nil {
+				log.Printf("Error marshaling map to JSON: %v", err)
+				return result, nil
+			}
+
+			// Sonucu güncelle
+			result.Result = &anypb.Any{
+				TypeUrl: "type.googleapis.com/google.protobuf.Value",
+				Value:   jsonBytes,
+			}
+		}
 		return result, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
