@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sefaphlvn/clustereye-test/internal/server"
+	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 )
 
 // RegisterHandlers, API rotalarını Gin router'a kaydeder
@@ -22,6 +23,9 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 
 		// Agent'a sorgu gönder
 		agents.POST("/:agent_id/query", sendQueryToAgent(server))
+
+		// Agent'dan sistem metriklerini al
+		agents.POST("/:agent_id/metrics", sendMetricsRequestToAgent(server))
 	}
 
 	// Status Endpoint'leri
@@ -142,6 +146,56 @@ func getAgentStatus(server *server.Server) gin.HandlerFunc {
 			"data": gin.H{
 				"agents": agents,
 			},
+		})
+	}
+}
+
+// sendMetricsRequestToAgent, agent'a sistem metrikleri isteği gönderir
+func sendMetricsRequestToAgent(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Param("agent_id")
+
+		if agentID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "agent_id parametresi gerekli",
+			})
+			return
+		}
+
+		// Context oluştur (request'in iptal edilmesi durumunda kullanılacak)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		// Metrikleri al
+		req := &pb.SystemMetricsRequest{
+			AgentId: agentID,
+		}
+		result, err := server.SendSystemMetrics(ctx, req)
+		if err != nil {
+			status := http.StatusInternalServerError
+			message := "Metrikler alınırken bir hata oluştu: " + err.Error()
+
+			if err == context.DeadlineExceeded {
+				status = http.StatusGatewayTimeout
+				message = "Metrik isteği zaman aşımına uğradı"
+			} else if err.Error() == http.ErrNoLocation.Error() {
+				status = http.StatusNotFound
+				message = "Agent bulunamadı veya bağlantı kapalı"
+			}
+
+			c.JSON(status, gin.H{
+				"status": "error",
+				"error":  message,
+			})
+			return
+		}
+
+		// Başarılı yanıt
+		c.JSON(http.StatusOK, gin.H{
+			"status":   "success",
+			"agent_id": agentID,
+			"metrics":  result.Metrics,
 		})
 	}
 }

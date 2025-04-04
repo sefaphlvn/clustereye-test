@@ -90,6 +90,7 @@ message ServerMessage {
     Query query = 1;
     Error error = 2;
     RegistrationResult registration = 3;
+    SystemMetricsRequest metrics_request = 4;
   }
 }
 
@@ -99,7 +100,33 @@ message AgentMessage {
     AgentInfo agent_info = 1;
     QueryResult query_result = 2;
     PostgresInfo postgres_info = 3;
+    SystemMetrics system_metrics = 4;
   }
+}
+
+message SystemMetrics {
+  double cpu_usage = 1;
+  double memory_usage = 2;
+  double load_average_1m = 3;
+  double load_average_5m = 4;
+  double load_average_15m = 5;
+  int64 total_memory = 6;
+  int64 free_memory = 7;
+  int64 total_disk = 8;
+  int64 free_disk = 9;
+  int32 cpu_cores = 10;
+  string os_version = 11;
+  string kernel_version = 12;
+  int64 uptime = 13;
+}
+
+message SystemMetricsRequest {
+  string agent_id = 1;
+}
+
+message SystemMetricsResponse {
+  string status = 1;
+  SystemMetrics metrics = 2;
 }
 
 service AgentService {
@@ -118,4 +145,5 @@ service AgentService {
   // Sürekli veri akışı gerektiren durumlar için stream servisleri.
   rpc StreamQueries(stream QueryRequest) returns (stream QueryResponse);
   rpc StreamPostgresInfo(stream PostgresInfoRequest) returns (stream PostgresInfoResponse);
+  rpc SendSystemMetrics(SystemMetricsRequest) returns (SystemMetricsResponse);
 }

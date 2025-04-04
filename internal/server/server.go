@@ -597,3 +597,90 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command string
 		return nil, fmt.Errorf("sorgu zaman aşımına uğradı")
 	}
 }
+
+// SendSystemMetrics, agent'dan sistem metriklerini alır
+func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsRequest) (*pb.SystemMetricsResponse, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	agentID := req.AgentId
+
+	// Agent ID'sini kontrol et ve gerekirse düzelt
+	if !strings.HasPrefix(agentID, "agent_") {
+		agentID = "agent_" + agentID
+	}
+
+	agentConn, ok := s.agents[agentID]
+	if !ok {
+		return nil, fmt.Errorf("agent bulunamadı: %s", agentID)
+	}
+
+	// Metrik cevabı için bir kanal oluştur
+	metricsChan := make(chan *pb.SystemMetrics, 1)
+	errChan := make(chan error, 1)
+
+	// Haritaya ekle
+	s.queryMu.Lock()
+	s.queryResult["metrics_"+agentID] = &QueryResponse{
+		ResultChan: make(chan *pb.QueryResult, 1),
+	}
+	s.queryMu.Unlock()
+
+	// Temizlik işlemi için defer
+	defer func() {
+		s.queryMu.Lock()
+		delete(s.queryResult, "metrics_"+agentID)
+		s.queryMu.Unlock()
+		close(metricsChan)
+		close(errChan)
+	}()
+
+	// Metrik isteğini agent'a gönder
+	err := agentConn.Stream.Send(&pb.ServerMessage{
+		Payload: &pb.ServerMessage_MetricsRequest{
+			MetricsRequest: &pb.SystemMetricsRequest{
+				AgentId: agentID,
+			},
+		},
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Agent yanıtını bekle
+	go func() {
+		msg, err := agentConn.Stream.Recv()
+		if err != nil {
+			errChan <- err
+			return
+		}
+
+		if metrics, ok := msg.Payload.(*pb.AgentMessage_SystemMetrics); ok {
+			metricsChan <- metrics.SystemMetrics
+		} else {
+			errChan <- fmt.Errorf("beklenmeyen yanıt tipi")
+		}
+	}()
+
+	// Cevabı bekle (timeout ile)
+	select {
+	case metrics := <-metricsChan:
+		return &pb.SystemMetricsResponse{
+			Status:  "success",
+			Metrics: metrics,
+		}, nil
+	case err := <-errChan:
+		return &pb.SystemMetricsResponse{
+			Status: "error",
+		}, err
+	case <-ctx.Done():
+		return &pb.SystemMetricsResponse{
+			Status: "error",
+		}, ctx.Err()
+	case <-time.After(10 * time.Second): // 10 saniye timeout
+		return &pb.SystemMetricsResponse{
+			Status: "error",
+		}, fmt.Errorf("metrik isteği zaman aşımına uğradı")
+	}
+}

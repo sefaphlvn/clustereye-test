@@ -25,18 +25,25 @@ const (
 	AgentService_SendPostgresInfo_FullMethodName   = "/agent.AgentService/SendPostgresInfo"
 	AgentService_StreamQueries_FullMethodName      = "/agent.AgentService/StreamQueries"
 	AgentService_StreamPostgresInfo_FullMethodName = "/agent.AgentService/StreamPostgresInfo"
+	AgentService_SendSystemMetrics_FullMethodName  = "/agent.AgentService/SendSystemMetrics"
 )
 
 // AgentServiceClient is the client API for AgentService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AgentServiceClient interface {
+	// Eski bağlantı metodu (geriye dönük uyumluluk için)
 	Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentMessage, ServerMessage], error)
+	// Yeni metodlar...
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
+	// Query işlemleri için kullanılacak servis
 	ExecuteQuery(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (*QueryResponse, error)
+	// PostgreSQL bilgilerini göndermek için kullanılacak servis
 	SendPostgresInfo(ctx context.Context, in *PostgresInfoRequest, opts ...grpc.CallOption) (*PostgresInfoResponse, error)
+	// Sürekli veri akışı gerektiren durumlar için stream servisleri.
 	StreamQueries(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[QueryRequest, QueryResponse], error)
 	StreamPostgresInfo(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PostgresInfoRequest, PostgresInfoResponse], error)
+	SendSystemMetrics(ctx context.Context, in *SystemMetricsRequest, opts ...grpc.CallOption) (*SystemMetricsResponse, error)
 }
 
 type agentServiceClient struct {
@@ -116,16 +123,32 @@ func (c *agentServiceClient) StreamPostgresInfo(ctx context.Context, opts ...grp
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentService_StreamPostgresInfoClient = grpc.BidiStreamingClient[PostgresInfoRequest, PostgresInfoResponse]
 
+func (c *agentServiceClient) SendSystemMetrics(ctx context.Context, in *SystemMetricsRequest, opts ...grpc.CallOption) (*SystemMetricsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SystemMetricsResponse)
+	err := c.cc.Invoke(ctx, AgentService_SendSystemMetrics_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
 type AgentServiceServer interface {
+	// Eski bağlantı metodu (geriye dönük uyumluluk için)
 	Connect(grpc.BidiStreamingServer[AgentMessage, ServerMessage]) error
+	// Yeni metodlar...
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
+	// Query işlemleri için kullanılacak servis
 	ExecuteQuery(context.Context, *QueryRequest) (*QueryResponse, error)
+	// PostgreSQL bilgilerini göndermek için kullanılacak servis
 	SendPostgresInfo(context.Context, *PostgresInfoRequest) (*PostgresInfoResponse, error)
+	// Sürekli veri akışı gerektiren durumlar için stream servisleri.
 	StreamQueries(grpc.BidiStreamingServer[QueryRequest, QueryResponse]) error
 	StreamPostgresInfo(grpc.BidiStreamingServer[PostgresInfoRequest, PostgresInfoResponse]) error
+	SendSystemMetrics(context.Context, *SystemMetricsRequest) (*SystemMetricsResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -153,6 +176,9 @@ func (UnimplementedAgentServiceServer) StreamQueries(grpc.BidiStreamingServer[Qu
 }
 func (UnimplementedAgentServiceServer) StreamPostgresInfo(grpc.BidiStreamingServer[PostgresInfoRequest, PostgresInfoResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method StreamPostgresInfo not implemented")
+}
+func (UnimplementedAgentServiceServer) SendSystemMetrics(context.Context, *SystemMetricsRequest) (*SystemMetricsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendSystemMetrics not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -250,6 +276,24 @@ func _AgentService_StreamPostgresInfo_Handler(srv interface{}, stream grpc.Serve
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentService_StreamPostgresInfoServer = grpc.BidiStreamingServer[PostgresInfoRequest, PostgresInfoResponse]
 
+func _AgentService_SendSystemMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SystemMetricsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).SendSystemMetrics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_SendSystemMetrics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).SendSystemMetrics(ctx, req.(*SystemMetricsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -268,6 +312,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SendPostgresInfo",
 			Handler:    _AgentService_SendPostgresInfo_Handler,
+		},
+		{
+			MethodName: "SendSystemMetrics",
+			Handler:    _AgentService_SendSystemMetrics_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
