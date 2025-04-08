@@ -130,7 +130,7 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 
 		case *pb.AgentMessage_QueryResult:
 			queryResult := payload.QueryResult
-			log.Printf("Agent %s sorguya cevap verdi: %+v", currentAgentID, queryResult)
+			log.Printf("Agent %s sorguya cevap verdi.", currentAgentID)
 
 			// Sorgu sonucunu ilgili kanal üzerinden ilet
 			s.queryMu.RLock()
@@ -564,7 +564,6 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command string
 	case result := <-resultChan:
 		// Protobuf sonucunu JSON formatına dönüştür
 		if result.Result != nil {
-			log.Printf("Received result type: %s", result.Result.TypeUrl)
 
 			// Protobuf struct'ı parse et
 			var structValue structpb.Struct
@@ -575,7 +574,6 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command string
 
 			// Struct'ı map'e dönüştür
 			resultMap := structValue.AsMap()
-			log.Printf("Result map: %+v", resultMap)
 
 			// Map'i JSON'a dönüştür
 			jsonBytes, err := json.Marshal(resultMap)
@@ -600,42 +598,33 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command string
 
 // SendSystemMetrics, agent'dan sistem metriklerini alır
 func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsRequest) (*pb.SystemMetricsResponse, error) {
+	log.Printf("[DEBUG] SendSystemMetrics başladı: agent_id=%s", req.AgentId)
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	agentID := req.AgentId
-
-	// Agent ID'sini kontrol et ve gerekirse düzelt
 	if !strings.HasPrefix(agentID, "agent_") {
 		agentID = "agent_" + agentID
+		log.Printf("[DEBUG] Agent ID düzeltildi: %s", agentID)
 	}
 
 	agentConn, ok := s.agents[agentID]
 	if !ok {
+		log.Printf("[ERROR] Agent bulunamadı: %s", agentID)
 		return nil, fmt.Errorf("agent bulunamadı: %s", agentID)
 	}
 
-	// Metrik cevabı için bir kanal oluştur
-	metricsChan := make(chan *pb.SystemMetrics, 1)
-	errChan := make(chan error, 1)
+	log.Printf("[DEBUG] Agent bağlantısı bulundu: %s", agentID)
 
-	// Haritaya ekle
-	s.queryMu.Lock()
-	s.queryResult["metrics_"+agentID] = &QueryResponse{
-		ResultChan: make(chan *pb.QueryResult, 1),
+	// gRPC stream'in durumunu kontrol et
+	if agentConn.Stream == nil {
+		log.Printf("[ERROR] gRPC stream nil: agent_id=%s", agentID)
+		return nil, fmt.Errorf("gRPC stream bağlantısı kopmuş")
 	}
-	s.queryMu.Unlock()
-
-	// Temizlik işlemi için defer
-	defer func() {
-		s.queryMu.Lock()
-		delete(s.queryResult, "metrics_"+agentID)
-		s.queryMu.Unlock()
-		close(metricsChan)
-		close(errChan)
-	}()
 
 	// Metrik isteğini agent'a gönder
+	log.Printf("[DEBUG] Metrik isteği gönderiliyor: agent_id=%s", agentID)
 	err := agentConn.Stream.Send(&pb.ServerMessage{
 		Payload: &pb.ServerMessage_MetricsRequest{
 			MetricsRequest: &pb.SystemMetricsRequest{
@@ -645,42 +634,36 @@ func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsReq
 	})
 
 	if err != nil {
+		log.Printf("[ERROR] Metrik isteği gönderilemedi: agent_id=%s, error=%v", agentID, err)
 		return nil, err
 	}
+	log.Printf("[DEBUG] Metrik isteği başarıyla gönderildi: agent_id=%s", agentID)
 
 	// Agent yanıtını bekle
-	go func() {
-		msg, err := agentConn.Stream.Recv()
-		if err != nil {
-			errChan <- err
-			return
-		}
-
-		if metrics, ok := msg.Payload.(*pb.AgentMessage_SystemMetrics); ok {
-			metricsChan <- metrics.SystemMetrics
-		} else {
-			errChan <- fmt.Errorf("beklenmeyen yanıt tipi")
-		}
-	}()
-
-	// Cevabı bekle (timeout ile)
-	select {
-	case metrics := <-metricsChan:
-		return &pb.SystemMetricsResponse{
-			Status:  "success",
-			Metrics: metrics,
-		}, nil
-	case err := <-errChan:
+	msg, err := agentConn.Stream.Recv()
+	if err != nil {
+		log.Printf("[ERROR] Agent yanıtı alınamadı: agent_id=%s, error=%v", agentID, err)
 		return &pb.SystemMetricsResponse{
 			Status: "error",
 		}, err
-	case <-ctx.Done():
-		return &pb.SystemMetricsResponse{
-			Status: "error",
-		}, ctx.Err()
-	case <-time.After(10 * time.Second): // 10 saniye timeout
-		return &pb.SystemMetricsResponse{
-			Status: "error",
-		}, fmt.Errorf("metrik isteği zaman aşımına uğradı")
 	}
+
+	log.Printf("[DEBUG] Agent yanıtı alındı: agent_id=%s, payload_type=%T", agentID, msg.Payload)
+	if metrics, ok := msg.Payload.(*pb.AgentMessage_SystemMetrics); ok {
+		log.Printf("[DEBUG] SystemMetrics yanıtı alındı: agent_id=%s", agentID)
+		return &pb.SystemMetricsResponse{
+			Status:  "success",
+			Metrics: metrics.SystemMetrics,
+		}, nil
+	} else {
+		log.Printf("[ERROR] Beklenmeyen yanıt tipi: agent_id=%s, payload_type=%T", agentID, msg.Payload)
+		return &pb.SystemMetricsResponse{
+			Status: "error",
+		}, fmt.Errorf("beklenmeyen yanıt tipi: %T", msg.Payload)
+	}
+}
+
+// GetDB, veritabanı bağlantısını döndürür
+func (s *Server) GetDB() *sql.DB {
+	return s.db
 }

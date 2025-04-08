@@ -15,6 +15,9 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 	// API grupları oluştur
 	v1 := router.Group("/api/v1")
 
+	// Login endpoint'i
+	v1.POST("/login", Login(server.GetDB()))
+
 	// Agent Endpoint'leri
 	agents := v1.Group("/agents")
 	{
@@ -164,7 +167,7 @@ func sendMetricsRequestToAgent(server *server.Server) gin.HandlerFunc {
 		}
 
 		// Context oluştur (request'in iptal edilmesi durumunda kullanılacak)
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer cancel()
 
 		// Metrikleri al
