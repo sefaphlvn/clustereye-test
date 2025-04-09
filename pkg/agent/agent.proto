@@ -58,6 +58,7 @@ message AlarmEvent {
   string metric_value = 6;
   string message = 7;
   string timestamp = 8;
+  string severity = 9;
 }
 
 message Query {
