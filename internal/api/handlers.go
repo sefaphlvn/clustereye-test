@@ -18,6 +18,15 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 	// Login endpoint'i
 	v1.POST("/login", Login(server.GetDB()))
 
+	// Kullanıcı işlemleri endpoint'leri
+	v1.POST("/users", CreateUser(server.GetDB()))
+	// Kullanıcı listesini getir - Sadece admin erişebilir
+	v1.GET("/users", AuthMiddleware(), GetUsers(server.GetDB()))
+	// Kullanıcıyı güncelle - Sadece admin erişebilir
+	v1.PUT("/users/:id", AuthMiddleware(), UpdateUser(server.GetDB()))
+	// Kullanıcıyı sil - Sadece admin erişebilir
+	v1.DELETE("/users/:id", AuthMiddleware(), DeleteUser(server.GetDB()))
+
 	// Agent Endpoint'leri
 	agents := v1.Group("/agents")
 	{
@@ -38,6 +47,17 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		status.GET("/postgres", getPostgresStatus(server))
 		// Agent durum bilgilerini getir
 		status.GET("/agents", getAgentStatus(server))
+	}
+
+	// Notification Settings Endpoint'leri
+	notification := v1.Group("/notification-settings")
+	{
+		// Notification ayarlarını getir - Sadece admin erişebilir
+		notification.GET("", AuthMiddleware(), GetNotificationSettings(server.GetDB()))
+		// Notification ayarlarını güncelle - Sadece admin erişebilir
+		notification.POST("", AuthMiddleware(), UpdateNotificationSettings(server.GetDB()))
+		// Slack webhook'unu test et - Sadece admin erişebilir
+		notification.POST("/test-slack", AuthMiddleware(), TestSlackNotification(server.GetDB()))
 	}
 }
 

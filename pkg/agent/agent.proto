@@ -32,6 +32,34 @@ message PostgresInfo {
   int32 fd_percent = 11;
 }
 
+message AlarmCondition {
+  string metric = 1;          // "postgres_status", "memory_usage"
+  string operator = 2;        // ">", "<", "="
+  string threshold = 3;       // "90", "FAIL"
+  int32 duration_seconds = 4; // Süreklilik gerektiren koşullar için
+}
+
+message AlarmConfiguration {
+  string id = 1;
+  string name = 2;
+  string agent_id = 3;
+  string severity = 4;        // "critical", "warning", "info"
+  AlarmCondition condition = 5;
+  bool enabled = 6;
+  repeated string channels = 7; // "slack", "email"
+}
+
+message AlarmEvent {
+  string id = 1;
+  string alarm_id = 2;
+  string agent_id = 3;
+  string status = 4;          // "triggered", "resolved"
+  string metric_name = 5;
+  string metric_value = 6;
+  string message = 7;
+  string timestamp = 8;
+}
+
 message Query {
   string query_id = 1;
   string command = 2;
@@ -50,6 +78,16 @@ message Error {
 message RegistrationResult {
   string status = 1;
   string message = 2;
+}
+
+// Agent'ın alarm durumunu bildirmesi için
+message ReportAlarmRequest {
+  string agent_id = 1;
+  repeated AlarmEvent events = 2;
+}
+
+message ReportAlarmResponse {
+  string status = 1;
 }
 
 // Sadece agent kaydı için kullanılacak mesajlar
@@ -146,4 +184,10 @@ service AgentService {
   rpc StreamQueries(stream QueryRequest) returns (stream QueryResponse);
   rpc StreamPostgresInfo(stream PostgresInfoRequest) returns (stream PostgresInfoResponse);
   rpc SendSystemMetrics(SystemMetricsRequest) returns (SystemMetricsResponse);
+
+   // Agent'a alarm yapılandırmalarını göndermek için
+  rpc GetAlarmConfigurations(AlarmConfigRequest) returns (AlarmConfigResponse);
+  
+  // Agent'ın alarm bildirmesi için
+  rpc ReportAlarm(ReportAlarmRequest) returns (ReportAlarmResponse);
 }
