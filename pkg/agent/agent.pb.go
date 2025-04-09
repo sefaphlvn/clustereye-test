@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        v3.12.4
-// source: agent.proto
+// source: pkg/agent/agent.proto
 
 package agent
 
@@ -39,7 +39,7 @@ type AgentInfo struct {
 
 func (x *AgentInfo) Reset() {
 	*x = AgentInfo{}
-	mi := &file_agent_proto_msgTypes[0]
+	mi := &file_pkg_agent_agent_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -51,7 +51,7 @@ func (x *AgentInfo) String() string {
 func (*AgentInfo) ProtoMessage() {}
 
 func (x *AgentInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[0]
+	mi := &file_pkg_agent_agent_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -64,7 +64,7 @@ func (x *AgentInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentInfo.ProtoReflect.Descriptor instead.
 func (*AgentInfo) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{0}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *AgentInfo) GetKey() string {
@@ -149,7 +149,7 @@ type PostgresInfo struct {
 
 func (x *PostgresInfo) Reset() {
 	*x = PostgresInfo{}
-	mi := &file_agent_proto_msgTypes[1]
+	mi := &file_pkg_agent_agent_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -161,7 +161,7 @@ func (x *PostgresInfo) String() string {
 func (*PostgresInfo) ProtoMessage() {}
 
 func (x *PostgresInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[1]
+	mi := &file_pkg_agent_agent_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -174,7 +174,7 @@ func (x *PostgresInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PostgresInfo.ProtoReflect.Descriptor instead.
 func (*PostgresInfo) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{1}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *PostgresInfo) GetClusterName() string {
@@ -254,6 +254,266 @@ func (x *PostgresInfo) GetFdPercent() int32 {
 	return 0
 }
 
+type AlarmCondition struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Metric          string                 `protobuf:"bytes,1,opt,name=metric,proto3" json:"metric,omitempty"`                                           // "postgres_status", "memory_usage"
+	Operator        string                 `protobuf:"bytes,2,opt,name=operator,proto3" json:"operator,omitempty"`                                       // ">", "<", "="
+	Threshold       string                 `protobuf:"bytes,3,opt,name=threshold,proto3" json:"threshold,omitempty"`                                     // "90", "FAIL"
+	DurationSeconds int32                  `protobuf:"varint,4,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"` // Süreklilik gerektiren koşullar için
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *AlarmCondition) Reset() {
+	*x = AlarmCondition{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AlarmCondition) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AlarmCondition) ProtoMessage() {}
+
+func (x *AlarmCondition) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AlarmCondition.ProtoReflect.Descriptor instead.
+func (*AlarmCondition) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *AlarmCondition) GetMetric() string {
+	if x != nil {
+		return x.Metric
+	}
+	return ""
+}
+
+func (x *AlarmCondition) GetOperator() string {
+	if x != nil {
+		return x.Operator
+	}
+	return ""
+}
+
+func (x *AlarmCondition) GetThreshold() string {
+	if x != nil {
+		return x.Threshold
+	}
+	return ""
+}
+
+func (x *AlarmCondition) GetDurationSeconds() int32 {
+	if x != nil {
+		return x.DurationSeconds
+	}
+	return 0
+}
+
+type AlarmConfiguration struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	AgentId       string                 `protobuf:"bytes,3,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Severity      string                 `protobuf:"bytes,4,opt,name=severity,proto3" json:"severity,omitempty"` // "critical", "warning", "info"
+	Condition     *AlarmCondition        `protobuf:"bytes,5,opt,name=condition,proto3" json:"condition,omitempty"`
+	Enabled       bool                   `protobuf:"varint,6,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Channels      []string               `protobuf:"bytes,7,rep,name=channels,proto3" json:"channels,omitempty"` // "slack", "email"
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AlarmConfiguration) Reset() {
+	*x = AlarmConfiguration{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AlarmConfiguration) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AlarmConfiguration) ProtoMessage() {}
+
+func (x *AlarmConfiguration) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AlarmConfiguration.ProtoReflect.Descriptor instead.
+func (*AlarmConfiguration) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *AlarmConfiguration) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *AlarmConfiguration) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AlarmConfiguration) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *AlarmConfiguration) GetSeverity() string {
+	if x != nil {
+		return x.Severity
+	}
+	return ""
+}
+
+func (x *AlarmConfiguration) GetCondition() *AlarmCondition {
+	if x != nil {
+		return x.Condition
+	}
+	return nil
+}
+
+func (x *AlarmConfiguration) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *AlarmConfiguration) GetChannels() []string {
+	if x != nil {
+		return x.Channels
+	}
+	return nil
+}
+
+type AlarmEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	AlarmId       string                 `protobuf:"bytes,2,opt,name=alarm_id,json=alarmId,proto3" json:"alarm_id,omitempty"`
+	AgentId       string                 `protobuf:"bytes,3,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"` // "triggered", "resolved"
+	MetricName    string                 `protobuf:"bytes,5,opt,name=metric_name,json=metricName,proto3" json:"metric_name,omitempty"`
+	MetricValue   string                 `protobuf:"bytes,6,opt,name=metric_value,json=metricValue,proto3" json:"metric_value,omitempty"`
+	Message       string                 `protobuf:"bytes,7,opt,name=message,proto3" json:"message,omitempty"`
+	Timestamp     string                 `protobuf:"bytes,8,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AlarmEvent) Reset() {
+	*x = AlarmEvent{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AlarmEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AlarmEvent) ProtoMessage() {}
+
+func (x *AlarmEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AlarmEvent.ProtoReflect.Descriptor instead.
+func (*AlarmEvent) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *AlarmEvent) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *AlarmEvent) GetAlarmId() string {
+	if x != nil {
+		return x.AlarmId
+	}
+	return ""
+}
+
+func (x *AlarmEvent) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *AlarmEvent) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *AlarmEvent) GetMetricName() string {
+	if x != nil {
+		return x.MetricName
+	}
+	return ""
+}
+
+func (x *AlarmEvent) GetMetricValue() string {
+	if x != nil {
+		return x.MetricValue
+	}
+	return ""
+}
+
+func (x *AlarmEvent) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *AlarmEvent) GetTimestamp() string {
+	if x != nil {
+		return x.Timestamp
+	}
+	return ""
+}
+
 type Query struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	QueryId       string                 `protobuf:"bytes,1,opt,name=query_id,json=queryId,proto3" json:"query_id,omitempty"`
@@ -264,7 +524,7 @@ type Query struct {
 
 func (x *Query) Reset() {
 	*x = Query{}
-	mi := &file_agent_proto_msgTypes[2]
+	mi := &file_pkg_agent_agent_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -276,7 +536,7 @@ func (x *Query) String() string {
 func (*Query) ProtoMessage() {}
 
 func (x *Query) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[2]
+	mi := &file_pkg_agent_agent_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -289,7 +549,7 @@ func (x *Query) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Query.ProtoReflect.Descriptor instead.
 func (*Query) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{2}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Query) GetQueryId() string {
@@ -316,7 +576,7 @@ type QueryResult struct {
 
 func (x *QueryResult) Reset() {
 	*x = QueryResult{}
-	mi := &file_agent_proto_msgTypes[3]
+	mi := &file_pkg_agent_agent_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -328,7 +588,7 @@ func (x *QueryResult) String() string {
 func (*QueryResult) ProtoMessage() {}
 
 func (x *QueryResult) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[3]
+	mi := &file_pkg_agent_agent_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -341,7 +601,7 @@ func (x *QueryResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryResult.ProtoReflect.Descriptor instead.
 func (*QueryResult) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{3}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *QueryResult) GetQueryId() string {
@@ -368,7 +628,7 @@ type Error struct {
 
 func (x *Error) Reset() {
 	*x = Error{}
-	mi := &file_agent_proto_msgTypes[4]
+	mi := &file_pkg_agent_agent_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -380,7 +640,7 @@ func (x *Error) String() string {
 func (*Error) ProtoMessage() {}
 
 func (x *Error) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[4]
+	mi := &file_pkg_agent_agent_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -393,7 +653,7 @@ func (x *Error) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Error.ProtoReflect.Descriptor instead.
 func (*Error) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{4}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Error) GetCode() string {
@@ -420,7 +680,7 @@ type RegistrationResult struct {
 
 func (x *RegistrationResult) Reset() {
 	*x = RegistrationResult{}
-	mi := &file_agent_proto_msgTypes[5]
+	mi := &file_pkg_agent_agent_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -432,7 +692,7 @@ func (x *RegistrationResult) String() string {
 func (*RegistrationResult) ProtoMessage() {}
 
 func (x *RegistrationResult) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[5]
+	mi := &file_pkg_agent_agent_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -445,7 +705,7 @@ func (x *RegistrationResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegistrationResult.ProtoReflect.Descriptor instead.
 func (*RegistrationResult) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{5}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RegistrationResult) GetStatus() string {
@@ -462,6 +722,103 @@ func (x *RegistrationResult) GetMessage() string {
 	return ""
 }
 
+// Agent'ın alarm durumunu bildirmesi için
+type ReportAlarmRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Events        []*AlarmEvent          `protobuf:"bytes,2,rep,name=events,proto3" json:"events,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReportAlarmRequest) Reset() {
+	*x = ReportAlarmRequest{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReportAlarmRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReportAlarmRequest) ProtoMessage() {}
+
+func (x *ReportAlarmRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReportAlarmRequest.ProtoReflect.Descriptor instead.
+func (*ReportAlarmRequest) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ReportAlarmRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *ReportAlarmRequest) GetEvents() []*AlarmEvent {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
+type ReportAlarmResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReportAlarmResponse) Reset() {
+	*x = ReportAlarmResponse{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReportAlarmResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReportAlarmResponse) ProtoMessage() {}
+
+func (x *ReportAlarmResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReportAlarmResponse.ProtoReflect.Descriptor instead.
+func (*ReportAlarmResponse) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ReportAlarmResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
 // Sadece agent kaydı için kullanılacak mesajlar
 type RegisterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -472,7 +829,7 @@ type RegisterRequest struct {
 
 func (x *RegisterRequest) Reset() {
 	*x = RegisterRequest{}
-	mi := &file_agent_proto_msgTypes[6]
+	mi := &file_pkg_agent_agent_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -484,7 +841,7 @@ func (x *RegisterRequest) String() string {
 func (*RegisterRequest) ProtoMessage() {}
 
 func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[6]
+	mi := &file_pkg_agent_agent_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -497,7 +854,7 @@ func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterRequest.ProtoReflect.Descriptor instead.
 func (*RegisterRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{6}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *RegisterRequest) GetAgentInfo() *AgentInfo {
@@ -516,7 +873,7 @@ type RegisterResponse struct {
 
 func (x *RegisterResponse) Reset() {
 	*x = RegisterResponse{}
-	mi := &file_agent_proto_msgTypes[7]
+	mi := &file_pkg_agent_agent_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -528,7 +885,7 @@ func (x *RegisterResponse) String() string {
 func (*RegisterResponse) ProtoMessage() {}
 
 func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[7]
+	mi := &file_pkg_agent_agent_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -541,7 +898,7 @@ func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterResponse.ProtoReflect.Descriptor instead.
 func (*RegisterResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{7}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RegisterResponse) GetRegistration() *RegistrationResult {
@@ -561,7 +918,7 @@ type QueryRequest struct {
 
 func (x *QueryRequest) Reset() {
 	*x = QueryRequest{}
-	mi := &file_agent_proto_msgTypes[8]
+	mi := &file_pkg_agent_agent_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -573,7 +930,7 @@ func (x *QueryRequest) String() string {
 func (*QueryRequest) ProtoMessage() {}
 
 func (x *QueryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[8]
+	mi := &file_pkg_agent_agent_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -586,7 +943,7 @@ func (x *QueryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryRequest.ProtoReflect.Descriptor instead.
 func (*QueryRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{8}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *QueryRequest) GetQuery() *Query {
@@ -605,7 +962,7 @@ type QueryResponse struct {
 
 func (x *QueryResponse) Reset() {
 	*x = QueryResponse{}
-	mi := &file_agent_proto_msgTypes[9]
+	mi := &file_pkg_agent_agent_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -617,7 +974,7 @@ func (x *QueryResponse) String() string {
 func (*QueryResponse) ProtoMessage() {}
 
 func (x *QueryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[9]
+	mi := &file_pkg_agent_agent_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -630,7 +987,7 @@ func (x *QueryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryResponse.ProtoReflect.Descriptor instead.
 func (*QueryResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{9}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *QueryResponse) GetResult() *QueryResult {
@@ -650,7 +1007,7 @@ type PostgresInfoRequest struct {
 
 func (x *PostgresInfoRequest) Reset() {
 	*x = PostgresInfoRequest{}
-	mi := &file_agent_proto_msgTypes[10]
+	mi := &file_pkg_agent_agent_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -662,7 +1019,7 @@ func (x *PostgresInfoRequest) String() string {
 func (*PostgresInfoRequest) ProtoMessage() {}
 
 func (x *PostgresInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[10]
+	mi := &file_pkg_agent_agent_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -675,7 +1032,7 @@ func (x *PostgresInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PostgresInfoRequest.ProtoReflect.Descriptor instead.
 func (*PostgresInfoRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{10}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *PostgresInfoRequest) GetPostgresInfo() *PostgresInfo {
@@ -694,7 +1051,7 @@ type PostgresInfoResponse struct {
 
 func (x *PostgresInfoResponse) Reset() {
 	*x = PostgresInfoResponse{}
-	mi := &file_agent_proto_msgTypes[11]
+	mi := &file_pkg_agent_agent_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -706,7 +1063,7 @@ func (x *PostgresInfoResponse) String() string {
 func (*PostgresInfoResponse) ProtoMessage() {}
 
 func (x *PostgresInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[11]
+	mi := &file_pkg_agent_agent_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -719,7 +1076,7 @@ func (x *PostgresInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PostgresInfoResponse.ProtoReflect.Descriptor instead.
 func (*PostgresInfoResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{11}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *PostgresInfoResponse) GetStatus() string {
@@ -739,7 +1096,7 @@ type ErrorResponse struct {
 
 func (x *ErrorResponse) Reset() {
 	*x = ErrorResponse{}
-	mi := &file_agent_proto_msgTypes[12]
+	mi := &file_pkg_agent_agent_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -751,7 +1108,7 @@ func (x *ErrorResponse) String() string {
 func (*ErrorResponse) ProtoMessage() {}
 
 func (x *ErrorResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[12]
+	mi := &file_pkg_agent_agent_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -764,7 +1121,7 @@ func (x *ErrorResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ErrorResponse.ProtoReflect.Descriptor instead.
 func (*ErrorResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{12}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ErrorResponse) GetError() *Error {
@@ -790,7 +1147,7 @@ type ServerMessage struct {
 
 func (x *ServerMessage) Reset() {
 	*x = ServerMessage{}
-	mi := &file_agent_proto_msgTypes[13]
+	mi := &file_pkg_agent_agent_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -802,7 +1159,7 @@ func (x *ServerMessage) String() string {
 func (*ServerMessage) ProtoMessage() {}
 
 func (x *ServerMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[13]
+	mi := &file_pkg_agent_agent_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -815,7 +1172,7 @@ func (x *ServerMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerMessage.ProtoReflect.Descriptor instead.
 func (*ServerMessage) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{13}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ServerMessage) GetPayload() isServerMessage_Payload {
@@ -905,7 +1262,7 @@ type AgentMessage struct {
 
 func (x *AgentMessage) Reset() {
 	*x = AgentMessage{}
-	mi := &file_agent_proto_msgTypes[14]
+	mi := &file_pkg_agent_agent_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -917,7 +1274,7 @@ func (x *AgentMessage) String() string {
 func (*AgentMessage) ProtoMessage() {}
 
 func (x *AgentMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[14]
+	mi := &file_pkg_agent_agent_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -930,7 +1287,7 @@ func (x *AgentMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentMessage.ProtoReflect.Descriptor instead.
 func (*AgentMessage) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{14}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *AgentMessage) GetPayload() isAgentMessage_Payload {
@@ -1025,7 +1382,7 @@ type SystemMetrics struct {
 
 func (x *SystemMetrics) Reset() {
 	*x = SystemMetrics{}
-	mi := &file_agent_proto_msgTypes[15]
+	mi := &file_pkg_agent_agent_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1037,7 +1394,7 @@ func (x *SystemMetrics) String() string {
 func (*SystemMetrics) ProtoMessage() {}
 
 func (x *SystemMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[15]
+	mi := &file_pkg_agent_agent_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1050,7 +1407,7 @@ func (x *SystemMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemMetrics.ProtoReflect.Descriptor instead.
 func (*SystemMetrics) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{15}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SystemMetrics) GetCpuUsage() float64 {
@@ -1153,7 +1510,7 @@ type SystemMetricsRequest struct {
 
 func (x *SystemMetricsRequest) Reset() {
 	*x = SystemMetricsRequest{}
-	mi := &file_agent_proto_msgTypes[16]
+	mi := &file_pkg_agent_agent_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1165,7 +1522,7 @@ func (x *SystemMetricsRequest) String() string {
 func (*SystemMetricsRequest) ProtoMessage() {}
 
 func (x *SystemMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[16]
+	mi := &file_pkg_agent_agent_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1178,7 +1535,7 @@ func (x *SystemMetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemMetricsRequest.ProtoReflect.Descriptor instead.
 func (*SystemMetricsRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{16}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *SystemMetricsRequest) GetAgentId() string {
@@ -1198,7 +1555,7 @@ type SystemMetricsResponse struct {
 
 func (x *SystemMetricsResponse) Reset() {
 	*x = SystemMetricsResponse{}
-	mi := &file_agent_proto_msgTypes[17]
+	mi := &file_pkg_agent_agent_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1210,7 +1567,7 @@ func (x *SystemMetricsResponse) String() string {
 func (*SystemMetricsResponse) ProtoMessage() {}
 
 func (x *SystemMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[17]
+	mi := &file_pkg_agent_agent_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1223,7 +1580,7 @@ func (x *SystemMetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemMetricsResponse.ProtoReflect.Descriptor instead.
 func (*SystemMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{17}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *SystemMetricsResponse) GetStatus() string {
@@ -1240,11 +1597,108 @@ func (x *SystemMetricsResponse) GetMetrics() *SystemMetrics {
 	return nil
 }
 
-var File_agent_proto protoreflect.FileDescriptor
+// Alarm yapılandırmaları için tanımlanan mesajlar
+type AlarmConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
 
-const file_agent_proto_rawDesc = "" +
+func (x *AlarmConfigRequest) Reset() {
+	*x = AlarmConfigRequest{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AlarmConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AlarmConfigRequest) ProtoMessage() {}
+
+func (x *AlarmConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AlarmConfigRequest.ProtoReflect.Descriptor instead.
+func (*AlarmConfigRequest) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *AlarmConfigRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+type AlarmConfigResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Status         string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	Configurations []*AlarmConfiguration  `protobuf:"bytes,2,rep,name=configurations,proto3" json:"configurations,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *AlarmConfigResponse) Reset() {
+	*x = AlarmConfigResponse{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AlarmConfigResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AlarmConfigResponse) ProtoMessage() {}
+
+func (x *AlarmConfigResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AlarmConfigResponse.ProtoReflect.Descriptor instead.
+func (*AlarmConfigResponse) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *AlarmConfigResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *AlarmConfigResponse) GetConfigurations() []*AlarmConfiguration {
+	if x != nil {
+		return x.Configurations
+	}
+	return nil
+}
+
+var File_pkg_agent_agent_proto protoreflect.FileDescriptor
+
+const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\n" +
-	"\vagent.proto\x12\x05agent\x1a\x19google/protobuf/any.proto\"\xf2\x01\n" +
+	"\x15pkg/agent/agent.proto\x12\x05agent\x1a\x19google/protobuf/any.proto\"\xf2\x01\n" +
 	"\tAgentInfo\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x19\n" +
 	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x1a\n" +
@@ -1270,7 +1724,31 @@ const file_agent_proto_rawDesc = "" +
 	"\tfree_disk\x18\n" +
 	" \x01(\tR\bfreeDisk\x12\x1d\n" +
 	"\n" +
-	"fd_percent\x18\v \x01(\x05R\tfdPercent\"<\n" +
+	"fd_percent\x18\v \x01(\x05R\tfdPercent\"\x8d\x01\n" +
+	"\x0eAlarmCondition\x12\x16\n" +
+	"\x06metric\x18\x01 \x01(\tR\x06metric\x12\x1a\n" +
+	"\boperator\x18\x02 \x01(\tR\boperator\x12\x1c\n" +
+	"\tthreshold\x18\x03 \x01(\tR\tthreshold\x12)\n" +
+	"\x10duration_seconds\x18\x04 \x01(\x05R\x0fdurationSeconds\"\xda\x01\n" +
+	"\x12AlarmConfiguration\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x19\n" +
+	"\bagent_id\x18\x03 \x01(\tR\aagentId\x12\x1a\n" +
+	"\bseverity\x18\x04 \x01(\tR\bseverity\x123\n" +
+	"\tcondition\x18\x05 \x01(\v2\x15.agent.AlarmConditionR\tcondition\x12\x18\n" +
+	"\aenabled\x18\x06 \x01(\bR\aenabled\x12\x1a\n" +
+	"\bchannels\x18\a \x03(\tR\bchannels\"\xe6\x01\n" +
+	"\n" +
+	"AlarmEvent\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
+	"\balarm_id\x18\x02 \x01(\tR\aalarmId\x12\x19\n" +
+	"\bagent_id\x18\x03 \x01(\tR\aagentId\x12\x16\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\x12\x1f\n" +
+	"\vmetric_name\x18\x05 \x01(\tR\n" +
+	"metricName\x12!\n" +
+	"\fmetric_value\x18\x06 \x01(\tR\vmetricValue\x12\x18\n" +
+	"\amessage\x18\a \x01(\tR\amessage\x12\x1c\n" +
+	"\ttimestamp\x18\b \x01(\tR\ttimestamp\"<\n" +
 	"\x05Query\x12\x19\n" +
 	"\bquery_id\x18\x01 \x01(\tR\aqueryId\x12\x18\n" +
 	"\acommand\x18\x02 \x01(\tR\acommand\"V\n" +
@@ -1282,7 +1760,12 @@ const file_agent_proto_rawDesc = "" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"F\n" +
 	"\x12RegistrationResult\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"B\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"Z\n" +
+	"\x12ReportAlarmRequest\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12)\n" +
+	"\x06events\x18\x02 \x03(\v2\x11.agent.AlarmEventR\x06events\"-\n" +
+	"\x13ReportAlarmResponse\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\"B\n" +
 	"\x0fRegisterRequest\x12/\n" +
 	"\n" +
 	"agent_info\x18\x01 \x01(\v2\x10.agent.AgentInfoR\tagentInfo\"Q\n" +
@@ -1333,7 +1816,12 @@ const file_agent_proto_rawDesc = "" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\"_\n" +
 	"\x15SystemMetricsResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12.\n" +
-	"\ametrics\x18\x02 \x01(\v2\x14.agent.SystemMetricsR\ametrics2\xf0\x03\n" +
+	"\ametrics\x18\x02 \x01(\v2\x14.agent.SystemMetricsR\ametrics\"/\n" +
+	"\x12AlarmConfigRequest\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\"p\n" +
+	"\x13AlarmConfigResponse\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12A\n" +
+	"\x0econfigurations\x18\x02 \x03(\v2\x19.agent.AlarmConfigurationR\x0econfigurations2\x87\x05\n" +
 	"\fAgentService\x128\n" +
 	"\aConnect\x12\x13.agent.AgentMessage\x1a\x14.agent.ServerMessage(\x010\x01\x12;\n" +
 	"\bRegister\x12\x16.agent.RegisterRequest\x1a\x17.agent.RegisterResponse\x129\n" +
@@ -1341,92 +1829,108 @@ const file_agent_proto_rawDesc = "" +
 	"\x10SendPostgresInfo\x12\x1a.agent.PostgresInfoRequest\x1a\x1b.agent.PostgresInfoResponse\x12>\n" +
 	"\rStreamQueries\x12\x13.agent.QueryRequest\x1a\x14.agent.QueryResponse(\x010\x01\x12Q\n" +
 	"\x12StreamPostgresInfo\x12\x1a.agent.PostgresInfoRequest\x1a\x1b.agent.PostgresInfoResponse(\x010\x01\x12N\n" +
-	"\x11SendSystemMetrics\x12\x1b.agent.SystemMetricsRequest\x1a\x1c.agent.SystemMetricsResponseB0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
+	"\x11SendSystemMetrics\x12\x1b.agent.SystemMetricsRequest\x1a\x1c.agent.SystemMetricsResponse\x12O\n" +
+	"\x16GetAlarmConfigurations\x12\x19.agent.AlarmConfigRequest\x1a\x1a.agent.AlarmConfigResponse\x12D\n" +
+	"\vReportAlarm\x12\x19.agent.ReportAlarmRequest\x1a\x1a.agent.ReportAlarmResponseB0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
 
 var (
-	file_agent_proto_rawDescOnce sync.Once
-	file_agent_proto_rawDescData []byte
+	file_pkg_agent_agent_proto_rawDescOnce sync.Once
+	file_pkg_agent_agent_proto_rawDescData []byte
 )
 
-func file_agent_proto_rawDescGZIP() []byte {
-	file_agent_proto_rawDescOnce.Do(func() {
-		file_agent_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)))
+func file_pkg_agent_agent_proto_rawDescGZIP() []byte {
+	file_pkg_agent_agent_proto_rawDescOnce.Do(func() {
+		file_pkg_agent_agent_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_pkg_agent_agent_proto_rawDesc), len(file_pkg_agent_agent_proto_rawDesc)))
 	})
-	return file_agent_proto_rawDescData
+	return file_pkg_agent_agent_proto_rawDescData
 }
 
-var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
-var file_agent_proto_goTypes = []any{
+var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_pkg_agent_agent_proto_goTypes = []any{
 	(*AgentInfo)(nil),             // 0: agent.AgentInfo
 	(*PostgresInfo)(nil),          // 1: agent.PostgresInfo
-	(*Query)(nil),                 // 2: agent.Query
-	(*QueryResult)(nil),           // 3: agent.QueryResult
-	(*Error)(nil),                 // 4: agent.Error
-	(*RegistrationResult)(nil),    // 5: agent.RegistrationResult
-	(*RegisterRequest)(nil),       // 6: agent.RegisterRequest
-	(*RegisterResponse)(nil),      // 7: agent.RegisterResponse
-	(*QueryRequest)(nil),          // 8: agent.QueryRequest
-	(*QueryResponse)(nil),         // 9: agent.QueryResponse
-	(*PostgresInfoRequest)(nil),   // 10: agent.PostgresInfoRequest
-	(*PostgresInfoResponse)(nil),  // 11: agent.PostgresInfoResponse
-	(*ErrorResponse)(nil),         // 12: agent.ErrorResponse
-	(*ServerMessage)(nil),         // 13: agent.ServerMessage
-	(*AgentMessage)(nil),          // 14: agent.AgentMessage
-	(*SystemMetrics)(nil),         // 15: agent.SystemMetrics
-	(*SystemMetricsRequest)(nil),  // 16: agent.SystemMetricsRequest
-	(*SystemMetricsResponse)(nil), // 17: agent.SystemMetricsResponse
-	(*any1.Any)(nil),              // 18: google.protobuf.Any
+	(*AlarmCondition)(nil),        // 2: agent.AlarmCondition
+	(*AlarmConfiguration)(nil),    // 3: agent.AlarmConfiguration
+	(*AlarmEvent)(nil),            // 4: agent.AlarmEvent
+	(*Query)(nil),                 // 5: agent.Query
+	(*QueryResult)(nil),           // 6: agent.QueryResult
+	(*Error)(nil),                 // 7: agent.Error
+	(*RegistrationResult)(nil),    // 8: agent.RegistrationResult
+	(*ReportAlarmRequest)(nil),    // 9: agent.ReportAlarmRequest
+	(*ReportAlarmResponse)(nil),   // 10: agent.ReportAlarmResponse
+	(*RegisterRequest)(nil),       // 11: agent.RegisterRequest
+	(*RegisterResponse)(nil),      // 12: agent.RegisterResponse
+	(*QueryRequest)(nil),          // 13: agent.QueryRequest
+	(*QueryResponse)(nil),         // 14: agent.QueryResponse
+	(*PostgresInfoRequest)(nil),   // 15: agent.PostgresInfoRequest
+	(*PostgresInfoResponse)(nil),  // 16: agent.PostgresInfoResponse
+	(*ErrorResponse)(nil),         // 17: agent.ErrorResponse
+	(*ServerMessage)(nil),         // 18: agent.ServerMessage
+	(*AgentMessage)(nil),          // 19: agent.AgentMessage
+	(*SystemMetrics)(nil),         // 20: agent.SystemMetrics
+	(*SystemMetricsRequest)(nil),  // 21: agent.SystemMetricsRequest
+	(*SystemMetricsResponse)(nil), // 22: agent.SystemMetricsResponse
+	(*AlarmConfigRequest)(nil),    // 23: agent.AlarmConfigRequest
+	(*AlarmConfigResponse)(nil),   // 24: agent.AlarmConfigResponse
+	(*any1.Any)(nil),              // 25: google.protobuf.Any
 }
-var file_agent_proto_depIdxs = []int32{
-	18, // 0: agent.QueryResult.result:type_name -> google.protobuf.Any
-	0,  // 1: agent.RegisterRequest.agent_info:type_name -> agent.AgentInfo
-	5,  // 2: agent.RegisterResponse.registration:type_name -> agent.RegistrationResult
-	2,  // 3: agent.QueryRequest.query:type_name -> agent.Query
-	3,  // 4: agent.QueryResponse.result:type_name -> agent.QueryResult
-	1,  // 5: agent.PostgresInfoRequest.postgres_info:type_name -> agent.PostgresInfo
-	4,  // 6: agent.ErrorResponse.error:type_name -> agent.Error
-	2,  // 7: agent.ServerMessage.query:type_name -> agent.Query
-	4,  // 8: agent.ServerMessage.error:type_name -> agent.Error
-	5,  // 9: agent.ServerMessage.registration:type_name -> agent.RegistrationResult
-	16, // 10: agent.ServerMessage.metrics_request:type_name -> agent.SystemMetricsRequest
-	0,  // 11: agent.AgentMessage.agent_info:type_name -> agent.AgentInfo
-	3,  // 12: agent.AgentMessage.query_result:type_name -> agent.QueryResult
-	1,  // 13: agent.AgentMessage.postgres_info:type_name -> agent.PostgresInfo
-	15, // 14: agent.AgentMessage.system_metrics:type_name -> agent.SystemMetrics
-	15, // 15: agent.SystemMetricsResponse.metrics:type_name -> agent.SystemMetrics
-	14, // 16: agent.AgentService.Connect:input_type -> agent.AgentMessage
-	6,  // 17: agent.AgentService.Register:input_type -> agent.RegisterRequest
-	8,  // 18: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
-	10, // 19: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
-	8,  // 20: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
-	10, // 21: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
-	16, // 22: agent.AgentService.SendSystemMetrics:input_type -> agent.SystemMetricsRequest
-	13, // 23: agent.AgentService.Connect:output_type -> agent.ServerMessage
-	7,  // 24: agent.AgentService.Register:output_type -> agent.RegisterResponse
-	9,  // 25: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
-	11, // 26: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
-	9,  // 27: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
-	11, // 28: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
-	17, // 29: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
-	23, // [23:30] is the sub-list for method output_type
-	16, // [16:23] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+var file_pkg_agent_agent_proto_depIdxs = []int32{
+	2,  // 0: agent.AlarmConfiguration.condition:type_name -> agent.AlarmCondition
+	25, // 1: agent.QueryResult.result:type_name -> google.protobuf.Any
+	4,  // 2: agent.ReportAlarmRequest.events:type_name -> agent.AlarmEvent
+	0,  // 3: agent.RegisterRequest.agent_info:type_name -> agent.AgentInfo
+	8,  // 4: agent.RegisterResponse.registration:type_name -> agent.RegistrationResult
+	5,  // 5: agent.QueryRequest.query:type_name -> agent.Query
+	6,  // 6: agent.QueryResponse.result:type_name -> agent.QueryResult
+	1,  // 7: agent.PostgresInfoRequest.postgres_info:type_name -> agent.PostgresInfo
+	7,  // 8: agent.ErrorResponse.error:type_name -> agent.Error
+	5,  // 9: agent.ServerMessage.query:type_name -> agent.Query
+	7,  // 10: agent.ServerMessage.error:type_name -> agent.Error
+	8,  // 11: agent.ServerMessage.registration:type_name -> agent.RegistrationResult
+	21, // 12: agent.ServerMessage.metrics_request:type_name -> agent.SystemMetricsRequest
+	0,  // 13: agent.AgentMessage.agent_info:type_name -> agent.AgentInfo
+	6,  // 14: agent.AgentMessage.query_result:type_name -> agent.QueryResult
+	1,  // 15: agent.AgentMessage.postgres_info:type_name -> agent.PostgresInfo
+	20, // 16: agent.AgentMessage.system_metrics:type_name -> agent.SystemMetrics
+	20, // 17: agent.SystemMetricsResponse.metrics:type_name -> agent.SystemMetrics
+	3,  // 18: agent.AlarmConfigResponse.configurations:type_name -> agent.AlarmConfiguration
+	19, // 19: agent.AgentService.Connect:input_type -> agent.AgentMessage
+	11, // 20: agent.AgentService.Register:input_type -> agent.RegisterRequest
+	13, // 21: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
+	15, // 22: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
+	13, // 23: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
+	15, // 24: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
+	21, // 25: agent.AgentService.SendSystemMetrics:input_type -> agent.SystemMetricsRequest
+	23, // 26: agent.AgentService.GetAlarmConfigurations:input_type -> agent.AlarmConfigRequest
+	9,  // 27: agent.AgentService.ReportAlarm:input_type -> agent.ReportAlarmRequest
+	18, // 28: agent.AgentService.Connect:output_type -> agent.ServerMessage
+	12, // 29: agent.AgentService.Register:output_type -> agent.RegisterResponse
+	14, // 30: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
+	16, // 31: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
+	14, // 32: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
+	16, // 33: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
+	22, // 34: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
+	24, // 35: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
+	10, // 36: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
+	28, // [28:37] is the sub-list for method output_type
+	19, // [19:28] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
-func init() { file_agent_proto_init() }
-func file_agent_proto_init() {
-	if File_agent_proto != nil {
+func init() { file_pkg_agent_agent_proto_init() }
+func file_pkg_agent_agent_proto_init() {
+	if File_pkg_agent_agent_proto != nil {
 		return
 	}
-	file_agent_proto_msgTypes[13].OneofWrappers = []any{
+	file_pkg_agent_agent_proto_msgTypes[18].OneofWrappers = []any{
 		(*ServerMessage_Query)(nil),
 		(*ServerMessage_Error)(nil),
 		(*ServerMessage_Registration)(nil),
 		(*ServerMessage_MetricsRequest)(nil),
 	}
-	file_agent_proto_msgTypes[14].OneofWrappers = []any{
+	file_pkg_agent_agent_proto_msgTypes[19].OneofWrappers = []any{
 		(*AgentMessage_AgentInfo)(nil),
 		(*AgentMessage_QueryResult)(nil),
 		(*AgentMessage_PostgresInfo)(nil),
@@ -1436,17 +1940,17 @@ func file_agent_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_agent_agent_proto_rawDesc), len(file_pkg_agent_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   18,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_agent_proto_goTypes,
-		DependencyIndexes: file_agent_proto_depIdxs,
-		MessageInfos:      file_agent_proto_msgTypes,
+		GoTypes:           file_pkg_agent_agent_proto_goTypes,
+		DependencyIndexes: file_pkg_agent_agent_proto_depIdxs,
+		MessageInfos:      file_pkg_agent_agent_proto_msgTypes,
 	}.Build()
-	File_agent_proto = out.File
-	file_agent_proto_goTypes = nil
-	file_agent_proto_depIdxs = nil
+	File_pkg_agent_agent_proto = out.File
+	file_pkg_agent_agent_proto_goTypes = nil
+	file_pkg_agent_agent_proto_depIdxs = nil
 }

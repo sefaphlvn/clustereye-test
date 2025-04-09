@@ -167,6 +167,16 @@ message SystemMetricsResponse {
   SystemMetrics metrics = 2;
 }
 
+// Alarm yapılandırmaları için tanımlanan mesajlar
+message AlarmConfigRequest {
+  string agent_id = 1;
+}
+
+message AlarmConfigResponse {
+  string status = 1;
+  repeated AlarmConfiguration configurations = 2;
+}
+
 service AgentService {
   // Eski bağlantı metodu (geriye dönük uyumluluk için)
   rpc Connect(stream AgentMessage) returns (stream ServerMessage);

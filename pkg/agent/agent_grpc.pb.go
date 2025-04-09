@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v3.12.4
-// source: agent.proto
+// source: pkg/agent/agent.proto
 
 package agent
 
@@ -19,13 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AgentService_Connect_FullMethodName            = "/agent.AgentService/Connect"
-	AgentService_Register_FullMethodName           = "/agent.AgentService/Register"
-	AgentService_ExecuteQuery_FullMethodName       = "/agent.AgentService/ExecuteQuery"
-	AgentService_SendPostgresInfo_FullMethodName   = "/agent.AgentService/SendPostgresInfo"
-	AgentService_StreamQueries_FullMethodName      = "/agent.AgentService/StreamQueries"
-	AgentService_StreamPostgresInfo_FullMethodName = "/agent.AgentService/StreamPostgresInfo"
-	AgentService_SendSystemMetrics_FullMethodName  = "/agent.AgentService/SendSystemMetrics"
+	AgentService_Connect_FullMethodName                = "/agent.AgentService/Connect"
+	AgentService_Register_FullMethodName               = "/agent.AgentService/Register"
+	AgentService_ExecuteQuery_FullMethodName           = "/agent.AgentService/ExecuteQuery"
+	AgentService_SendPostgresInfo_FullMethodName       = "/agent.AgentService/SendPostgresInfo"
+	AgentService_StreamQueries_FullMethodName          = "/agent.AgentService/StreamQueries"
+	AgentService_StreamPostgresInfo_FullMethodName     = "/agent.AgentService/StreamPostgresInfo"
+	AgentService_SendSystemMetrics_FullMethodName      = "/agent.AgentService/SendSystemMetrics"
+	AgentService_GetAlarmConfigurations_FullMethodName = "/agent.AgentService/GetAlarmConfigurations"
+	AgentService_ReportAlarm_FullMethodName            = "/agent.AgentService/ReportAlarm"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -44,6 +46,10 @@ type AgentServiceClient interface {
 	StreamQueries(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[QueryRequest, QueryResponse], error)
 	StreamPostgresInfo(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PostgresInfoRequest, PostgresInfoResponse], error)
 	SendSystemMetrics(ctx context.Context, in *SystemMetricsRequest, opts ...grpc.CallOption) (*SystemMetricsResponse, error)
+	// Agent'a alarm yapılandırmalarını göndermek için
+	GetAlarmConfigurations(ctx context.Context, in *AlarmConfigRequest, opts ...grpc.CallOption) (*AlarmConfigResponse, error)
+	// Agent'ın alarm bildirmesi için
+	ReportAlarm(ctx context.Context, in *ReportAlarmRequest, opts ...grpc.CallOption) (*ReportAlarmResponse, error)
 }
 
 type agentServiceClient struct {
@@ -133,6 +139,26 @@ func (c *agentServiceClient) SendSystemMetrics(ctx context.Context, in *SystemMe
 	return out, nil
 }
 
+func (c *agentServiceClient) GetAlarmConfigurations(ctx context.Context, in *AlarmConfigRequest, opts ...grpc.CallOption) (*AlarmConfigResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AlarmConfigResponse)
+	err := c.cc.Invoke(ctx, AgentService_GetAlarmConfigurations_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) ReportAlarm(ctx context.Context, in *ReportAlarmRequest, opts ...grpc.CallOption) (*ReportAlarmResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReportAlarmResponse)
+	err := c.cc.Invoke(ctx, AgentService_ReportAlarm_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -149,6 +175,10 @@ type AgentServiceServer interface {
 	StreamQueries(grpc.BidiStreamingServer[QueryRequest, QueryResponse]) error
 	StreamPostgresInfo(grpc.BidiStreamingServer[PostgresInfoRequest, PostgresInfoResponse]) error
 	SendSystemMetrics(context.Context, *SystemMetricsRequest) (*SystemMetricsResponse, error)
+	// Agent'a alarm yapılandırmalarını göndermek için
+	GetAlarmConfigurations(context.Context, *AlarmConfigRequest) (*AlarmConfigResponse, error)
+	// Agent'ın alarm bildirmesi için
+	ReportAlarm(context.Context, *ReportAlarmRequest) (*ReportAlarmResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -179,6 +209,12 @@ func (UnimplementedAgentServiceServer) StreamPostgresInfo(grpc.BidiStreamingServ
 }
 func (UnimplementedAgentServiceServer) SendSystemMetrics(context.Context, *SystemMetricsRequest) (*SystemMetricsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendSystemMetrics not implemented")
+}
+func (UnimplementedAgentServiceServer) GetAlarmConfigurations(context.Context, *AlarmConfigRequest) (*AlarmConfigResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAlarmConfigurations not implemented")
+}
+func (UnimplementedAgentServiceServer) ReportAlarm(context.Context, *ReportAlarmRequest) (*ReportAlarmResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReportAlarm not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -294,6 +330,42 @@ func _AgentService_SendSystemMetrics_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_GetAlarmConfigurations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AlarmConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).GetAlarmConfigurations(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_GetAlarmConfigurations_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).GetAlarmConfigurations(ctx, req.(*AlarmConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_ReportAlarm_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReportAlarmRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ReportAlarm(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ReportAlarm_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ReportAlarm(ctx, req.(*ReportAlarmRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -317,6 +389,14 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "SendSystemMetrics",
 			Handler:    _AgentService_SendSystemMetrics_Handler,
 		},
+		{
+			MethodName: "GetAlarmConfigurations",
+			Handler:    _AgentService_GetAlarmConfigurations_Handler,
+		},
+		{
+			MethodName: "ReportAlarm",
+			Handler:    _AgentService_ReportAlarm_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -338,5 +418,5 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "agent.proto",
+	Metadata: "pkg/agent/agent.proto",
 }
