@@ -1,11 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -383,7 +385,6 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 		log.Printf("PostgreSQL node bilgileri başarıyla veritabanına kaydedildi")
 	}
 
-	log.Printf("Kaydedilen/Güncellenen JSON: %s", string(jsonData))
 	return nil
 }
 
@@ -666,4 +667,407 @@ func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsReq
 // GetDB, veritabanı bağlantısını döndürür
 func (s *Server) GetDB() *sql.DB {
 	return s.db
+}
+
+// ReportAlarm, agent'lardan gelen alarm bildirimlerini işler
+func (s *Server) ReportAlarm(ctx context.Context, req *pb.ReportAlarmRequest) (*pb.ReportAlarmResponse, error) {
+	log.Printf("ReportAlarm metodu çağrıldı, Agent ID: %s, Alarm sayısı: %d", req.AgentId, len(req.Events))
+
+	// Agent ID doğrula
+	s.mu.RLock()
+	_, agentExists := s.agents[req.AgentId]
+	s.mu.RUnlock()
+
+	if !agentExists {
+		log.Printf("Bilinmeyen agent'dan alarm bildirimi: %s", req.AgentId)
+		// Bilinmeyen agent olsa da işlemeye devam ediyoruz
+	}
+
+	// Gelen her alarmı işle
+	for _, event := range req.Events {
+		log.Printf("Alarm işleniyor - ID: %s, Status: %s, Metric: %s, Value: %s, Severity: %s",
+			event.Id, event.Status, event.MetricName, event.MetricValue, event.Severity)
+
+		// Alarm verilerini veritabanına kaydet
+		err := s.saveAlarmToDatabase(ctx, event)
+		if err != nil {
+			log.Printf("Alarm veritabanına kaydedilemedi: %v", err)
+			// Devam et, bir alarmın kaydedilememesi diğerlerini etkilememeli
+		}
+
+		// Bildirimi gönder (Slack, Email vb.)
+		err = s.sendAlarmNotification(ctx, event)
+		if err != nil {
+			log.Printf("Alarm bildirimi gönderilemedi: %v", err)
+			// Devam et, bir bildirimin gönderilememesi diğerlerini etkilememeli
+		}
+	}
+
+	return &pb.ReportAlarmResponse{
+		Status: "success",
+	}, nil
+}
+
+// saveAlarmToDatabase, alarm olayını veritabanına kaydeder
+func (s *Server) saveAlarmToDatabase(ctx context.Context, event *pb.AlarmEvent) error {
+	// Veritabanı bağlantısını kontrol et
+	if err := s.checkDatabaseConnection(); err != nil {
+		return fmt.Errorf("veritabanı bağlantı hatası: %v", err)
+	}
+
+	// SQL sorgusu hazırla
+	query := `
+		INSERT INTO alarms (
+			alarm_id, 
+			event_id, 
+			agent_id, 
+			status, 
+			metric_name, 
+			metric_value, 
+			message, 
+			severity,
+			created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`
+
+	// Zaman damgasını parse et
+	timestamp, err := time.Parse(time.RFC3339, event.Timestamp)
+	if err != nil {
+		timestamp = time.Now() // Parse edilemezse şu anki zamanı kullan
+		log.Printf("Zaman damgası parse edilemedi: %v, şu anki zaman kullanılıyor", err)
+	}
+
+	// Veritabanına kaydet
+	_, err = s.db.ExecContext(
+		ctx,
+		query,
+		event.AlarmId,
+		event.Id,
+		event.AgentId,
+		event.Status,
+		event.MetricName,
+		event.MetricValue,
+		event.Message,
+		event.Severity,
+		timestamp,
+	)
+
+	if err != nil {
+		return fmt.Errorf("alarm veritabanına kaydedilemedi: %v", err)
+	}
+
+	log.Printf("Alarm veritabanına kaydedildi - ID: %s", event.Id)
+	return nil
+}
+
+// sendAlarmNotification, alarm olayını ilgili kanallara bildirir
+func (s *Server) sendAlarmNotification(ctx context.Context, event *pb.AlarmEvent) error {
+	// Notification ayarlarını veritabanından al
+	var slackWebhookURL string
+	var slackEnabled bool
+	var emailEnabled bool
+	var emailServer, emailPort, emailUser, emailPassword, emailFrom string
+	var emailRecipientsStr string
+
+	query := `
+		SELECT 
+			slack_webhook_url,
+			slack_enabled,
+			email_enabled,
+			email_server,
+			email_port,
+			email_user,
+			email_password,
+			email_from,
+			email_recipients
+		FROM notification_settings
+		ORDER BY id DESC
+		LIMIT 1
+	`
+
+	err := s.db.QueryRowContext(ctx, query).Scan(
+		&slackWebhookURL,
+		&slackEnabled,
+		&emailEnabled,
+		&emailServer,
+		&emailPort,
+		&emailUser,
+		&emailPassword,
+		&emailFrom,
+		&emailRecipientsStr,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Println("Notification ayarları bulunamadı, bildirim gönderilemiyor")
+			return nil // Ayar yok, hata kabul etmiyoruz
+		}
+		return fmt.Errorf("notification ayarları alınamadı: %v", err)
+	}
+
+	// Slack bildirimi gönder
+	if slackEnabled && slackWebhookURL != "" {
+		err = s.sendSlackNotification(event, slackWebhookURL)
+		if err != nil {
+			log.Printf("Slack bildirimi gönderilemedi: %v", err)
+		}
+	}
+
+	// Email bildirimi gönder
+	if emailEnabled && emailServer != "" && emailFrom != "" && emailRecipientsStr != "" {
+		// PostgreSQL array formatını parse et
+		var emailRecipients []string
+		if len(emailRecipientsStr) > 2 { // En az {} olmalı
+			// PostgreSQL array formatı: {email1,email2,...}
+			trimmedStr := emailRecipientsStr[1 : len(emailRecipientsStr)-1] // Başındaki { ve sonundaki } karakterlerini kaldır
+			if trimmedStr != "" {
+				emailRecipients = strings.Split(trimmedStr, ",")
+			}
+		}
+
+		if len(emailRecipients) > 0 {
+			err = s.sendEmailNotification(event, emailServer, emailPort, emailUser, emailPassword, emailFrom, emailRecipients)
+			if err != nil {
+				log.Printf("Email bildirimi gönderilemedi: %v", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// sendSlackNotification, Slack webhook'u aracılığıyla bildirim gönderir
+func (s *Server) sendSlackNotification(event *pb.AlarmEvent, webhookURL string) error {
+	// Alarm durumuna göre emoji ve renk belirle
+	var emoji, color string
+	if event.Status == "triggered" {
+		if event.Severity == "critical" {
+			emoji = ":red_circle:"
+			color = "#FF0000" // Kırmızı
+		} else if event.Severity == "warning" {
+			emoji = ":warning:"
+			color = "#FFA500" // Turuncu
+		} else {
+			emoji = ":information_source:"
+			color = "#0000FF" // Mavi
+		}
+	} else if event.Status == "resolved" {
+		emoji = ":white_check_mark:"
+		color = "#00FF00" // Yeşil
+	} else {
+		emoji = ":grey_question:"
+		color = "#808080" // Gri
+	}
+
+	// Mesaj içeriği
+	title := fmt.Sprintf("%s Alarm: %s", strings.ToUpper(event.Status), event.MetricName)
+
+	// JSON mesajı oluştur
+	message := map[string]interface{}{
+		"attachments": []map[string]interface{}{
+			{
+				"fallback":    fmt.Sprintf("%s %s: %s - %s", emoji, title, event.MetricValue, event.Message),
+				"color":       color,
+				"title":       title,
+				"title_link":  "http://clustereye.io/alarms", // Alarmlar sayfasına yönlendir
+				"text":        event.Message,
+				"footer":      fmt.Sprintf("Agent: %s | Alarm ID: %s", event.AgentId, event.AlarmId),
+				"footer_icon": "https://clustereye.io/favicon.ico", // Varsa logo URL'si
+				"ts":          time.Now().Unix(),
+				"fields": []map[string]interface{}{
+					{
+						"title": "Metrik",
+						"value": event.MetricName,
+						"short": true,
+					},
+					{
+						"title": "Değer",
+						"value": event.MetricValue,
+						"short": true,
+					},
+					{
+						"title": "Önem",
+						"value": event.Severity,
+						"short": true,
+					},
+					{
+						"title": "Durum",
+						"value": event.Status,
+						"short": true,
+					},
+				},
+			},
+		},
+	}
+
+	// JSON'a dönüştür
+	jsonMessage, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("JSON dönüşüm hatası: %v", err)
+	}
+
+	// Slack'e gönder
+	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(jsonMessage))
+	if err != nil {
+		return fmt.Errorf("HTTP POST hatası: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Slack yanıt kodu başarısız: %d", resp.StatusCode)
+	}
+
+	log.Printf("Slack bildirimi başarıyla gönderildi - Alarm ID: %s", event.Id)
+	return nil
+}
+
+// sendEmailNotification, email aracılığıyla bildirim gönderir
+func (s *Server) sendEmailNotification(event *pb.AlarmEvent, server, port, user, password, from string, recipients []string) error {
+	// Alarm durumuna göre konu oluştur
+	var subject string
+	if event.Status == "triggered" {
+		if event.Severity == "critical" {
+			subject = fmt.Sprintf("[KRITIK ALARM] %s: %s", event.MetricName, event.MetricValue)
+		} else if event.Severity == "warning" {
+			subject = fmt.Sprintf("[UYARI] %s: %s", event.MetricName, event.MetricValue)
+		} else {
+			subject = fmt.Sprintf("[BILGI] %s: %s", event.MetricName, event.MetricValue)
+		}
+	} else if event.Status == "resolved" {
+		subject = fmt.Sprintf("[COZULDU] %s: %s", event.MetricName, event.MetricValue)
+	} else {
+		subject = fmt.Sprintf("[DURUM: %s] %s: %s", event.Status, event.MetricName, event.MetricValue)
+	}
+
+	// Mesaj içeriğini oluştur
+	htmlBody := fmt.Sprintf(`
+	<!DOCTYPE html>
+	<html>
+	<head>
+		<style>
+			body { font-family: Arial, sans-serif; line-height: 1.6; }
+			.header { background-color: #f5f5f5; padding: 20px; border-bottom: 1px solid #ddd; }
+			.content { padding: 20px; }
+			.footer { background-color: #f5f5f5; padding: 20px; border-top: 1px solid #ddd; font-size: 12px; }
+			.alarm-critical { color: #cc0000; }
+			.alarm-warning { color: #ff9900; }
+			.alarm-info { color: #0066cc; }
+			.alarm-resolved { color: #009900; }
+			.details { margin-top: 20px; border-top: 1px solid #ddd; padding-top: 20px; }
+			.detail-row { display: flex; margin-bottom: 10px; }
+			.detail-label { width: 150px; font-weight: bold; }
+		</style>
+	</head>
+	<body>
+		<div class="header">
+			<h2>ClusterEye Alarm Bildirimi</h2>
+		</div>
+		<div class="content">
+			<h3 class="alarm-%s">%s</h3>
+			<p>%s</p>
+			
+			<div class="details">
+				<div class="detail-row">
+					<div class="detail-label">Agent ID:</div>
+					<div>%s</div>
+				</div>
+				<div class="detail-row">
+					<div class="detail-label">Metrik:</div>
+					<div>%s</div>
+				</div>
+				<div class="detail-row">
+					<div class="detail-label">Değer:</div>
+					<div>%s</div>
+				</div>
+				<div class="detail-row">
+					<div class="detail-label">Önem Derecesi:</div>
+					<div>%s</div>
+				</div>
+				<div class="detail-row">
+					<div class="detail-label">Durum:</div>
+					<div>%s</div>
+				</div>
+				<div class="detail-row">
+					<div class="detail-label">Alarm ID:</div>
+					<div>%s</div>
+				</div>
+				<div class="detail-row">
+					<div class="detail-label">Olay ID:</div>
+					<div>%s</div>
+				</div>
+				<div class="detail-row">
+					<div class="detail-label">Zaman:</div>
+					<div>%s</div>
+				</div>
+			</div>
+		</div>
+		<div class="footer">
+			<p>Bu bildirim <a href="https://clustereye.io">ClusterEye</a> tarafından otomatik olarak gönderilmiştir.</p>
+		</div>
+	</body>
+	</html>
+	`,
+		event.Severity, // CSS sınıfı için
+		subject,        // Başlık
+		event.Message,  // Mesaj
+		event.AgentId,
+		event.MetricName,
+		event.MetricValue,
+		event.Severity,
+		event.Status,
+		event.AlarmId,
+		event.Id,
+		event.Timestamp,
+	)
+
+	// Basit metin içeriği
+	textBody := fmt.Sprintf("ClusterEye Alarm Bildirimi\n\n%s\n\n%s\n\nAgent: %s\nMetrik: %s\nDeğer: %s\nÖnem: %s\nDurum: %s\nAlarm ID: %s\nOlay ID: %s\nZaman: %s",
+		subject,
+		event.Message,
+		event.AgentId,
+		event.MetricName,
+		event.MetricValue,
+		event.Severity,
+		event.Status,
+		event.AlarmId,
+		event.Id,
+		event.Timestamp,
+	)
+
+	log.Printf("Email bildirimi gönderiliyor - Konu: %s", subject)
+	log.Printf("Email alıcıları: %v", recipients)
+
+	// Email gönderme işlemi burada gerçekleştirilecek
+	// Bu kısım şimdilik log kaydı yapmaktadır
+	// Gerçek SMTP entegrasyonu için aşağıdaki kodu açabilirsiniz:
+
+	/*
+		// SMTP sunucusuna bağlan
+		smtpAddr := fmt.Sprintf("%s:%s", server, port)
+
+		// SMTP kimlik doğrulama
+		auth := smtp.PlainAuth("", user, password, server)
+
+		// Email içeriği
+		mime := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
+		msg := []byte("To: " + strings.Join(recipients, ",") + "\r\n" +
+			"From: " + from + "\r\n" +
+			"Subject: " + subject + "\r\n" +
+			mime + "\r\n" +
+			htmlBody + "\r\n")
+
+		// Email gönder
+		err := smtp.SendMail(smtpAddr, auth, from, recipients, msg)
+		if err != nil {
+			return fmt.Errorf("email gönderme hatası: %v", err)
+		}
+	*/
+
+	// Temizlik için değişkenleri kullanıldı olarak işaretle
+	_ = htmlBody
+	_ = textBody
+
+	// Başarılı bir şekilde gönderildi
+	log.Printf("Email bildirimi başarıyla gönderildi (simüle edildi) - Alarm ID: %s", event.Id)
+	return nil
 }

@@ -32,6 +32,21 @@ message PostgresInfo {
   int32 fd_percent = 11;
 }
 
+// MongoDB bilgileri için mesaj tanımı
+message MongoInfo {
+  string cluster_name = 1;
+  string ip = 2;
+  string hostname = 3;
+  string node_status = 4;
+  string mongo_version = 5;
+  string location = 6;
+  string mongo_status = 7;
+  string replica_set_name = 8;
+  int64 replication_lag_sec = 9;
+  string free_disk = 10;
+  int32 fd_percent = 11;
+}
+
 message AlarmCondition {
   string metric = 1;          // "postgres_status", "memory_usage"
   string operator = 2;        // ">", "<", "="
@@ -114,7 +129,16 @@ message PostgresInfoRequest {
    PostgresInfo postgres_info = 1;
 }
 
+// MongoDB bilgileri için kullanılacak mesajlar
+message MongoInfoRequest {
+   MongoInfo mongo_info = 1;
+}
+
 message PostgresInfoResponse {
+  string status = 1;
+}
+
+message MongoInfoResponse {
   string status = 1;
 }
 
@@ -140,6 +164,7 @@ message AgentMessage {
     QueryResult query_result = 2;
     PostgresInfo postgres_info = 3;
     SystemMetrics system_metrics = 4;
+    MongoInfo mongo_info = 5;
   }
 }
 
@@ -201,4 +226,7 @@ service AgentService {
   
   // Agent'ın alarm bildirmesi için
   rpc ReportAlarm(ReportAlarmRequest) returns (ReportAlarmResponse);
+
+   // MongoDB bilgilerini göndermek için kullanılacak servis
+  rpc SendMongoInfo(MongoInfoRequest) returns (MongoInfoResponse);
 }
