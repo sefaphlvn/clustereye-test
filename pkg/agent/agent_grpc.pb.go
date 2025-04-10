@@ -28,6 +28,7 @@ const (
 	AgentService_SendSystemMetrics_FullMethodName      = "/agent.AgentService/SendSystemMetrics"
 	AgentService_GetAlarmConfigurations_FullMethodName = "/agent.AgentService/GetAlarmConfigurations"
 	AgentService_ReportAlarm_FullMethodName            = "/agent.AgentService/ReportAlarm"
+	AgentService_SendMongoInfo_FullMethodName          = "/agent.AgentService/SendMongoInfo"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -50,6 +51,8 @@ type AgentServiceClient interface {
 	GetAlarmConfigurations(ctx context.Context, in *AlarmConfigRequest, opts ...grpc.CallOption) (*AlarmConfigResponse, error)
 	// Agent'ın alarm bildirmesi için
 	ReportAlarm(ctx context.Context, in *ReportAlarmRequest, opts ...grpc.CallOption) (*ReportAlarmResponse, error)
+	// MongoDB bilgilerini göndermek için kullanılacak servis
+	SendMongoInfo(ctx context.Context, in *MongoInfoRequest, opts ...grpc.CallOption) (*MongoInfoResponse, error)
 }
 
 type agentServiceClient struct {
@@ -159,6 +162,16 @@ func (c *agentServiceClient) ReportAlarm(ctx context.Context, in *ReportAlarmReq
 	return out, nil
 }
 
+func (c *agentServiceClient) SendMongoInfo(ctx context.Context, in *MongoInfoRequest, opts ...grpc.CallOption) (*MongoInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MongoInfoResponse)
+	err := c.cc.Invoke(ctx, AgentService_SendMongoInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -179,6 +192,8 @@ type AgentServiceServer interface {
 	GetAlarmConfigurations(context.Context, *AlarmConfigRequest) (*AlarmConfigResponse, error)
 	// Agent'ın alarm bildirmesi için
 	ReportAlarm(context.Context, *ReportAlarmRequest) (*ReportAlarmResponse, error)
+	// MongoDB bilgilerini göndermek için kullanılacak servis
+	SendMongoInfo(context.Context, *MongoInfoRequest) (*MongoInfoResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -215,6 +230,9 @@ func (UnimplementedAgentServiceServer) GetAlarmConfigurations(context.Context, *
 }
 func (UnimplementedAgentServiceServer) ReportAlarm(context.Context, *ReportAlarmRequest) (*ReportAlarmResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReportAlarm not implemented")
+}
+func (UnimplementedAgentServiceServer) SendMongoInfo(context.Context, *MongoInfoRequest) (*MongoInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendMongoInfo not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -366,6 +384,24 @@ func _AgentService_ReportAlarm_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_SendMongoInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MongoInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).SendMongoInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_SendMongoInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).SendMongoInfo(ctx, req.(*MongoInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -396,6 +432,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReportAlarm",
 			Handler:    _AgentService_ReportAlarm_Handler,
+		},
+		{
+			MethodName: "SendMongoInfo",
+			Handler:    _AgentService_SendMongoInfo_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
