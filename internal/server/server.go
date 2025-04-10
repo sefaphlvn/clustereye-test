@@ -914,7 +914,7 @@ func (s *Server) sendSlackNotification(event *pb.AlarmEvent, webhookURL string) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Slack yanıt kodu başarısız: %d", resp.StatusCode)
+		return fmt.Errorf("slack yanıt kodu başarısız: %d", resp.StatusCode)
 	}
 
 	log.Printf("Slack bildirimi başarıyla gönderildi - Alarm ID: %s", event.Id)
@@ -1070,4 +1070,195 @@ func (s *Server) sendEmailNotification(event *pb.AlarmEvent, server, port, user,
 	// Başarılı bir şekilde gönderildi
 	log.Printf("Email bildirimi başarıyla gönderildi (simüle edildi) - Alarm ID: %s", event.Id)
 	return nil
+}
+
+// SendMongoInfo, agent'dan gelen MongoDB bilgilerini işler
+func (s *Server) SendMongoInfo(ctx context.Context, req *pb.MongoInfoRequest) (*pb.MongoInfoResponse, error) {
+	log.Println("SendMongoInfo metodu çağrıldı")
+
+	// Gelen MongoDB bilgilerini logla
+	mongoInfo := req.MongoInfo
+	log.Printf("MongoDB bilgileri alındı: %+v", mongoInfo)
+
+	// Daha detaylı loglama
+	log.Printf("Cluster: %s, IP: %s, Hostname: %s", mongoInfo.ClusterName, mongoInfo.Ip, mongoInfo.Hostname)
+	log.Printf("Node Durumu: %s, Mongo Sürümü: %s, Konum: %s", mongoInfo.NodeStatus, mongoInfo.MongoVersion, mongoInfo.Location)
+	log.Printf("Mongo Servis Durumu: %s, Replica Set: %s", mongoInfo.MongoStatus, mongoInfo.ReplicaSetName)
+	log.Printf("Replikasyon Gecikmesi: %d saniye, Boş Disk: %s, FD Yüzdesi: %d%%",
+		mongoInfo.ReplicationLagSec, mongoInfo.FreeDisk, mongoInfo.FdPercent)
+
+	// Veritabanına kaydetme işlemi
+	err := s.saveMongoInfoToDatabase(ctx, mongoInfo)
+	if err != nil {
+		log.Printf("MongoDB bilgileri veritabanına kaydedilemedi: %v", err)
+		return &pb.MongoInfoResponse{
+			Status: "error",
+		}, nil
+	}
+
+	log.Printf("MongoDB bilgileri başarıyla işlendi ve kaydedildi")
+
+	return &pb.MongoInfoResponse{
+		Status: "success",
+	}, nil
+}
+
+// MongoDB bilgilerini veritabanına kaydetmek için yardımcı fonksiyon
+func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.MongoInfo) error {
+	// Önce mevcut kaydı kontrol et
+	var existingData []byte
+	var id int
+
+	checkQuery := `
+		SELECT id, jsondata FROM public.mongo_data 
+		WHERE clustername = $1 
+		ORDER BY id DESC LIMIT 1
+	`
+
+	err := s.db.QueryRowContext(ctx, checkQuery, mongoInfo.ClusterName).Scan(&id, &existingData)
+
+	// Yeni node verisi
+	mongoData := map[string]interface{}{
+		"ClusterName":       mongoInfo.ClusterName,
+		"Location":          mongoInfo.Location,
+		"FDPercent":         mongoInfo.FdPercent,
+		"FreeDisk":          mongoInfo.FreeDisk,
+		"Hostname":          mongoInfo.Hostname,
+		"IP":                mongoInfo.Ip,
+		"NodeStatus":        mongoInfo.NodeStatus,
+		"MongoStatus":       mongoInfo.MongoStatus,
+		"MongoVersion":      mongoInfo.MongoVersion,
+		"ReplicaSetName":    mongoInfo.ReplicaSetName,
+		"ReplicationLagSec": mongoInfo.ReplicationLagSec,
+	}
+
+	var jsonData []byte
+
+	if err == nil {
+		// Mevcut kayıt var, güncelle
+		var existingJSON map[string][]interface{}
+		if err := json.Unmarshal(existingData, &existingJSON); err != nil {
+			log.Printf("Mevcut JSON ayrıştırma hatası: %v", err)
+			return err
+		}
+
+		// Cluster array'ini al
+		clusterData, ok := existingJSON[mongoInfo.ClusterName]
+		if !ok {
+			// Eğer cluster verisi yoksa yeni oluştur
+			clusterData = []interface{}{}
+		}
+
+		// Node'u bul ve güncelle
+		nodeFound := false
+		for i, node := range clusterData {
+			nodeMap, ok := node.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			// Hostname ve IP ile node eşleşmesi kontrol et
+			if nodeMap["Hostname"] == mongoInfo.Hostname && nodeMap["IP"] == mongoInfo.Ip {
+				// Sadece değişen alanları güncelle
+				nodeFound = true
+
+				// Mevcut değerleri koru, sadece değişenleri güncelle
+				for key, newValue := range mongoData {
+					if currentValue, exists := nodeMap[key]; !exists || currentValue != newValue {
+						nodeMap[key] = newValue
+					}
+				}
+
+				clusterData[i] = nodeMap
+				break
+			}
+		}
+
+		// Eğer node bulunamadıysa yeni ekle
+		if !nodeFound {
+			clusterData = append(clusterData, mongoData)
+			log.Printf("Yeni MongoDB node eklendi: %s", mongoInfo.Hostname)
+		}
+
+		existingJSON[mongoInfo.ClusterName] = clusterData
+
+		// JSON'ı güncelle
+		jsonData, err = json.Marshal(existingJSON)
+		if err != nil {
+			log.Printf("JSON dönüştürme hatası: %v", err)
+			return err
+		}
+
+		// Veritabanını güncelle
+		updateQuery := `
+			UPDATE public.mongo_data 
+			SET jsondata = $1, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $2
+		`
+
+		_, err = s.db.ExecContext(ctx, updateQuery, jsonData, id)
+		if err != nil {
+			log.Printf("Veritabanı güncelleme hatası: %v", err)
+			return err
+		}
+
+		log.Printf("MongoDB node bilgileri başarıyla güncellendi")
+	} else {
+		// İlk kayıt oluştur
+		outerJSON := map[string][]interface{}{
+			mongoInfo.ClusterName: {mongoData},
+		}
+
+		jsonData, err = json.Marshal(outerJSON)
+		if err != nil {
+			log.Printf("JSON dönüştürme hatası: %v", err)
+			return err
+		}
+
+		insertQuery := `
+			INSERT INTO public.mongo_data (
+				jsondata, clustername, created_at, updated_at
+			) VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		`
+
+		_, err = s.db.ExecContext(ctx, insertQuery, jsonData, mongoInfo.ClusterName)
+		if err != nil {
+			log.Printf("Veritabanı ekleme hatası: %v", err)
+			return err
+		}
+
+		log.Printf("MongoDB node bilgileri başarıyla veritabanına kaydedildi")
+	}
+
+	return nil
+}
+
+// GetStatusMongo, MongoDB veritabanından durum bilgilerini çeker
+func (s *Server) GetStatusMongo(ctx context.Context, _ *structpb.Struct) (*structpb.Value, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT json_agg(sub.jsondata) FROM (SELECT jsondata FROM mongo_data ORDER BY id) AS sub")
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Veritabanı sorgusu başarısız: %v", err)
+	}
+	defer rows.Close()
+
+	var jsonData []byte
+	if rows.Next() {
+		err := rows.Scan(&jsonData)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "Veri okuma hatası: %v", err)
+		}
+	}
+
+	// JSON verisini structpb.Value'ya dönüştür
+	var jsonValue interface{}
+	if err := json.Unmarshal(jsonData, &jsonValue); err != nil {
+		return nil, status.Errorf(codes.Internal, "JSON ayrıştırma hatası: %v", err)
+	}
+
+	value, err := structpb.NewValue(jsonValue)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Veri dönüştürme hatası: %v", err)
+	}
+
+	return value, nil
 }

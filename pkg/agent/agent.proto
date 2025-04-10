@@ -47,6 +47,49 @@ message MongoInfo {
   int32 fd_percent = 11;
 }
 
+// MongoDB log dosyalarını listelemek için istek
+message MongoLogListRequest {
+  string log_path = 1;
+}
+
+// MongoDB log dosya bilgisi
+message MongoLogFile {
+  string name = 1;
+  string path = 2;
+  int64 size = 3;
+  int64 last_modified = 4; // Unix timestamp
+}
+
+// MongoDB log dosya listesi yanıtı
+message MongoLogListResponse {
+  repeated MongoLogFile log_files = 1;
+}
+
+// MongoDB log analizi isteği
+message MongoLogAnalyzeRequest {
+  string log_file_path = 1;
+  int64 slow_query_threshold_ms = 2; // Yavaş sorgu eşiği (ms)
+}
+
+// MongoDB log mesajı
+message MongoLogEntry {
+  int64 timestamp = 1; // Unix timestamp
+  string severity = 2; // W, E, I, D
+  string component = 3;
+  string context = 4;
+  string message = 5;
+  string db_name = 6;
+  int64 duration_millis = 7;
+  string command = 8;
+  string plan_summary = 9;
+  string namespace = 10;
+}
+
+// MongoDB log analizi yanıtı
+message MongoLogAnalyzeResponse {
+  repeated MongoLogEntry log_entries = 1;
+}
+
 message AlarmCondition {
   string metric = 1;          // "postgres_status", "memory_usage"
   string operator = 2;        // ">", "<", "="
@@ -229,4 +272,10 @@ service AgentService {
 
    // MongoDB bilgilerini göndermek için kullanılacak servis
   rpc SendMongoInfo(MongoInfoRequest) returns (MongoInfoResponse);
+
+   // MongoDB log dosyalarını listeler
+  rpc ListMongoLogs(MongoLogListRequest) returns (MongoLogListResponse) {}
+  
+  // MongoDB log dosyasını analiz eder
+  rpc AnalyzeMongoLog(MongoLogAnalyzeRequest) returns (MongoLogAnalyzeResponse) {}
 }

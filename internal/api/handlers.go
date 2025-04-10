@@ -45,6 +45,8 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 	{
 		// PostgreSQL durum bilgilerini getir
 		status.GET("/postgres", getPostgresStatus(server))
+		// MongoDB durum bilgilerini getir
+		status.GET("/mongo", getMongoStatus(server))
 		// Agent durum bilgilerini getir
 		status.GET("/agents", getAgentStatus(server))
 	}
@@ -147,6 +149,28 @@ func getPostgresStatus(server *server.Server) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status": "error",
 				"error":  "PostgreSQL durum bilgileri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   result.AsInterface(),
+		})
+	}
+}
+
+// getMongoStatus, MongoDB durum bilgilerini getirir
+func getMongoStatus(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+
+		result, err := server.GetStatusMongo(ctx, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MongoDB durum bilgileri alınamadı: " + err.Error(),
 			})
 			return
 		}

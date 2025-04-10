@@ -29,6 +29,8 @@ const (
 	AgentService_GetAlarmConfigurations_FullMethodName = "/agent.AgentService/GetAlarmConfigurations"
 	AgentService_ReportAlarm_FullMethodName            = "/agent.AgentService/ReportAlarm"
 	AgentService_SendMongoInfo_FullMethodName          = "/agent.AgentService/SendMongoInfo"
+	AgentService_ListMongoLogs_FullMethodName          = "/agent.AgentService/ListMongoLogs"
+	AgentService_AnalyzeMongoLog_FullMethodName        = "/agent.AgentService/AnalyzeMongoLog"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -53,6 +55,10 @@ type AgentServiceClient interface {
 	ReportAlarm(ctx context.Context, in *ReportAlarmRequest, opts ...grpc.CallOption) (*ReportAlarmResponse, error)
 	// MongoDB bilgilerini göndermek için kullanılacak servis
 	SendMongoInfo(ctx context.Context, in *MongoInfoRequest, opts ...grpc.CallOption) (*MongoInfoResponse, error)
+	// MongoDB log dosyalarını listeler
+	ListMongoLogs(ctx context.Context, in *MongoLogListRequest, opts ...grpc.CallOption) (*MongoLogListResponse, error)
+	// MongoDB log dosyasını analiz eder
+	AnalyzeMongoLog(ctx context.Context, in *MongoLogAnalyzeRequest, opts ...grpc.CallOption) (*MongoLogAnalyzeResponse, error)
 }
 
 type agentServiceClient struct {
@@ -172,6 +178,26 @@ func (c *agentServiceClient) SendMongoInfo(ctx context.Context, in *MongoInfoReq
 	return out, nil
 }
 
+func (c *agentServiceClient) ListMongoLogs(ctx context.Context, in *MongoLogListRequest, opts ...grpc.CallOption) (*MongoLogListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MongoLogListResponse)
+	err := c.cc.Invoke(ctx, AgentService_ListMongoLogs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) AnalyzeMongoLog(ctx context.Context, in *MongoLogAnalyzeRequest, opts ...grpc.CallOption) (*MongoLogAnalyzeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MongoLogAnalyzeResponse)
+	err := c.cc.Invoke(ctx, AgentService_AnalyzeMongoLog_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -194,6 +220,10 @@ type AgentServiceServer interface {
 	ReportAlarm(context.Context, *ReportAlarmRequest) (*ReportAlarmResponse, error)
 	// MongoDB bilgilerini göndermek için kullanılacak servis
 	SendMongoInfo(context.Context, *MongoInfoRequest) (*MongoInfoResponse, error)
+	// MongoDB log dosyalarını listeler
+	ListMongoLogs(context.Context, *MongoLogListRequest) (*MongoLogListResponse, error)
+	// MongoDB log dosyasını analiz eder
+	AnalyzeMongoLog(context.Context, *MongoLogAnalyzeRequest) (*MongoLogAnalyzeResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -233,6 +263,12 @@ func (UnimplementedAgentServiceServer) ReportAlarm(context.Context, *ReportAlarm
 }
 func (UnimplementedAgentServiceServer) SendMongoInfo(context.Context, *MongoInfoRequest) (*MongoInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendMongoInfo not implemented")
+}
+func (UnimplementedAgentServiceServer) ListMongoLogs(context.Context, *MongoLogListRequest) (*MongoLogListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListMongoLogs not implemented")
+}
+func (UnimplementedAgentServiceServer) AnalyzeMongoLog(context.Context, *MongoLogAnalyzeRequest) (*MongoLogAnalyzeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AnalyzeMongoLog not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -402,6 +438,42 @@ func _AgentService_SendMongoInfo_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_ListMongoLogs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MongoLogListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ListMongoLogs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ListMongoLogs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ListMongoLogs(ctx, req.(*MongoLogListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_AnalyzeMongoLog_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MongoLogAnalyzeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).AnalyzeMongoLog(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_AnalyzeMongoLog_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).AnalyzeMongoLog(ctx, req.(*MongoLogAnalyzeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -436,6 +508,14 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SendMongoInfo",
 			Handler:    _AgentService_SendMongoInfo_Handler,
+		},
+		{
+			MethodName: "ListMongoLogs",
+			Handler:    _AgentService_ListMongoLogs_Handler,
+		},
+		{
+			MethodName: "AnalyzeMongoLog",
+			Handler:    _AgentService_AnalyzeMongoLog_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
