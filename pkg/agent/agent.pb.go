@@ -543,6 +543,7 @@ type MongoLogAnalyzeRequest struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	LogFilePath          string                 `protobuf:"bytes,1,opt,name=log_file_path,json=logFilePath,proto3" json:"log_file_path,omitempty"`
 	SlowQueryThresholdMs int64                  `protobuf:"varint,2,opt,name=slow_query_threshold_ms,json=slowQueryThresholdMs,proto3" json:"slow_query_threshold_ms,omitempty"` // Yavaş sorgu eşiği (ms)
+	AgentId              string                 `protobuf:"bytes,3,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -589,6 +590,13 @@ func (x *MongoLogAnalyzeRequest) GetSlowQueryThresholdMs() int64 {
 		return x.SlowQueryThresholdMs
 	}
 	return 0
+}
+
+func (x *MongoLogAnalyzeRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
 }
 
 // MongoDB log mesajı
@@ -2360,10 +2368,11 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x04size\x18\x03 \x01(\x03R\x04size\x12#\n" +
 	"\rlast_modified\x18\x04 \x01(\x03R\flastModified\"H\n" +
 	"\x14MongoLogListResponse\x120\n" +
-	"\tlog_files\x18\x01 \x03(\v2\x13.agent.MongoLogFileR\blogFiles\"s\n" +
+	"\tlog_files\x18\x01 \x03(\v2\x13.agent.MongoLogFileR\blogFiles\"\x8e\x01\n" +
 	"\x16MongoLogAnalyzeRequest\x12\"\n" +
 	"\rlog_file_path\x18\x01 \x01(\tR\vlogFilePath\x125\n" +
-	"\x17slow_query_threshold_ms\x18\x02 \x01(\x03R\x14slowQueryThresholdMs\"\xb8\x02\n" +
+	"\x17slow_query_threshold_ms\x18\x02 \x01(\x03R\x14slowQueryThresholdMs\x12\x19\n" +
+	"\bagent_id\x18\x03 \x01(\tR\aagentId\"\xb8\x02\n" +
 	"\rMongoLogEntry\x12\x1c\n" +
 	"\ttimestamp\x18\x01 \x01(\x03R\ttimestamp\x12\x1a\n" +
 	"\bseverity\x18\x02 \x01(\tR\bseverity\x12\x1c\n" +

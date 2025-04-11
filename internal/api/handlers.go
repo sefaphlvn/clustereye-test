@@ -2,12 +2,15 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sefaphlvn/clustereye-test/internal/server"
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 )
 
 // RegisterHandlers, API rotalarını Gin router'a kaydeder
@@ -38,6 +41,12 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 
 		// Agent'dan sistem metriklerini al
 		agents.POST("/:agent_id/metrics", sendMetricsRequestToAgent(server))
+		
+		// MongoDB log dosyalarını listele
+		agents.GET("/:agent_id/mongo/logs", listMongoLogs(server))
+		
+		// MongoDB log dosyasını analiz et
+		agents.POST("/:agent_id/mongo/logs/analyze", analyzeMongoLog(server))
 	}
 
 	// Status Endpoint'leri
@@ -245,4 +254,184 @@ func sendMetricsRequestToAgent(server *server.Server) gin.HandlerFunc {
 			"metrics":  result.Metrics,
 		})
 	}
+}
+
+// listMongoLogs, belirtilen agent'tan MongoDB log dosyalarını listeler
+func listMongoLogs(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Param("agent_id")
+
+		if agentID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "agent_id parametresi gerekli",
+			})
+			return
+		}
+
+		// İsteğe opsiyonel log_path parametresi eklenebilir
+		logPath := c.Query("log_path")
+
+		// Context oluştur ve agent_id ekle
+		ctx := context.WithValue(c.Request.Context(), "agent_id", agentID)
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+
+		// MongoDB log dosyalarını listele
+		req := &pb.MongoLogListRequest{
+			LogPath: logPath,
+		}
+
+		response, err := server.ListMongoLogs(ctx, req)
+		if err != nil {
+			httpStatus := http.StatusInternalServerError
+			message := "MongoDB log dosyaları listelenirken bir hata oluştu: " + err.Error()
+
+			if err == context.DeadlineExceeded {
+				httpStatus = http.StatusGatewayTimeout
+				message = "İstek zaman aşımına uğradı"
+			} else if st, ok := grpcstatus.FromError(err); ok {
+				if st.Code() == codes.NotFound {
+					c.JSON(http.StatusNotFound, gin.H{
+						"status": "error",
+						"error":  st.Message(),
+					})
+					return
+				}
+				message = st.Message()
+			}
+
+			c.JSON(httpStatus, gin.H{
+				"status": "error",
+				"error":  message,
+			})
+			return
+		}
+
+		// Dosya bilgilerini daha okunabilir hale getir
+		logFiles := make([]map[string]interface{}, 0, len(response.LogFiles))
+		for _, file := range response.LogFiles {
+			logFiles = append(logFiles, map[string]interface{}{
+				"name":           file.Name,
+				"path":           file.Path,
+				"size":           file.Size,
+				"size_readable":  formatBytes(file.Size),
+				"last_modified":  file.LastModified,
+				"last_modified_readable": time.Unix(file.LastModified, 0).Format(time.RFC3339),
+			})
+		}
+
+		// Başarılı yanıt
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "success",
+			"agent_id":  agentID,
+			"log_files": logFiles,
+		})
+	}
+}
+
+// analyzeMongoLog, belirtilen agent'tan MongoDB log dosyasını analiz etmesini ister
+func analyzeMongoLog(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Param("agent_id")
+
+		if agentID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "agent_id parametresi gerekli",
+			})
+			return
+		}
+
+		var req struct {
+			LogFilePath        string `json:"log_file_path" binding:"required"`
+			SlowQueryThreshold int64  `json:"slow_query_threshold_ms"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz JSON verisi: " + err.Error(),
+			})
+			return
+		}
+
+		// Context oluştur ve agent_id ekle
+		ctx := context.WithValue(c.Request.Context(), "agent_id", agentID)
+		ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+
+		// MongoDB log dosyasını analiz et
+		analyzeReq := &pb.MongoLogAnalyzeRequest{
+			LogFilePath:         req.LogFilePath,
+			SlowQueryThresholdMs: req.SlowQueryThreshold,
+		}
+
+		response, err := server.AnalyzeMongoLog(ctx, analyzeReq)
+		if err != nil {
+			httpStatus := http.StatusInternalServerError
+			message := "MongoDB log dosyası analiz edilirken bir hata oluştu: " + err.Error()
+
+			if err == context.DeadlineExceeded {
+				httpStatus = http.StatusGatewayTimeout
+				message = "İstek zaman aşımına uğradı"
+			} else if st, ok := grpcstatus.FromError(err); ok {
+				if st.Code() == codes.NotFound {
+					c.JSON(http.StatusNotFound, gin.H{
+						"status": "error",
+						"error":  st.Message(),
+					})
+					return
+				}
+				message = st.Message()
+			}
+
+			c.JSON(httpStatus, gin.H{
+				"status": "error",
+				"error":  message,
+			})
+			return
+		}
+
+		// Log girdilerini daha okunabilir hale getir
+		logEntries := make([]map[string]interface{}, 0, len(response.LogEntries))
+		for _, entry := range response.LogEntries {
+			logEntries = append(logEntries, map[string]interface{}{
+				"timestamp":       entry.Timestamp,
+				"timestamp_readable": time.Unix(entry.Timestamp, 0).Format(time.RFC3339),
+				"severity":        entry.Severity,
+				"component":       entry.Component,
+				"context":         entry.Context,
+				"message":         entry.Message,
+				"db_name":         entry.DbName,
+				"duration_millis": entry.DurationMillis,
+				"command":         entry.Command,
+				"plan_summary":    entry.PlanSummary,
+				"namespace":       entry.Namespace,
+			})
+		}
+
+		// Başarılı yanıt
+		c.JSON(http.StatusOK, gin.H{
+			"status":      "success",
+			"agent_id":    agentID,
+			"log_path":    req.LogFilePath,
+			"threshold_ms": req.SlowQueryThreshold,
+			"log_entries": logEntries,
+		})
+	}
+}
+
+// formatBytes, bayt cinsinden boyutu okunabilir formata dönüştürür (KB, MB, GB)
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
