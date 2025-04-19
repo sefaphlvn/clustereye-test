@@ -2314,6 +2314,173 @@ func (x *AlarmConfigResponse) GetConfigurations() []*AlarmConfiguration {
 	return nil
 }
 
+// PostgreSQL log file information
+type PostgresLogFile struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Size          int64                  `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`
+	LastModified  int64                  `protobuf:"varint,4,opt,name=last_modified,json=lastModified,proto3" json:"last_modified,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PostgresLogFile) Reset() {
+	*x = PostgresLogFile{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PostgresLogFile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PostgresLogFile) ProtoMessage() {}
+
+func (x *PostgresLogFile) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PostgresLogFile.ProtoReflect.Descriptor instead.
+func (*PostgresLogFile) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *PostgresLogFile) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *PostgresLogFile) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *PostgresLogFile) GetSize() int64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+func (x *PostgresLogFile) GetLastModified() int64 {
+	if x != nil {
+		return x.LastModified
+	}
+	return 0
+}
+
+// Request for listing PostgreSQL log files
+type PostgresLogListRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	LogPath       string                 `protobuf:"bytes,2,opt,name=log_path,json=logPath,proto3" json:"log_path,omitempty"` // Optional path to look for logs
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PostgresLogListRequest) Reset() {
+	*x = PostgresLogListRequest{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PostgresLogListRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PostgresLogListRequest) ProtoMessage() {}
+
+func (x *PostgresLogListRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PostgresLogListRequest.ProtoReflect.Descriptor instead.
+func (*PostgresLogListRequest) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *PostgresLogListRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *PostgresLogListRequest) GetLogPath() string {
+	if x != nil {
+		return x.LogPath
+	}
+	return ""
+}
+
+// Response containing PostgreSQL log files
+type PostgresLogListResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LogFiles      []*PostgresLogFile     `protobuf:"bytes,1,rep,name=log_files,json=logFiles,proto3" json:"log_files,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PostgresLogListResponse) Reset() {
+	*x = PostgresLogListResponse{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PostgresLogListResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PostgresLogListResponse) ProtoMessage() {}
+
+func (x *PostgresLogListResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PostgresLogListResponse.ProtoReflect.Descriptor instead.
+func (*PostgresLogListResponse) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *PostgresLogListResponse) GetLogFiles() []*PostgresLogFile {
+	if x != nil {
+		return x.LogFiles
+	}
+	return nil
+}
+
 var File_pkg_agent_agent_proto protoreflect.FileDescriptor
 
 const file_pkg_agent_agent_proto_rawDesc = "" +
@@ -2492,7 +2659,17 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\"p\n" +
 	"\x13AlarmConfigResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12A\n" +
-	"\x0econfigurations\x18\x02 \x03(\v2\x19.agent.AlarmConfigurationR\x0econfigurations2\xeb\x06\n" +
+	"\x0econfigurations\x18\x02 \x03(\v2\x19.agent.AlarmConfigurationR\x0econfigurations\"r\n" +
+	"\x0fPostgresLogFile\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x12\n" +
+	"\x04size\x18\x03 \x01(\x03R\x04size\x12#\n" +
+	"\rlast_modified\x18\x04 \x01(\x03R\flastModified\"N\n" +
+	"\x16PostgresLogListRequest\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x19\n" +
+	"\blog_path\x18\x02 \x01(\tR\alogPath\"N\n" +
+	"\x17PostgresLogListResponse\x123\n" +
+	"\tlog_files\x18\x01 \x03(\v2\x16.agent.PostgresLogFileR\blogFiles2\xc0\a\n" +
 	"\fAgentService\x128\n" +
 	"\aConnect\x12\x13.agent.AgentMessage\x1a\x14.agent.ServerMessage(\x010\x01\x12;\n" +
 	"\bRegister\x12\x16.agent.RegisterRequest\x1a\x17.agent.RegisterResponse\x129\n" +
@@ -2505,7 +2682,8 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\vReportAlarm\x12\x19.agent.ReportAlarmRequest\x1a\x1a.agent.ReportAlarmResponse\x12B\n" +
 	"\rSendMongoInfo\x12\x17.agent.MongoInfoRequest\x1a\x18.agent.MongoInfoResponse\x12J\n" +
 	"\rListMongoLogs\x12\x1a.agent.MongoLogListRequest\x1a\x1b.agent.MongoLogListResponse\"\x00\x12R\n" +
-	"\x0fAnalyzeMongoLog\x12\x1d.agent.MongoLogAnalyzeRequest\x1a\x1e.agent.MongoLogAnalyzeResponse\"\x00B0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
+	"\x0fAnalyzeMongoLog\x12\x1d.agent.MongoLogAnalyzeRequest\x1a\x1e.agent.MongoLogAnalyzeResponse\"\x00\x12S\n" +
+	"\x10ListPostgresLogs\x12\x1d.agent.PostgresLogListRequest\x1a\x1e.agent.PostgresLogListResponse\"\x00B0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
 
 var (
 	file_pkg_agent_agent_proto_rawDescOnce sync.Once
@@ -2519,7 +2697,7 @@ func file_pkg_agent_agent_proto_rawDescGZIP() []byte {
 	return file_pkg_agent_agent_proto_rawDescData
 }
 
-var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
+var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
 var file_pkg_agent_agent_proto_goTypes = []any{
 	(*AgentInfo)(nil),               // 0: agent.AgentInfo
 	(*PostgresInfo)(nil),            // 1: agent.PostgresInfo
@@ -2555,13 +2733,16 @@ var file_pkg_agent_agent_proto_goTypes = []any{
 	(*SystemMetricsResponse)(nil),   // 31: agent.SystemMetricsResponse
 	(*AlarmConfigRequest)(nil),      // 32: agent.AlarmConfigRequest
 	(*AlarmConfigResponse)(nil),     // 33: agent.AlarmConfigResponse
-	(*any1.Any)(nil),                // 34: google.protobuf.Any
+	(*PostgresLogFile)(nil),         // 34: agent.PostgresLogFile
+	(*PostgresLogListRequest)(nil),  // 35: agent.PostgresLogListRequest
+	(*PostgresLogListResponse)(nil), // 36: agent.PostgresLogListResponse
+	(*any1.Any)(nil),                // 37: google.protobuf.Any
 }
 var file_pkg_agent_agent_proto_depIdxs = []int32{
 	4,  // 0: agent.MongoLogListResponse.log_files:type_name -> agent.MongoLogFile
 	7,  // 1: agent.MongoLogAnalyzeResponse.log_entries:type_name -> agent.MongoLogEntry
 	9,  // 2: agent.AlarmConfiguration.condition:type_name -> agent.AlarmCondition
-	34, // 3: agent.QueryResult.result:type_name -> google.protobuf.Any
+	37, // 3: agent.QueryResult.result:type_name -> google.protobuf.Any
 	11, // 4: agent.ReportAlarmRequest.events:type_name -> agent.AlarmEvent
 	0,  // 5: agent.RegisterRequest.agent_info:type_name -> agent.AgentInfo
 	15, // 6: agent.RegisterResponse.registration:type_name -> agent.RegistrationResult
@@ -2581,35 +2762,38 @@ var file_pkg_agent_agent_proto_depIdxs = []int32{
 	2,  // 20: agent.AgentMessage.mongo_info:type_name -> agent.MongoInfo
 	29, // 21: agent.SystemMetricsResponse.metrics:type_name -> agent.SystemMetrics
 	10, // 22: agent.AlarmConfigResponse.configurations:type_name -> agent.AlarmConfiguration
-	28, // 23: agent.AgentService.Connect:input_type -> agent.AgentMessage
-	18, // 24: agent.AgentService.Register:input_type -> agent.RegisterRequest
-	20, // 25: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
-	22, // 26: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
-	20, // 27: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
-	22, // 28: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
-	30, // 29: agent.AgentService.SendSystemMetrics:input_type -> agent.SystemMetricsRequest
-	32, // 30: agent.AgentService.GetAlarmConfigurations:input_type -> agent.AlarmConfigRequest
-	16, // 31: agent.AgentService.ReportAlarm:input_type -> agent.ReportAlarmRequest
-	23, // 32: agent.AgentService.SendMongoInfo:input_type -> agent.MongoInfoRequest
-	3,  // 33: agent.AgentService.ListMongoLogs:input_type -> agent.MongoLogListRequest
-	6,  // 34: agent.AgentService.AnalyzeMongoLog:input_type -> agent.MongoLogAnalyzeRequest
-	27, // 35: agent.AgentService.Connect:output_type -> agent.ServerMessage
-	19, // 36: agent.AgentService.Register:output_type -> agent.RegisterResponse
-	21, // 37: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
-	24, // 38: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
-	21, // 39: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
-	24, // 40: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
-	31, // 41: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
-	33, // 42: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
-	17, // 43: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
-	25, // 44: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
-	5,  // 45: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
-	8,  // 46: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
-	35, // [35:47] is the sub-list for method output_type
-	23, // [23:35] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	34, // 23: agent.PostgresLogListResponse.log_files:type_name -> agent.PostgresLogFile
+	28, // 24: agent.AgentService.Connect:input_type -> agent.AgentMessage
+	18, // 25: agent.AgentService.Register:input_type -> agent.RegisterRequest
+	20, // 26: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
+	22, // 27: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
+	20, // 28: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
+	22, // 29: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
+	30, // 30: agent.AgentService.SendSystemMetrics:input_type -> agent.SystemMetricsRequest
+	32, // 31: agent.AgentService.GetAlarmConfigurations:input_type -> agent.AlarmConfigRequest
+	16, // 32: agent.AgentService.ReportAlarm:input_type -> agent.ReportAlarmRequest
+	23, // 33: agent.AgentService.SendMongoInfo:input_type -> agent.MongoInfoRequest
+	3,  // 34: agent.AgentService.ListMongoLogs:input_type -> agent.MongoLogListRequest
+	6,  // 35: agent.AgentService.AnalyzeMongoLog:input_type -> agent.MongoLogAnalyzeRequest
+	35, // 36: agent.AgentService.ListPostgresLogs:input_type -> agent.PostgresLogListRequest
+	27, // 37: agent.AgentService.Connect:output_type -> agent.ServerMessage
+	19, // 38: agent.AgentService.Register:output_type -> agent.RegisterResponse
+	21, // 39: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
+	24, // 40: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
+	21, // 41: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
+	24, // 42: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
+	31, // 43: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
+	33, // 44: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
+	17, // 45: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
+	25, // 46: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
+	5,  // 47: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
+	8,  // 48: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
+	36, // 49: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
+	37, // [37:50] is the sub-list for method output_type
+	24, // [24:37] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_pkg_agent_agent_proto_init() }
@@ -2636,7 +2820,7 @@ func file_pkg_agent_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_agent_agent_proto_rawDesc), len(file_pkg_agent_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   34,
+			NumMessages:   37,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

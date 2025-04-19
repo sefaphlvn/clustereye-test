@@ -16,6 +16,7 @@ import (
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -1263,11 +1264,41 @@ func (s *Server) GetStatusMongo(ctx context.Context, _ *structpb.Struct) (*struc
 	return value, nil
 }
 
-// ListMongoLogs, belirtilen agent'tan MongoDB log dosyalarını listelemesini ister
+// ListMongoLogs, belirtilen agent'tan MongoDB log dosyalarını listeler
 func (s *Server) ListMongoLogs(ctx context.Context, req *pb.MongoLogListRequest) (*pb.MongoLogListResponse, error) {
-	log.Printf("ListMongoLogs çağrıldı, log_path: %s", req.LogPath)
+	log.Printf("ListMongoLogs çağrıldı")
 
-	// Agent ID'yi requestten çıkar ve agent'ı doğrula
+	// Agent ID'yi önce metadata'dan almayı dene
+	md, ok := metadata.FromIncomingContext(ctx)
+	if ok {
+		agentIDValues := md.Get("agent-id")
+		if len(agentIDValues) > 0 {
+			log.Printf("Metadata'dan agent ID alındı: %s", agentIDValues[0])
+			// Metadata'dan gelen agent ID'yi kullan
+			agentID := agentIDValues[0]
+
+			// Agent'a istek gönder ve sonucu al
+			response, err := s.sendMongoLogListQuery(ctx, agentID)
+			if err != nil {
+				log.Printf("MongoDB log dosyaları listelenirken hata: %v", err)
+
+				// Daha açıklayıcı hata mesajları için gRPC status kodlarına dönüştür
+				if strings.Contains(err.Error(), "agent bulunamadı") {
+					return nil, status.Errorf(codes.NotFound, "Agent bulunamadı veya bağlantı kapalı: %s", agentID)
+				} else if err == context.DeadlineExceeded {
+					return nil, status.Errorf(codes.DeadlineExceeded, "İstek zaman aşımına uğradı")
+				}
+
+				return nil, status.Errorf(codes.Internal, "MongoDB log dosyaları listelenirken bir hata oluştu: %v", err)
+			}
+
+			log.Printf("MongoDB log dosyaları başarıyla listelendi - Agent: %s, Dosya sayısı: %d",
+				agentID, len(response.LogFiles))
+			return response, nil
+		}
+	}
+
+	// Metadata'dan alınamadıysa, context'ten almayı dene
 	agentID := ""
 	queryCtx, ok := ctx.Value("agent_id").(string)
 	if ok && queryCtx != "" {
@@ -1279,7 +1310,7 @@ func (s *Server) ListMongoLogs(ctx context.Context, req *pb.MongoLogListRequest)
 	}
 
 	// Agent'a istek gönder ve sonucu al
-	response, err := s.sendMongoLogListQuery(ctx, agentID, req.LogPath)
+	response, err := s.sendMongoLogListQuery(ctx, agentID)
 	if err != nil {
 		log.Printf("MongoDB log dosyaları listelenirken hata: %v", err)
 
@@ -1293,21 +1324,40 @@ func (s *Server) ListMongoLogs(ctx context.Context, req *pb.MongoLogListRequest)
 		return nil, status.Errorf(codes.Internal, "MongoDB log dosyaları listelenirken bir hata oluştu: %v", err)
 	}
 
-	log.Printf("MongoDB log dosyaları başarıyla listelendi - Agent: %s, Dosya sayısı: %d", 
+	log.Printf("MongoDB log dosyaları başarıyla listelendi - Agent: %s, Dosya sayısı: %d",
 		agentID, len(response.LogFiles))
 	return response, nil
 }
 
 // AnalyzeMongoLog, belirtilen agent'tan MongoDB log dosyasını analiz etmesini ister
 func (s *Server) AnalyzeMongoLog(ctx context.Context, req *pb.MongoLogAnalyzeRequest) (*pb.MongoLogAnalyzeResponse, error) {
-	log.Printf("AnalyzeMongoLog çağrıldı, log_file_path: %s, threshold: %d ms", req.LogFilePath, req.SlowQueryThresholdMs)
+	log.Printf("AnalyzeMongoLog çağrıldı, log_file_path: '%s' (boş mu? %t), threshold: %d ms, agent_id param: %s",
+		req.LogFilePath, req.LogFilePath == "", req.SlowQueryThresholdMs, req.AgentId)
 
-	// Agent ID'yi requestten çıkar ve agent'ı doğrula
-	agentID := ""
-	queryCtx, ok := ctx.Value("agent_id").(string)
-	if ok && queryCtx != "" {
-		agentID = queryCtx
+	// Agent ID'yi önce doğrudan istekten al
+	agentID := req.AgentId
+
+	// Boşsa metadata'dan almayı dene
+	if agentID == "" {
+		md, ok := metadata.FromIncomingContext(ctx)
+		if ok {
+			agentIDValues := md.Get("agent-id")
+			if len(agentIDValues) > 0 {
+				log.Printf("Metadata'dan agent ID alındı: %s", agentIDValues[0])
+				agentID = agentIDValues[0]
+			}
+		}
 	}
+
+	// Hala boşsa context'ten almayı dene
+	if agentID == "" {
+		queryCtx, ok := ctx.Value("agent_id").(string)
+		if ok && queryCtx != "" {
+			agentID = queryCtx
+		}
+	}
+
+	log.Printf("Kullanılan agent_id: %s", agentID)
 
 	if agentID == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "Agent ID belirtilmedi")
@@ -1322,12 +1372,13 @@ func (s *Server) AnalyzeMongoLog(ctx context.Context, req *pb.MongoLogAnalyzeReq
 	threshold := req.SlowQueryThresholdMs
 	if threshold <= 0 {
 		threshold = 100 // Varsayılan 100ms
+		log.Printf("Threshold değeri 0 veya negatif, varsayılan değer kullanılıyor: %d ms", threshold)
 	}
 
 	// Agent'a istek gönder ve sonucu al
 	response, err := s.sendMongoLogAnalyzeQuery(ctx, agentID, req.LogFilePath, threshold)
 	if err != nil {
-		log.Printf("MongoDB log dosyası analiz edilirken hata: %v", err)
+		log.Printf("MongoDB log analizi için hata: %v", err)
 
 		// Daha açıklayıcı hata mesajları için gRPC status kodlarına dönüştür
 		if strings.Contains(err.Error(), "agent bulunamadı") {
@@ -1336,128 +1387,16 @@ func (s *Server) AnalyzeMongoLog(ctx context.Context, req *pb.MongoLogAnalyzeReq
 			return nil, status.Errorf(codes.DeadlineExceeded, "İstek zaman aşımına uğradı")
 		}
 
-		return nil, status.Errorf(codes.Internal, "MongoDB log dosyası analiz edilirken bir hata oluştu: %v", err)
+		return nil, status.Errorf(codes.Internal, "MongoDB log analizi için bir hata oluştu: %v", err)
 	}
 
-	log.Printf("MongoDB log analizi başarıyla tamamlandı - Agent: %s, Log girişi sayısı: %d", 
+	log.Printf("MongoDB log analizi başarıyla tamamlandı - Agent: %s, Log girişi sayısı: %d",
 		agentID, len(response.LogEntries))
 	return response, nil
 }
 
 // sendMongoLogListQuery, agent'a MongoDB log dosyalarını listelemesi için sorgu gönderir
-func (s *Server) sendMongoLogListQuery(ctx context.Context, agentID, logPath string) (*pb.MongoLogListResponse, error) {
-    // Agent'ın bağlı olup olmadığını kontrol et
-    s.mu.RLock()
-    agent, agentExists := s.agents[agentID]
-    s.mu.RUnlock()
-
-    if !agentExists || agent == nil {
-        return nil, fmt.Errorf("agent bulunamadı veya bağlantı kapalı: %s", agentID)
-    }
-
-    // MongoDB log dosyalarını listeleyen bir komut oluştur
-    command := fmt.Sprintf("list_mongo_logs|%s", logPath)
-    queryID := fmt.Sprintf("mongo_log_list_%d", time.Now().UnixNano())
-
-    // Sonuç kanalı oluştur
-    resultChan := make(chan *pb.QueryResult, 1)
-    s.queryMu.Lock()
-    s.queryResult[queryID] = &QueryResponse{
-        ResultChan: resultChan,
-    }
-    s.queryMu.Unlock()
-
-    // Context'in iptal durumunda kaynakları temizle
-    defer func() {
-        s.queryMu.Lock()
-        delete(s.queryResult, queryID)
-        s.queryMu.Unlock()
-        close(resultChan)
-    }()
-
-    // Sorguyu gönder
-    if err := agent.Stream.Send(&pb.ServerMessage{
-        Payload: &pb.ServerMessage_Query{
-            Query: &pb.Query{
-                QueryId: queryID,
-                Command: command,
-            },
-        },
-    }); err != nil {
-        return nil, fmt.Errorf("sorgu gönderilemedi: %v", err)
-    }
-
-    log.Printf("MongoDB log dosyaları için sorgu gönderildi - Agent: %s, Path: %s, QueryID: %s", 
-        agentID, logPath, queryID)
-
-    // Cevabı bekle
-    select {
-    case result := <-resultChan:
-        // Sonuç geldi, MongoLogListResponse tipine dönüştür
-        if result == nil {
-            return nil, fmt.Errorf("null sorgu sonucu alındı")
-        }
-
-        // Any türündeki sonucu ayrıştırmayı dene
-        var logListResponse pb.MongoLogListResponse
-        if err := result.Result.UnmarshalTo(&logListResponse); err != nil {
-            // Hata detaylarını logla
-            log.Printf("MongoLogListResponse ayrıştırma hatası: %v", err)
-            log.Printf("result.Result.TypeUrl: %s", result.Result.TypeUrl)
-            
-            // Struct olarak ayrıştırmayı dene
-            var resultStruct structpb.Struct
-            if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
-                log.Printf("Struct ayrıştırma hatası: %v", err)
-                return nil, fmt.Errorf("sonuç ayrıştırma hatası: %v", err)
-            }
-            
-            // Struct'tan MongoLogListResponse oluştur
-            logFiles := make([]*pb.MongoLogFile, 0)
-            filesValue, ok := resultStruct.Fields["log_files"]
-            if ok && filesValue != nil && filesValue.GetListValue() != nil {
-                for _, fileValue := range filesValue.GetListValue().Values {
-                    if fileValue.GetStructValue() != nil {
-                        fileStruct := fileValue.GetStructValue()
-                        
-                        // Dosya değerlerini al
-                        nameValue := fileStruct.Fields["name"].GetStringValue()
-                        pathValue := fileStruct.Fields["path"].GetStringValue()
-                        sizeValue := int64(fileStruct.Fields["size"].GetNumberValue())
-                        lastModifiedValue := int64(fileStruct.Fields["last_modified"].GetNumberValue())
-                        
-                        // MongoLogFile oluştur
-                        logFile := &pb.MongoLogFile{
-                            Name:         nameValue,
-                            Path:         pathValue,
-                            Size:         sizeValue,
-                            LastModified: lastModifiedValue,
-                        }
-                        
-                        logFiles = append(logFiles, logFile)
-                    }
-                }
-            }
-            
-            return &pb.MongoLogListResponse{
-                LogFiles: logFiles,
-            }, nil
-        }
-
-        // Başarılı sonucu logla
-        log.Printf("MongoDB log dosyaları başarıyla alındı - Agent: %s, Dosya sayısı: %d", 
-            agentID, len(logListResponse.LogFiles))
-        
-        return &logListResponse, nil
-
-    case <-ctx.Done():
-        // Context iptal edildi veya zaman aşımına uğradı
-        return nil, ctx.Err()
-    }
-}
-
-// sendMongoLogAnalyzeQuery, agent'a MongoDB log dosyasını analiz etmesi için sorgu gönderir
-func (s *Server) sendMongoLogAnalyzeQuery(ctx context.Context, agentID, logFilePath string, thresholdMs int64) (*pb.MongoLogAnalyzeResponse, error) {
+func (s *Server) sendMongoLogListQuery(ctx context.Context, agentID string) (*pb.MongoLogListResponse, error) {
 	// Agent'ın bağlı olup olmadığını kontrol et
 	s.mu.RLock()
 	agent, agentExists := s.agents[agentID]
@@ -1467,10 +1406,11 @@ func (s *Server) sendMongoLogAnalyzeQuery(ctx context.Context, agentID, logFileP
 		return nil, fmt.Errorf("agent bulunamadı veya bağlantı kapalı: %s", agentID)
 	}
 
-	// MongoDB log analizi için bir komut oluştur
-	// Agent buna göre bir komut beklemelidir
-	command := fmt.Sprintf("analyze_mongo_log|%s|%d", logFilePath, thresholdMs)
-	queryID := fmt.Sprintf("mongo_log_analyze_%d", time.Now().UnixNano())
+	// MongoDB log dosyalarını listeleyen bir komut oluştur
+	command := "list_mongo_logs"
+	queryID := fmt.Sprintf("mongo_log_list_%d", time.Now().UnixNano())
+
+	log.Printf("MongoDB log listesi için komut: %s", command)
 
 	// Sonuç kanalı oluştur
 	resultChan := make(chan *pb.QueryResult, 1)
@@ -1500,7 +1440,8 @@ func (s *Server) sendMongoLogAnalyzeQuery(ctx context.Context, agentID, logFileP
 		return nil, fmt.Errorf("sorgu gönderilemedi: %v", err)
 	}
 
-	log.Printf("MongoDB log analizi için sorgu gönderildi - Agent: %s, Path: %s", agentID, logFilePath)
+	log.Printf("MongoDB log dosyaları için sorgu gönderildi - Agent: %s, QueryID: %s",
+		agentID, queryID)
 
 	// Cevabı bekle
 	select {
@@ -1510,84 +1451,383 @@ func (s *Server) sendMongoLogAnalyzeQuery(ctx context.Context, agentID, logFileP
 			return nil, fmt.Errorf("null sorgu sonucu alındı")
 		}
 
-		// Any türündeki sonucu ayrıştırmayı dene
-		var analyzeResponse pb.MongoLogAnalyzeResponse
-		if err := result.Result.UnmarshalTo(&analyzeResponse); err != nil {
-			log.Printf("MongoLogAnalyzeResponse ayrıştırma hatası: %v, TypeUrl: %s", err, result.Result.TypeUrl)
-			
-			// Struct olarak ayrıştırmayı dene
-			var resultStruct structpb.Struct
-			if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
-				log.Printf("Struct ayrıştırma hatası: %v", err)
+		log.Printf("Agent'tan yanıt alındı - QueryID: %s, TypeUrl: %s", queryID, result.Result.TypeUrl)
+
+		// Önce struct olarak ayrıştırmayı dene (Agent'ın gönderdiği tipte)
+		var resultStruct structpb.Struct
+		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
+			log.Printf("Struct ayrıştırma hatası: %v", err)
+
+			// Struct ayrıştırma başarısız olursa, MongoLogListResponse olarak dene
+			var logListResponse pb.MongoLogListResponse
+			if err := result.Result.UnmarshalTo(&logListResponse); err != nil {
+				log.Printf("MongoLogListResponse ayrıştırma hatası: %v", err)
 				return nil, fmt.Errorf("sonuç ayrıştırma hatası: %v", err)
 			}
 
-			// Struct'tan MongoLogAnalyzeResponse oluştur
-			logEntries := make([]*pb.MongoLogEntry, 0)
-			entriesValue, ok := resultStruct.Fields["log_entries"]
-			if ok && entriesValue != nil && entriesValue.GetListValue() != nil {
-				for _, entryValue := range entriesValue.GetListValue().Values {
-					if entryValue.GetStructValue() != nil {
-						entryStruct := entryValue.GetStructValue()
-						
-						// Log giriş değerlerini al
-						timestamp := int64(entryStruct.Fields["timestamp"].GetNumberValue())
-						severityStr := entryStruct.Fields["severity"].GetStringValue()
-						
-						// severity'yi int32'ye dönüştür
-						var severityInt int32 = 0
-						switch severityStr {
-						case "F":
-							severityInt = 0 // Fatal
-						case "E":
-							severityInt = 1 // Error
-						case "W":
-							severityInt = 2 // Warning
-						case "I":
-							severityInt = 3 // Info
-						case "D":
-							severityInt = 4 // Debug
-						default:
-							severityInt = 3 // Bilinmeyen değerler için Info kullan
-						}
-						
-						component := entryStruct.Fields["component"].GetStringValue()
-						context := entryStruct.Fields["context"].GetStringValue()
-						message := entryStruct.Fields["message"].GetStringValue()
-						dbName := entryStruct.Fields["db_name"].GetStringValue()
-						durationMillis := int64(entryStruct.Fields["duration_millis"].GetNumberValue())
-						command := entryStruct.Fields["command"].GetStringValue()
-						planSummary := entryStruct.Fields["plan_summary"].GetStringValue()
-						namespace := entryStruct.Fields["namespace"].GetStringValue()
-						
-						// MongoLogEntry oluştur
-						logEntry := &pb.MongoLogEntry{
-							Timestamp:      timestamp,
-							Severity:       severityInt,  // int32 olarak kullan
-							Component:      component,
-							Context:        context,
-							Message:        message,
-							DbName:         dbName,
-							DurationMillis: durationMillis,
-							Command:        command,
-							PlanSummary:    planSummary,
-							Namespace:      namespace,
-						}
-						
-						logEntries = append(logEntries, logEntry)
+			log.Printf("Doğrudan MongoLogListResponse'a başarıyla ayrıştırıldı - Dosya sayısı: %d", len(logListResponse.LogFiles))
+			return &logListResponse, nil
+		}
+
+		// Sonucun içeriğini logla
+		structBytes, _ := json.Marshal(resultStruct.AsMap())
+		log.Printf("Struct içeriği: %s", string(structBytes))
+
+		// Struct'tan MongoLogListResponse oluştur
+		logFiles := make([]*pb.MongoLogFile, 0)
+		filesValue, ok := resultStruct.Fields["log_files"]
+		if ok && filesValue != nil && filesValue.GetListValue() != nil {
+			for _, fileValue := range filesValue.GetListValue().Values {
+				if fileValue.GetStructValue() != nil {
+					fileStruct := fileValue.GetStructValue()
+
+					// Dosya değerlerini al
+					nameValue := fileStruct.Fields["name"].GetStringValue()
+					pathValue := fileStruct.Fields["path"].GetStringValue()
+					sizeValue := int64(fileStruct.Fields["size"].GetNumberValue())
+					lastModifiedValue := int64(fileStruct.Fields["last_modified"].GetNumberValue())
+
+					// MongoLogFile oluştur
+					logFile := &pb.MongoLogFile{
+						Name:         nameValue,
+						Path:         pathValue,
+						Size:         sizeValue,
+						LastModified: lastModifiedValue,
 					}
+
+					logFiles = append(logFiles, logFile)
 				}
 			}
-			
-			return &pb.MongoLogAnalyzeResponse{
-				LogEntries: logEntries,
-			}, nil
 		}
-		
-		return &analyzeResponse, nil
+
+		log.Printf("Struct'tan oluşturulan log dosyaları sayısı: %d", len(logFiles))
+
+		return &pb.MongoLogListResponse{
+			LogFiles: logFiles,
+		}, nil
 
 	case <-ctx.Done():
 		// Context iptal edildi veya zaman aşımına uğradı
 		return nil, ctx.Err()
 	}
+}
+
+// sendMongoLogAnalyzeQuery, agent'a MongoDB log dosyasını analiz etmesi için sorgu gönderir
+func (s *Server) sendMongoLogAnalyzeQuery(ctx context.Context, agentID, logFilePath string, thresholdMs int64) (*pb.MongoLogAnalyzeResponse, error) {
+	// Agent'ın bağlı olup olmadığını kontrol et
+	s.mu.RLock()
+	agent, agentExists := s.agents[agentID]
+	s.mu.RUnlock()
+
+	if !agentExists || agent == nil {
+		return nil, fmt.Errorf("agent bulunamadı veya bağlantı kapalı: %s", agentID)
+	}
+
+	// logFilePath boş mu kontrol et
+	if logFilePath == "" {
+		return nil, fmt.Errorf("log dosya yolu boş olamaz")
+	}
+
+	// MongoDB log analizi için bir komut oluştur
+	command := fmt.Sprintf("analyze_mongo_log|%s|%d", logFilePath, thresholdMs)
+	queryID := fmt.Sprintf("mongo_log_analyze_%d", time.Now().UnixNano())
+
+	log.Printf("MongoDB log analizi için komut: %s", command)
+
+	// Sonuç kanalı oluştur
+	resultChan := make(chan *pb.QueryResult, 1)
+	s.queryMu.Lock()
+	s.queryResult[queryID] = &QueryResponse{
+		ResultChan: resultChan,
+	}
+	s.queryMu.Unlock()
+
+	// Context'in iptal durumunda kaynakları temizle
+	defer func() {
+		s.queryMu.Lock()
+		delete(s.queryResult, queryID)
+		s.queryMu.Unlock()
+		close(resultChan)
+	}()
+
+	// Sorguyu gönder
+	err := agent.Stream.Send(&pb.ServerMessage{
+		Payload: &pb.ServerMessage_Query{
+			Query: &pb.Query{
+				QueryId: queryID,
+				Command: command,
+			},
+		},
+	})
+	if err != nil {
+		log.Printf("MongoDB log analizi sorgusu gönderilemedi - Hata: %v", err)
+		return nil, fmt.Errorf("sorgu gönderilemedi: %v", err)
+	}
+
+	log.Printf("MongoDB log analizi için sorgu gönderildi - Agent: %s, Path: %s, QueryID: %s",
+		agentID, logFilePath, queryID)
+
+	// Cevabı bekle
+	select {
+	case result := <-resultChan:
+		// Sonuç geldi
+		if result == nil {
+			log.Printf("Null sorgu sonucu alındı - QueryID: %s", queryID)
+			return nil, fmt.Errorf("null sorgu sonucu alındı")
+		}
+
+		log.Printf("Agent'tan yanıt alındı - QueryID: %s, TypeUrl: %s", queryID, result.Result.TypeUrl)
+
+		// Önce struct olarak ayrıştırmayı dene (Agent'ın gönderdiği tipte)
+		var resultStruct structpb.Struct
+		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
+			log.Printf("Struct ayrıştırma hatası: %v", err)
+
+			// Struct ayrıştırma başarısız olursa, MongoLogAnalyzeResponse olarak dene
+			var analyzeResponse pb.MongoLogAnalyzeResponse
+			if err := result.Result.UnmarshalTo(&analyzeResponse); err != nil {
+				log.Printf("MongoLogAnalyzeResponse ayrıştırma hatası: %v", err)
+				return nil, fmt.Errorf("sonuç ayrıştırma hatası: %v", err)
+			}
+
+			log.Printf("Doğrudan MongoLogAnalyzeResponse'a başarıyla ayrıştırıldı - Log girişleri: %d", len(analyzeResponse.LogEntries))
+			return &analyzeResponse, nil
+		}
+
+		// Sonucun içeriğini logla
+		structBytes, _ := json.Marshal(resultStruct.AsMap())
+		log.Printf("Struct içeriği: %s", string(structBytes))
+
+		// Struct'tan MongoLogAnalyzeResponse oluştur
+		logEntries := make([]*pb.MongoLogEntry, 0)
+		entriesValue, ok := resultStruct.Fields["log_entries"]
+		if ok && entriesValue != nil && entriesValue.GetListValue() != nil {
+			for _, entryValue := range entriesValue.GetListValue().Values {
+				if entryValue.GetStructValue() != nil {
+					entryStruct := entryValue.GetStructValue()
+
+					// Log giriş değerlerini al
+					timestamp := int64(entryStruct.Fields["timestamp"].GetNumberValue())
+					severity := entryStruct.Fields["severity"].GetStringValue() // String olarak al
+					component := entryStruct.Fields["component"].GetStringValue()
+					context := entryStruct.Fields["context"].GetStringValue()
+					message := entryStruct.Fields["message"].GetStringValue()
+					dbName := entryStruct.Fields["db_name"].GetStringValue()
+					durationMillis := int64(entryStruct.Fields["duration_millis"].GetNumberValue())
+					command := entryStruct.Fields["command"].GetStringValue()
+					planSummary := entryStruct.Fields["plan_summary"].GetStringValue()
+					namespace := entryStruct.Fields["namespace"].GetStringValue()
+
+					// MongoLogEntry oluştur
+					logEntry := &pb.MongoLogEntry{
+						Timestamp:      timestamp,
+						Severity:       severity, // String olarak kullan
+						Component:      component,
+						Context:        context,
+						Message:        message,
+						DbName:         dbName,
+						DurationMillis: durationMillis,
+						Command:        command,
+						PlanSummary:    planSummary,
+						Namespace:      namespace,
+					}
+
+					logEntries = append(logEntries, logEntry)
+				}
+			}
+		}
+
+		log.Printf("Struct'tan oluşturulan log girişleri sayısı: %d", len(logEntries))
+
+		return &pb.MongoLogAnalyzeResponse{
+			LogEntries: logEntries,
+		}, nil
+
+	case <-ctx.Done():
+		// Context iptal edildi veya zaman aşımına uğradı
+		log.Printf("Context iptal edildi veya zaman aşımına uğradı - QueryID: %s", queryID)
+		return nil, ctx.Err()
+	}
+}
+
+// sendPostgresLogListQuery, agent'a PostgreSQL log dosyalarını listelemesi için sorgu gönderir
+func (s *Server) sendPostgresLogListQuery(ctx context.Context, agentID string) (*pb.PostgresLogListResponse, error) {
+	// Agent'ın bağlı olup olmadığını kontrol et
+	s.mu.RLock()
+	agent, agentExists := s.agents[agentID]
+	s.mu.RUnlock()
+
+	if !agentExists || agent == nil {
+		return nil, fmt.Errorf("agent bulunamadı veya bağlantı kapalı: %s", agentID)
+	}
+
+	// PostgreSQL log dosyalarını listeleyen bir komut oluştur
+	command := "list_postgres_logs"
+	queryID := fmt.Sprintf("postgres_log_list_%d", time.Now().UnixNano())
+
+	log.Printf("PostgreSQL log listesi için komut: %s", command)
+
+	// Sonuç kanalı oluştur
+	resultChan := make(chan *pb.QueryResult, 1)
+	s.queryMu.Lock()
+	s.queryResult[queryID] = &QueryResponse{
+		ResultChan: resultChan,
+	}
+	s.queryMu.Unlock()
+
+	// Context'in iptal durumunda kaynakları temizle
+	defer func() {
+		s.queryMu.Lock()
+		delete(s.queryResult, queryID)
+		s.queryMu.Unlock()
+		close(resultChan)
+	}()
+
+	// Sorguyu gönder
+	if err := agent.Stream.Send(&pb.ServerMessage{
+		Payload: &pb.ServerMessage_Query{
+			Query: &pb.Query{
+				QueryId: queryID,
+				Command: command,
+			},
+		},
+	}); err != nil {
+		return nil, fmt.Errorf("sorgu gönderilemedi: %v", err)
+	}
+
+	log.Printf("PostgreSQL log dosyaları için sorgu gönderildi - Agent: %s, QueryID: %s",
+		agentID, queryID)
+
+	// Cevabı bekle
+	select {
+	case result := <-resultChan:
+		// Sonuç geldi
+		if result == nil {
+			return nil, fmt.Errorf("null sorgu sonucu alındı")
+		}
+
+		log.Printf("Agent'tan yanıt alındı - QueryID: %s, TypeUrl: %s", queryID, result.Result.TypeUrl)
+
+		// Önce struct olarak ayrıştırmayı dene (Agent'ın gönderdiği tipte)
+		var resultStruct structpb.Struct
+		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
+			log.Printf("Struct ayrıştırma hatası: %v", err)
+
+			// Struct ayrıştırma başarısız olursa, PostgresLogListResponse olarak dene
+			var logListResponse pb.PostgresLogListResponse
+			if err := result.Result.UnmarshalTo(&logListResponse); err != nil {
+				log.Printf("PostgresLogListResponse ayrıştırma hatası: %v", err)
+				return nil, fmt.Errorf("sonuç ayrıştırma hatası: %v", err)
+			}
+
+			log.Printf("Doğrudan PostgresLogListResponse'a başarıyla ayrıştırıldı - Dosya sayısı: %d", len(logListResponse.LogFiles))
+			return &logListResponse, nil
+		}
+
+		// Sonucun içeriğini logla
+		structBytes, _ := json.Marshal(resultStruct.AsMap())
+		log.Printf("Struct içeriği: %s", string(structBytes))
+
+		// Struct'tan PostgresLogListResponse oluştur
+		logFiles := make([]*pb.PostgresLogFile, 0)
+		filesValue, ok := resultStruct.Fields["log_files"]
+		if ok && filesValue != nil && filesValue.GetListValue() != nil {
+			for _, fileValue := range filesValue.GetListValue().Values {
+				if fileValue.GetStructValue() != nil {
+					fileStruct := fileValue.GetStructValue()
+
+					// Dosya değerlerini al
+					nameValue := fileStruct.Fields["name"].GetStringValue()
+					pathValue := fileStruct.Fields["path"].GetStringValue()
+					sizeValue := int64(fileStruct.Fields["size"].GetNumberValue())
+					lastModifiedValue := int64(fileStruct.Fields["last_modified"].GetNumberValue())
+
+					// PostgresLogFile oluştur
+					logFile := &pb.PostgresLogFile{
+						Name:         nameValue,
+						Path:         pathValue,
+						Size:         sizeValue,
+						LastModified: lastModifiedValue,
+					}
+
+					logFiles = append(logFiles, logFile)
+				}
+			}
+		}
+
+		log.Printf("Struct'tan oluşturulan log dosyaları sayısı: %d", len(logFiles))
+
+		return &pb.PostgresLogListResponse{
+			LogFiles: logFiles,
+		}, nil
+
+	case <-ctx.Done():
+		// Context iptal edildi veya zaman aşımına uğradı
+		return nil, ctx.Err()
+	}
+}
+
+// ListPostgresLogs, belirtilen agent'tan PostgreSQL log dosyalarını listeler
+func (s *Server) ListPostgresLogs(ctx context.Context, req *pb.PostgresLogListRequest) (*pb.PostgresLogListResponse, error) {
+	log.Printf("ListPostgresLogs çağrıldı")
+
+	// Agent ID'yi önce metadata'dan almayı dene
+	md, ok := metadata.FromIncomingContext(ctx)
+	if ok {
+		agentIDValues := md.Get("agent-id")
+		if len(agentIDValues) > 0 {
+			log.Printf("Metadata'dan agent ID alındı: %s", agentIDValues[0])
+			// Metadata'dan gelen agent ID'yi kullan
+			agentID := agentIDValues[0]
+
+			// Agent'a istek gönder ve sonucu al
+			response, err := s.sendPostgresLogListQuery(ctx, agentID)
+			if err != nil {
+				log.Printf("PostgreSQL log dosyaları listelenirken hata: %v", err)
+
+				// Daha açıklayıcı hata mesajları için gRPC status kodlarına dönüştür
+				if strings.Contains(err.Error(), "agent bulunamadı") {
+					return nil, status.Errorf(codes.NotFound, "Agent bulunamadı veya bağlantı kapalı: %s", agentID)
+				} else if err == context.DeadlineExceeded {
+					return nil, status.Errorf(codes.DeadlineExceeded, "İstek zaman aşımına uğradı")
+				}
+
+				return nil, status.Errorf(codes.Internal, "PostgreSQL log dosyaları listelenirken bir hata oluştu: %v", err)
+			}
+
+			log.Printf("PostgreSQL log dosyaları başarıyla listelendi - Agent: %s, Dosya sayısı: %d",
+				agentID, len(response.LogFiles))
+			return response, nil
+		}
+	}
+
+	// Metadata'dan alınamadıysa, context'ten almayı dene
+	agentID := ""
+	queryCtx, ok := ctx.Value("agent_id").(string)
+	if ok && queryCtx != "" {
+		agentID = queryCtx
+	}
+
+	if agentID == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Agent ID belirtilmedi")
+	}
+
+	// Agent'a istek gönder ve sonucu al
+	response, err := s.sendPostgresLogListQuery(ctx, agentID)
+	if err != nil {
+		log.Printf("PostgreSQL log dosyaları listelenirken hata: %v", err)
+
+		// Daha açıklayıcı hata mesajları için gRPC status kodlarına dönüştür
+		if strings.Contains(err.Error(), "agent bulunamadı") {
+			return nil, status.Errorf(codes.NotFound, "Agent bulunamadı veya bağlantı kapalı: %s", agentID)
+		} else if err == context.DeadlineExceeded {
+			return nil, status.Errorf(codes.DeadlineExceeded, "İstek zaman aşımına uğradı")
+		}
+
+		return nil, status.Errorf(codes.Internal, "PostgreSQL log dosyaları listelenirken bir hata oluştu: %v", err)
+	}
+
+	log.Printf("PostgreSQL log dosyaları başarıyla listelendi - Agent: %s, Dosya sayısı: %d",
+		agentID, len(response.LogFiles))
+	return response, nil
 }

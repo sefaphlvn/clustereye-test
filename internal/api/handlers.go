@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -41,10 +42,13 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 
 		// Agent'dan sistem metriklerini al
 		agents.POST("/:agent_id/metrics", sendMetricsRequestToAgent(server))
-		
+
 		// MongoDB log dosyalarını listele
 		agents.GET("/:agent_id/mongo/logs", listMongoLogs(server))
-		
+
+		// PostgreSQL log dosyalarını listele
+		agents.GET("/:agent_id/postgres/logs", listPostgresLogs(server))
+
 		// MongoDB log dosyasını analiz et
 		agents.POST("/:agent_id/mongo/logs/analyze", analyzeMongoLog(server))
 	}
@@ -58,6 +62,8 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		status.GET("/mongo", getMongoStatus(server))
 		// Agent durum bilgilerini getir
 		status.GET("/agents", getAgentStatus(server))
+		// Tüm node sağlık bilgilerini getir
+		status.GET("/nodeshealth", getNodesHealth(server))
 	}
 
 	// Notification Settings Endpoint'leri
@@ -269,18 +275,13 @@ func listMongoLogs(server *server.Server) gin.HandlerFunc {
 			return
 		}
 
-		// İsteğe opsiyonel log_path parametresi eklenebilir
-		logPath := c.Query("log_path")
-
 		// Context oluştur ve agent_id ekle
 		ctx := context.WithValue(c.Request.Context(), "agent_id", agentID)
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 
 		// MongoDB log dosyalarını listele
-		req := &pb.MongoLogListRequest{
-			LogPath: logPath,
-		}
+		req := &pb.MongoLogListRequest{}
 
 		response, err := server.ListMongoLogs(ctx, req)
 		if err != nil {
@@ -312,11 +313,83 @@ func listMongoLogs(server *server.Server) gin.HandlerFunc {
 		logFiles := make([]map[string]interface{}, 0, len(response.LogFiles))
 		for _, file := range response.LogFiles {
 			logFiles = append(logFiles, map[string]interface{}{
-				"name":           file.Name,
-				"path":           file.Path,
-				"size":           file.Size,
-				"size_readable":  formatBytes(file.Size),
-				"last_modified":  file.LastModified,
+				"name":                   file.Name,
+				"path":                   file.Path,
+				"size":                   file.Size,
+				"size_readable":          formatBytes(file.Size),
+				"last_modified":          file.LastModified,
+				"last_modified_readable": time.Unix(file.LastModified, 0).Format(time.RFC3339),
+			})
+		}
+
+		// Başarılı yanıt
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "success",
+			"agent_id":  agentID,
+			"log_files": logFiles,
+		})
+	}
+}
+
+// listPostgresLogs, belirtilen agent'tan PostgreSQL log dosyalarını listeler
+func listPostgresLogs(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Param("agent_id")
+
+		if agentID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "agent_id parametresi gerekli",
+			})
+			return
+		}
+
+		// Context oluştur ve agent_id ekle
+		ctx := context.WithValue(c.Request.Context(), "agent_id", agentID)
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+
+		// PostgreSQL log dosyalarını listele
+		req := &pb.PostgresLogListRequest{
+			AgentId: agentID,
+			LogPath: c.Query("log_path"), // Optional query parameter for log path
+		}
+
+		response, err := server.ListPostgresLogs(ctx, req)
+		if err != nil {
+			httpStatus := http.StatusInternalServerError
+			message := "PostgreSQL log dosyaları listelenirken bir hata oluştu: " + err.Error()
+
+			if err == context.DeadlineExceeded {
+				httpStatus = http.StatusGatewayTimeout
+				message = "İstek zaman aşımına uğradı"
+			} else if st, ok := grpcstatus.FromError(err); ok {
+				if st.Code() == codes.NotFound {
+					c.JSON(http.StatusNotFound, gin.H{
+						"status": "error",
+						"error":  st.Message(),
+					})
+					return
+				}
+				message = st.Message()
+			}
+
+			c.JSON(httpStatus, gin.H{
+				"status": "error",
+				"error":  message,
+			})
+			return
+		}
+
+		// Dosya bilgilerini daha okunabilir hale getir
+		logFiles := make([]map[string]interface{}, 0, len(response.LogFiles))
+		for _, file := range response.LogFiles {
+			logFiles = append(logFiles, map[string]interface{}{
+				"name":                   file.Name,
+				"path":                   file.Path,
+				"size":                   file.Size,
+				"size_readable":          formatBytes(file.Size),
+				"last_modified":          file.LastModified,
 				"last_modified_readable": time.Unix(file.LastModified, 0).Format(time.RFC3339),
 			})
 		}
@@ -363,8 +436,9 @@ func analyzeMongoLog(server *server.Server) gin.HandlerFunc {
 
 		// MongoDB log dosyasını analiz et
 		analyzeReq := &pb.MongoLogAnalyzeRequest{
-			LogFilePath:         req.LogFilePath,
+			LogFilePath:          req.LogFilePath,
 			SlowQueryThresholdMs: req.SlowQueryThreshold,
+			AgentId:              agentID,
 		}
 
 		response, err := server.AnalyzeMongoLog(ctx, analyzeReq)
@@ -397,27 +471,27 @@ func analyzeMongoLog(server *server.Server) gin.HandlerFunc {
 		logEntries := make([]map[string]interface{}, 0, len(response.LogEntries))
 		for _, entry := range response.LogEntries {
 			logEntries = append(logEntries, map[string]interface{}{
-				"timestamp":       entry.Timestamp,
+				"timestamp":          entry.Timestamp,
 				"timestamp_readable": time.Unix(entry.Timestamp, 0).Format(time.RFC3339),
-				"severity":        entry.Severity,
-				"component":       entry.Component,
-				"context":         entry.Context,
-				"message":         entry.Message,
-				"db_name":         entry.DbName,
-				"duration_millis": entry.DurationMillis,
-				"command":         entry.Command,
-				"plan_summary":    entry.PlanSummary,
-				"namespace":       entry.Namespace,
+				"severity":           entry.Severity,
+				"component":          entry.Component,
+				"context":            entry.Context,
+				"message":            entry.Message,
+				"db_name":            entry.DbName,
+				"duration_millis":    entry.DurationMillis,
+				"command":            entry.Command,
+				"plan_summary":       entry.PlanSummary,
+				"namespace":          entry.Namespace,
 			})
 		}
 
 		// Başarılı yanıt
 		c.JSON(http.StatusOK, gin.H{
-			"status":      "success",
-			"agent_id":    agentID,
-			"log_path":    req.LogFilePath,
+			"status":       "success",
+			"agent_id":     agentID,
+			"log_path":     req.LogFilePath,
 			"threshold_ms": req.SlowQueryThreshold,
-			"log_entries": logEntries,
+			"log_entries":  logEntries,
 		})
 	}
 }
@@ -434,4 +508,53 @@ func formatBytes(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// getNodesHealth, tüm node sağlık bilgilerini birleştirip döndürür
+func getNodesHealth(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := server.GetDB()
+		// PostgreSQL verisini al
+		postgresRows, err := db.Query("SELECT json_agg(sub.jsondata) FROM (SELECT jsondata FROM postgres_data ORDER BY id) AS sub")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch PostgreSQL data: " + err.Error()})
+			return
+		}
+		defer postgresRows.Close()
+
+		var postgresData []byte
+		if postgresRows.Next() {
+			err := postgresRows.Scan(&postgresData)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse PostgreSQL data: " + err.Error()})
+				return
+			}
+		}
+
+		// MongoDB verisini al
+		mongoRows, err := db.Query("SELECT json_agg(sub.jsondata) FROM (SELECT jsondata FROM mongo_data ORDER BY id) AS sub")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch MongoDB data: " + err.Error()})
+			return
+		}
+		defer mongoRows.Close()
+
+		var mongoData []byte
+		if mongoRows.Next() {
+			err := mongoRows.Scan(&mongoData)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse MongoDB data: " + err.Error()})
+				return
+			}
+		}
+
+		// Verileri tek bir JSON yapısında birleştir
+		responseData := gin.H{
+			"postgresql": json.RawMessage(postgresData), // PostgreSQL verisini raw JSON olarak ekle
+			"mongodb":    json.RawMessage(mongoData),    // MongoDB verisini raw JSON olarak ekle
+		}
+
+		// Birleştirilmiş JSON verisini döndür
+		c.JSON(http.StatusOK, responseData)
+	}
 }

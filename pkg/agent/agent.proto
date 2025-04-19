@@ -248,6 +248,25 @@ message AlarmConfigResponse {
   repeated AlarmConfiguration configurations = 2;
 }
 
+// PostgreSQL log file information
+message PostgresLogFile {
+  string name = 1;
+  string path = 2;
+  int64 size = 3;
+  int64 last_modified = 4;
+}
+
+// Request for listing PostgreSQL log files
+message PostgresLogListRequest {
+  string agent_id = 1;
+  string log_path = 2;  // Optional path to look for logs
+}
+
+// Response containing PostgreSQL log files
+message PostgresLogListResponse {
+  repeated PostgresLogFile log_files = 1;
+}
+
 service AgentService {
   // Eski bağlantı metodu (geriye dönük uyumluluk için)
   rpc Connect(stream AgentMessage) returns (stream ServerMessage);
@@ -280,4 +299,7 @@ service AgentService {
   
   // MongoDB log dosyasını analiz eder
   rpc AnalyzeMongoLog(MongoLogAnalyzeRequest) returns (MongoLogAnalyzeResponse) {}
+
+  // List PostgreSQL log files
+  rpc ListPostgresLogs(PostgresLogListRequest) returns (PostgresLogListResponse) {}
 }
