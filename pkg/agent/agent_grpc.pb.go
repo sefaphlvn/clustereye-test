@@ -32,6 +32,7 @@ const (
 	AgentService_ListMongoLogs_FullMethodName          = "/agent.AgentService/ListMongoLogs"
 	AgentService_AnalyzeMongoLog_FullMethodName        = "/agent.AgentService/AnalyzeMongoLog"
 	AgentService_ListPostgresLogs_FullMethodName       = "/agent.AgentService/ListPostgresLogs"
+	AgentService_AnalyzePostgresLog_FullMethodName     = "/agent.AgentService/AnalyzePostgresLog"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -62,6 +63,8 @@ type AgentServiceClient interface {
 	AnalyzeMongoLog(ctx context.Context, in *MongoLogAnalyzeRequest, opts ...grpc.CallOption) (*MongoLogAnalyzeResponse, error)
 	// List PostgreSQL log files
 	ListPostgresLogs(ctx context.Context, in *PostgresLogListRequest, opts ...grpc.CallOption) (*PostgresLogListResponse, error)
+	// PostgreSQL log dosyasını analiz eder
+	AnalyzePostgresLog(ctx context.Context, in *PostgresLogAnalyzeRequest, opts ...grpc.CallOption) (*PostgresLogAnalyzeResponse, error)
 }
 
 type agentServiceClient struct {
@@ -211,6 +214,16 @@ func (c *agentServiceClient) ListPostgresLogs(ctx context.Context, in *PostgresL
 	return out, nil
 }
 
+func (c *agentServiceClient) AnalyzePostgresLog(ctx context.Context, in *PostgresLogAnalyzeRequest, opts ...grpc.CallOption) (*PostgresLogAnalyzeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PostgresLogAnalyzeResponse)
+	err := c.cc.Invoke(ctx, AgentService_AnalyzePostgresLog_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -239,6 +252,8 @@ type AgentServiceServer interface {
 	AnalyzeMongoLog(context.Context, *MongoLogAnalyzeRequest) (*MongoLogAnalyzeResponse, error)
 	// List PostgreSQL log files
 	ListPostgresLogs(context.Context, *PostgresLogListRequest) (*PostgresLogListResponse, error)
+	// PostgreSQL log dosyasını analiz eder
+	AnalyzePostgresLog(context.Context, *PostgresLogAnalyzeRequest) (*PostgresLogAnalyzeResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -287,6 +302,9 @@ func (UnimplementedAgentServiceServer) AnalyzeMongoLog(context.Context, *MongoLo
 }
 func (UnimplementedAgentServiceServer) ListPostgresLogs(context.Context, *PostgresLogListRequest) (*PostgresLogListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListPostgresLogs not implemented")
+}
+func (UnimplementedAgentServiceServer) AnalyzePostgresLog(context.Context, *PostgresLogAnalyzeRequest) (*PostgresLogAnalyzeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AnalyzePostgresLog not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -510,6 +528,24 @@ func _AgentService_ListPostgresLogs_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_AnalyzePostgresLog_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PostgresLogAnalyzeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).AnalyzePostgresLog(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_AnalyzePostgresLog_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).AnalyzePostgresLog(ctx, req.(*PostgresLogAnalyzeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -556,6 +592,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListPostgresLogs",
 			Handler:    _AgentService_ListPostgresLogs_Handler,
+		},
+		{
+			MethodName: "AnalyzePostgresLog",
+			Handler:    _AgentService_AnalyzePostgresLog_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -51,6 +51,9 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 
 		// MongoDB log dosyasını analiz et
 		agents.POST("/:agent_id/mongo/logs/analyze", analyzeMongoLog(server))
+
+		// PostgreSQL log dosyasını analiz et
+		agents.POST("/:agent_id/postgres/logs/analyze", analyzePostgresLog(server))
 	}
 
 	// Status Endpoint'leri
@@ -482,6 +485,108 @@ func analyzeMongoLog(server *server.Server) gin.HandlerFunc {
 				"command":            entry.Command,
 				"plan_summary":       entry.PlanSummary,
 				"namespace":          entry.Namespace,
+			})
+		}
+
+		// Başarılı yanıt
+		c.JSON(http.StatusOK, gin.H{
+			"status":       "success",
+			"agent_id":     agentID,
+			"log_path":     req.LogFilePath,
+			"threshold_ms": req.SlowQueryThreshold,
+			"log_entries":  logEntries,
+		})
+	}
+}
+
+// analyzePostgresLog, belirtilen agent'tan PostgreSQL log dosyasını analiz etmesini ister
+func analyzePostgresLog(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Param("agent_id")
+
+		if agentID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "agent_id parametresi gerekli",
+			})
+			return
+		}
+
+		var req struct {
+			LogFilePath        string `json:"log_file_path" binding:"required"`
+			SlowQueryThreshold int64  `json:"slow_query_threshold_ms"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz JSON verisi: " + err.Error(),
+			})
+			return
+		}
+
+		// Context oluştur ve agent_id ekle
+		ctx := context.WithValue(c.Request.Context(), "agent_id", agentID)
+		ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+
+		// PostgreSQL log dosyasını analiz et
+		analyzeReq := &pb.PostgresLogAnalyzeRequest{
+			LogFilePath:          req.LogFilePath,
+			SlowQueryThresholdMs: req.SlowQueryThreshold,
+			AgentId:              agentID,
+		}
+
+		response, err := server.AnalyzePostgresLog(ctx, analyzeReq)
+		if err != nil {
+			httpStatus := http.StatusInternalServerError
+			message := "PostgreSQL log dosyası analiz edilirken bir hata oluştu: " + err.Error()
+
+			if err == context.DeadlineExceeded {
+				httpStatus = http.StatusGatewayTimeout
+				message = "İstek zaman aşımına uğradı"
+			} else if st, ok := grpcstatus.FromError(err); ok {
+				if st.Code() == codes.NotFound {
+					c.JSON(http.StatusNotFound, gin.H{
+						"status": "error",
+						"error":  st.Message(),
+					})
+					return
+				}
+				message = st.Message()
+			}
+
+			c.JSON(httpStatus, gin.H{
+				"status": "error",
+				"error":  message,
+			})
+			return
+		}
+
+		// Log girdilerini daha okunabilir hale getir
+		logEntries := make([]map[string]interface{}, 0, len(response.LogEntries))
+		for _, entry := range response.LogEntries {
+			logEntries = append(logEntries, map[string]interface{}{
+				"timestamp":              entry.Timestamp,
+				"timestamp_readable":     time.Unix(entry.Timestamp, 0).Format(time.RFC3339),
+				"log_level":              entry.LogLevel,
+				"user_name":              entry.UserName,
+				"database":               entry.Database,
+				"process_id":             entry.ProcessId,
+				"connection_from":        entry.ConnectionFrom,
+				"session_id":             entry.SessionId,
+				"session_line_num":       entry.SessionLineNum,
+				"command_tag":            entry.CommandTag,
+				"session_start_time":     entry.SessionStartTime,
+				"virtual_transaction_id": entry.VirtualTransactionId,
+				"transaction_id":         entry.TransactionId,
+				"error_severity":         entry.ErrorSeverity,
+				"sql_state_code":         entry.SqlStateCode,
+				"message":                entry.Message,
+				"detail":                 entry.Detail,
+				"hint":                   entry.Hint,
+				"internal_query":         entry.InternalQuery,
+				"duration_ms":            entry.DurationMs,
 			})
 		}
 

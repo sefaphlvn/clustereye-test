@@ -1831,3 +1831,182 @@ func (s *Server) ListPostgresLogs(ctx context.Context, req *pb.PostgresLogListRe
 		agentID, len(response.LogFiles))
 	return response, nil
 }
+
+// AnalyzePostgresLog, belirtilen PostgreSQL log dosyasını analiz eder
+func (s *Server) AnalyzePostgresLog(ctx context.Context, req *pb.PostgresLogAnalyzeRequest) (*pb.PostgresLogAnalyzeResponse, error) {
+	// Agent ID'yi context'ten al
+	agentID := req.AgentId
+	if agentID == "" {
+		return nil, fmt.Errorf("agent_id gerekli")
+	}
+
+	// Log dosya yolunu kontrol et
+	if req.LogFilePath == "" {
+		return nil, fmt.Errorf("log_file_path gerekli")
+	}
+
+	// Varsayılan threshold değerini ayarla
+	thresholdMs := req.SlowQueryThresholdMs
+	if thresholdMs <= 0 {
+		thresholdMs = 1000 // Varsayılan 1 saniye
+	}
+
+	// PostgreSQL log analizi isteğini gönder
+	return s.sendPostgresLogAnalyzeQuery(ctx, agentID, req.LogFilePath, thresholdMs)
+}
+
+// sendPostgresLogAnalyzeQuery, agent'a PostgreSQL log dosyasını analiz etmesi için sorgu gönderir
+func (s *Server) sendPostgresLogAnalyzeQuery(ctx context.Context, agentID, logFilePath string, thresholdMs int64) (*pb.PostgresLogAnalyzeResponse, error) {
+	// Agent'ın bağlı olup olmadığını kontrol et
+	s.mu.RLock()
+	agent, agentExists := s.agents[agentID]
+	s.mu.RUnlock()
+
+	if !agentExists || agent == nil {
+		return nil, fmt.Errorf("agent bulunamadı veya bağlantı kapalı: %s", agentID)
+	}
+
+	// logFilePath boş mu kontrol et
+	if logFilePath == "" {
+		return nil, fmt.Errorf("log dosya yolu boş olamaz")
+	}
+
+	// PostgreSQL log analizi için bir komut oluştur
+	command := fmt.Sprintf("analyze_postgres_log|%s|%d", logFilePath, thresholdMs)
+	queryID := fmt.Sprintf("postgres_log_analyze_%d", time.Now().UnixNano())
+
+	log.Printf("PostgreSQL log analizi için komut: %s", command)
+
+	// Sonuç kanalı oluştur
+	resultChan := make(chan *pb.QueryResult, 1)
+	s.queryMu.Lock()
+	s.queryResult[queryID] = &QueryResponse{
+		ResultChan: resultChan,
+	}
+	s.queryMu.Unlock()
+
+	// Context'in iptal durumunda kaynakları temizle
+	defer func() {
+		s.queryMu.Lock()
+		delete(s.queryResult, queryID)
+		s.queryMu.Unlock()
+		close(resultChan)
+	}()
+
+	// Sorguyu gönder
+	err := agent.Stream.Send(&pb.ServerMessage{
+		Payload: &pb.ServerMessage_Query{
+			Query: &pb.Query{
+				QueryId: queryID,
+				Command: command,
+			},
+		},
+	})
+	if err != nil {
+		log.Printf("PostgreSQL log analizi sorgusu gönderilemedi - Hata: %v", err)
+		return nil, fmt.Errorf("sorgu gönderilemedi: %v", err)
+	}
+
+	log.Printf("PostgreSQL log analizi için sorgu gönderildi - Agent: %s, Path: %s, QueryID: %s",
+		agentID, logFilePath, queryID)
+
+	// Cevabı bekle
+	select {
+	case result := <-resultChan:
+		// Sonuç geldi
+		if result == nil {
+			log.Printf("Null sorgu sonucu alındı - QueryID: %s", queryID)
+			return nil, fmt.Errorf("null sorgu sonucu alındı")
+		}
+
+		log.Printf("Agent'tan yanıt alındı - QueryID: %s, TypeUrl: %s", queryID, result.Result.TypeUrl)
+
+		// Önce struct olarak ayrıştırmayı dene (Agent'ın gönderdiği tipte)
+		var resultStruct structpb.Struct
+		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
+			log.Printf("Struct ayrıştırma hatası: %v", err)
+
+			// Struct ayrıştırma başarısız olursa, PostgresLogAnalyzeResponse olarak dene
+			var analyzeResponse pb.PostgresLogAnalyzeResponse
+			if err := result.Result.UnmarshalTo(&analyzeResponse); err != nil {
+				log.Printf("PostgresLogAnalyzeResponse ayrıştırma hatası: %v", err)
+				return nil, fmt.Errorf("sonuç ayrıştırma hatası: %v", err)
+			}
+
+			log.Printf("Doğrudan PostgresLogAnalyzeResponse'a başarıyla ayrıştırıldı - Log girişleri: %d", len(analyzeResponse.LogEntries))
+			return &analyzeResponse, nil
+		}
+
+		// Sonucun içeriğini logla
+		structBytes, _ := json.Marshal(resultStruct.AsMap())
+		log.Printf("Struct içeriği: %s", string(structBytes))
+
+		// Struct'tan PostgresLogAnalyzeResponse oluştur
+		logEntries := make([]*pb.PostgresLogEntry, 0)
+		entriesValue, ok := resultStruct.Fields["log_entries"]
+		if ok && entriesValue != nil && entriesValue.GetListValue() != nil {
+			for _, entryValue := range entriesValue.GetListValue().Values {
+				if entryValue.GetStructValue() != nil {
+					entryStruct := entryValue.GetStructValue()
+
+					// Log giriş değerlerini al
+					timestamp := int64(entryStruct.Fields["timestamp"].GetNumberValue())
+					logLevel := entryStruct.Fields["log_level"].GetStringValue()
+					userName := entryStruct.Fields["user_name"].GetStringValue()
+					database := entryStruct.Fields["database"].GetStringValue()
+					processId := entryStruct.Fields["process_id"].GetStringValue()
+					connectionFrom := entryStruct.Fields["connection_from"].GetStringValue()
+					sessionId := entryStruct.Fields["session_id"].GetStringValue()
+					sessionLineNum := entryStruct.Fields["session_line_num"].GetStringValue()
+					commandTag := entryStruct.Fields["command_tag"].GetStringValue()
+					sessionStartTime := entryStruct.Fields["session_start_time"].GetStringValue()
+					virtualTransactionId := entryStruct.Fields["virtual_transaction_id"].GetStringValue()
+					transactionId := entryStruct.Fields["transaction_id"].GetStringValue()
+					errorSeverity := entryStruct.Fields["error_severity"].GetStringValue()
+					sqlStateCode := entryStruct.Fields["sql_state_code"].GetStringValue()
+					message := entryStruct.Fields["message"].GetStringValue()
+					detail := entryStruct.Fields["detail"].GetStringValue()
+					hint := entryStruct.Fields["hint"].GetStringValue()
+					internalQuery := entryStruct.Fields["internal_query"].GetStringValue()
+					durationMs := int64(entryStruct.Fields["duration_ms"].GetNumberValue())
+
+					// PostgresLogEntry oluştur
+					logEntry := &pb.PostgresLogEntry{
+						Timestamp:            timestamp,
+						LogLevel:             logLevel,
+						UserName:             userName,
+						Database:             database,
+						ProcessId:            processId,
+						ConnectionFrom:       connectionFrom,
+						SessionId:            sessionId,
+						SessionLineNum:       sessionLineNum,
+						CommandTag:           commandTag,
+						SessionStartTime:     sessionStartTime,
+						VirtualTransactionId: virtualTransactionId,
+						TransactionId:        transactionId,
+						ErrorSeverity:        errorSeverity,
+						SqlStateCode:         sqlStateCode,
+						Message:              message,
+						Detail:               detail,
+						Hint:                 hint,
+						InternalQuery:        internalQuery,
+						DurationMs:           durationMs,
+					}
+
+					logEntries = append(logEntries, logEntry)
+				}
+			}
+		}
+
+		log.Printf("Struct'tan oluşturulan log girişleri sayısı: %d", len(logEntries))
+
+		return &pb.PostgresLogAnalyzeResponse{
+			LogEntries: logEntries,
+		}, nil
+
+	case <-ctx.Done():
+		// Context iptal edildi veya zaman aşımına uğradı
+		log.Printf("Context iptal edildi veya zaman aşımına uğradı - QueryID: %s", queryID)
+		return nil, ctx.Err()
+	}
+}

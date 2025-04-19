@@ -267,6 +267,41 @@ message PostgresLogListResponse {
   repeated PostgresLogFile log_files = 1;
 }
 
+// PostgreSQL log analizi isteği
+message PostgresLogAnalyzeRequest {
+    string log_file_path = 1;
+    int64 slow_query_threshold_ms = 2;  // Yavaş sorgu eşiği (ms)
+    string agent_id = 3;
+}
+
+// PostgreSQL log mesajı
+message PostgresLogEntry {
+    int64 timestamp = 1;          // Unix timestamp
+    string log_level = 2;         // ERROR, WARNING, INFO, LOG, DEBUG
+    string user_name = 3;         // Kullanıcı adı
+    string database = 4;          // Veritabanı adı
+    string process_id = 5;        // Process ID
+    string connection_from = 6;   // Bağlantı kaynağı
+    string session_id = 7;        // Session ID
+    string session_line_num = 8;  // Session satır numarası
+    string command_tag = 9;       // Komut etiketi
+    string session_start_time = 10; // Session başlangıç zamanı
+    string virtual_transaction_id = 11; // Sanal transaction ID
+    string transaction_id = 12;    // Transaction ID
+    string error_severity = 13;    // Hata seviyesi
+    string sql_state_code = 14;    // SQLSTATE kodu
+    string message = 15;           // Log mesajı
+    string detail = 16;            // Detay
+    string hint = 17;              // İpucu
+    string internal_query = 18;    // İç sorgu
+    int64 duration_ms = 19;        // Sorgu süresi (ms)
+}
+
+// PostgreSQL log analizi yanıtı
+message PostgresLogAnalyzeResponse {
+    repeated PostgresLogEntry log_entries = 1;
+}
+
 service AgentService {
   // Eski bağlantı metodu (geriye dönük uyumluluk için)
   rpc Connect(stream AgentMessage) returns (stream ServerMessage);
@@ -302,4 +337,7 @@ service AgentService {
 
   // List PostgreSQL log files
   rpc ListPostgresLogs(PostgresLogListRequest) returns (PostgresLogListResponse) {}
+
+  // PostgreSQL log dosyasını analiz eder
+  rpc AnalyzePostgresLog(PostgresLogAnalyzeRequest) returns (PostgresLogAnalyzeResponse) {}
 }
