@@ -45,6 +45,7 @@ message MongoInfo {
   int64 replication_lag_sec = 9;
   string free_disk = 10;
   int32 fd_percent = 11;
+  string port = 12;
 }
 
 // MongoDB log dosyalarını listelemek için istek

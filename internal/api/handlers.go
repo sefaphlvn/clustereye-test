@@ -25,7 +25,7 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 	// Kullanıcı işlemleri endpoint'leri
 	v1.POST("/users", CreateUser(server.GetDB()))
 	// Kullanıcı listesini getir - Sadece admin erişebilir
-	v1.GET("/users", AuthMiddleware(), GetUsers(server.GetDB()))
+	v1.GET("/users", GetUsers(server.GetDB()))
 	// Kullanıcıyı güncelle - Sadece admin erişebilir
 	v1.PUT("/users/:id", AuthMiddleware(), UpdateUser(server.GetDB()))
 	// Kullanıcıyı sil - Sadece admin erişebilir
@@ -67,6 +67,10 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		status.GET("/agents", getAgentStatus(server))
 		// Tüm node sağlık bilgilerini getir
 		status.GET("/nodeshealth", getNodesHealth(server))
+		// Alarm listesini getir
+		status.GET("/alarms", getAlarms(server))
+		// Alarm endpoint'leri
+		status.POST("/alarms/:event_id/acknowledge", acknowledgeAlarm(server))
 	}
 
 	// Notification Settings Endpoint'leri
@@ -661,5 +665,68 @@ func getNodesHealth(server *server.Server) gin.HandlerFunc {
 
 		// Birleştirilmiş JSON verisini döndür
 		c.JSON(http.StatusOK, responseData)
+	}
+}
+
+// getAlarms, alarm listesini getirir
+func getAlarms(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+
+		// Query parameter'dan sadece acknowledge edilmemiş alarmları getirip getirmeyeceğimizi kontrol et
+		onlyUnacknowledged := c.DefaultQuery("unacknowledged", "true") == "true"
+
+		alarms, err := server.GetAlarms(ctx, onlyUnacknowledged)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Alarm verileri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"alarms": alarms,
+			},
+		})
+	}
+}
+
+// acknowledgeAlarm, belirtilen event_id'ye sahip alarmı acknowledge eder
+func acknowledgeAlarm(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		eventID := c.Param("event_id")
+		if eventID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "event_id parametresi gerekli",
+			})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+
+		err := server.AcknowledgeAlarm(ctx, eventID)
+		if err != nil {
+			status := http.StatusInternalServerError
+			if err.Error() == fmt.Sprintf("belirtilen event_id ile alarm bulunamadı: %s", eventID) {
+				status = http.StatusNotFound
+			}
+
+			c.JSON(status, gin.H{
+				"status": "error",
+				"error":  err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "success",
+			"message": "Alarm başarıyla acknowledge edildi",
+		})
 	}
 }

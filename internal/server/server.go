@@ -51,15 +51,19 @@ type Server struct {
 	queryResult map[string]*QueryResponse // query_id -> QueryResponse
 	db          *sql.DB                   // PostgreSQL veritabanı bağlantısı
 	companyRepo *database.CompanyRepository
+	// Son ping zamanlarını tutmak için map
+	lastPingMu   sync.RWMutex
+	lastPingTime map[string]time.Time
 }
 
 // NewServer, yeni bir sunucu nesnesi oluşturur
 func NewServer(db *sql.DB) *Server {
 	return &Server{
-		agents:      make(map[string]*AgentConnection),
-		queryResult: make(map[string]*QueryResponse),
-		db:          db,
-		companyRepo: database.NewCompanyRepository(db),
+		agents:       make(map[string]*AgentConnection),
+		queryResult:  make(map[string]*QueryResponse),
+		db:           db,
+		companyRepo:  database.NewCompanyRepository(db),
+		lastPingTime: make(map[string]time.Time),
 	}
 }
 
@@ -120,14 +124,14 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 			log.Printf("Agent bağlantı listesine eklendi - ID: %s, Toplam bağlantı: %d", currentAgentID, len(s.agents))
 
 			// Başarılı kayıt mesajı gönder
-			stream.Send(&pb.ServerMessage{
+				stream.Send(&pb.ServerMessage{
 				Payload: &pb.ServerMessage_Registration{
 					Registration: &pb.RegistrationResult{
 						Status:  "success",
 						Message: "Agent başarıyla kaydedildi",
+						},
 					},
-				},
-			})
+				})
 
 			log.Printf("Agent başarıyla kaydedildi ve bağlandı: %s (Firma: %s)", currentAgentID, company.CompanyName)
 
@@ -181,39 +185,39 @@ func (s *Server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 				Message: "Agent kaydedilemedi",
 			},
 		}, nil
-	}
+			}
 
-	// PostgreSQL bağlantı bilgilerini kaydet
-	log.Printf("PostgreSQL bilgileri kaydediliyor: hostname=%s, cluster=%s, user=%s",
-		agentInfo.Hostname, agentInfo.Platform, agentInfo.PostgresUser)
+			// PostgreSQL bağlantı bilgilerini kaydet
+			log.Printf("PostgreSQL bilgileri kaydediliyor: hostname=%s, cluster=%s, user=%s",
+				agentInfo.Hostname, agentInfo.Platform, agentInfo.PostgresUser)
 
-	// Veritabanı bağlantısını kontrol et
-	if err := s.checkDatabaseConnection(); err != nil {
-		log.Printf("Veritabanı bağlantı hatası: %v", err)
-	}
+			// Veritabanı bağlantısını kontrol et
+			if err := s.checkDatabaseConnection(); err != nil {
+				log.Printf("Veritabanı bağlantı hatası: %v", err)
+			}
 
-	// PostgreSQL bilgilerini kaydet
-	err = s.companyRepo.SavePostgresConnInfo(
+			// PostgreSQL bilgilerini kaydet
+			err = s.companyRepo.SavePostgresConnInfo(
 		ctx,
-		agentInfo.Hostname,
-		agentInfo.Platform,     // Platform alanını cluster adı olarak kullanıyoruz
-		agentInfo.PostgresUser, // Agent'dan gelen kullanıcı adı
-		agentInfo.PostgresPass, // Agent'dan gelen şifre
-	)
+				agentInfo.Hostname,
+				agentInfo.Platform,     // Platform alanını cluster adı olarak kullanıyoruz
+				agentInfo.PostgresUser, // Agent'dan gelen kullanıcı adı
+				agentInfo.PostgresPass, // Agent'dan gelen şifre
+			)
 
-	if err != nil {
-		log.Printf("PostgreSQL bağlantı bilgileri kaydedilemedi: %v", err)
-	} else {
-		log.Printf("PostgreSQL bağlantı bilgileri kaydedildi: %s", agentInfo.Hostname)
-	}
+			if err != nil {
+				log.Printf("PostgreSQL bağlantı bilgileri kaydedilemedi: %v", err)
+			} else {
+				log.Printf("PostgreSQL bağlantı bilgileri kaydedildi: %s", agentInfo.Hostname)
+			}
 
 	log.Printf("Yeni Agent bağlandı ve kaydedildi: %+v (Firma: %s)", agentInfo, company.CompanyName)
 
 	return &pb.RegisterResponse{
-		Registration: &pb.RegistrationResult{
-			Status:  "success",
-			Message: "Agent başarıyla kaydedildi",
-		},
+					Registration: &pb.RegistrationResult{
+						Status:  "success",
+						Message: "Agent başarıyla kaydedildi",
+					},
 	}, nil
 }
 
@@ -452,12 +456,61 @@ func (s *Server) GetConnectedAgents() []map[string]interface{} {
 			continue
 		}
 
-		log.Printf("Agent bulundu - ID: %s, Hostname: %s", id, conn.Info.Hostname)
+		// gRPC stream'in durumunu kontrol et
+		status := "disconnected"
+		if conn.Stream != nil {
+			shouldPing := false
+
+			// Son ping zamanını kontrol et
+			s.lastPingMu.RLock()
+			lastPing, exists := s.lastPingTime[id]
+			s.lastPingMu.RUnlock()
+
+			if !exists || time.Since(lastPing) > 30*time.Second {
+				shouldPing = true
+			} else {
+				// Son 30 saniye içinde başarılı ping varsa, bağlı kabul et
+				status = "connected"
+			}
+
+			if shouldPing {
+				// Ping mesajı gönder
+				pingMsg := &pb.ServerMessage{
+					Payload: &pb.ServerMessage_Query{
+						Query: &pb.Query{
+							QueryId: fmt.Sprintf("ping_%d", time.Now().UnixNano()),
+							Command: "ping",
+						},
+					},
+				}
+
+				// Ping'i sadece gRPC stream üzerinden gönder
+				err := conn.Stream.Send(pingMsg)
+				if err == nil {
+					status = "connected"
+					// Başarılı ping zamanını kaydet
+					s.lastPingMu.Lock()
+					s.lastPingTime[id] = time.Now()
+					s.lastPingMu.Unlock()
+				} else {
+					log.Printf("Agent %s ping hatası: %v", id, err)
+					// Stream'i kapat ve agent'ı sil
+					delete(s.agents, id)
+					// Son ping zamanını da sil
+					s.lastPingMu.Lock()
+					delete(s.lastPingTime, id)
+					s.lastPingMu.Unlock()
+					continue
+				}
+			}
+		}
+
+		log.Printf("Agent bulundu - ID: %s, Hostname: %s, Status: %s", id, conn.Info.Hostname, status)
 		agent := map[string]interface{}{
 			"id":         id,
 			"hostname":   conn.Info.Hostname,
 			"ip":         conn.Info.Ip,
-			"status":     "connected",
+			"status":     status,
 			"last_seen":  time.Now().In(loc).Format("2006-01-02T15:04:05-07:00"),
 			"connection": "grpc",
 		}
@@ -1938,8 +1991,7 @@ func (s *Server) sendPostgresLogAnalyzeQuery(ctx context.Context, agentID, logFi
 		}
 
 		// Sonucun içeriğini logla
-		structBytes, _ := json.Marshal(resultStruct.AsMap())
-		log.Printf("Struct içeriği: %s", string(structBytes))
+		json.Marshal(resultStruct.AsMap())
 
 		// Struct'tan PostgresLogAnalyzeResponse oluştur
 		logEntries := make([]*pb.PostgresLogEntry, 0)
@@ -2009,4 +2061,148 @@ func (s *Server) sendPostgresLogAnalyzeQuery(ctx context.Context, agentID, logFi
 		log.Printf("Context iptal edildi veya zaman aşımına uğradı - QueryID: %s", queryID)
 		return nil, ctx.Err()
 	}
+}
+
+// GetAlarms, veritabanından alarm kayıtlarını çeker
+func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool) ([]map[string]interface{}, error) {
+// Veritabanı bağlantısını kontrol et
+	if err := s.checkDatabaseConnection(); err != nil {
+		return nil, fmt.Errorf("veritabanı bağlantı hatası: %v", err)
+	}
+
+	// SQL sorgusu
+	query := `
+		SELECT 
+			alarm_id,
+			event_id,
+			agent_id,
+			status,
+			metric_name,
+			metric_value,
+			message,
+			severity,
+			created_at,
+			acknowledged
+		FROM alarms
+	`
+
+	// Sadece acknowledge edilmemiş alarmları getir
+	if onlyUnacknowledged {
+		query += " WHERE acknowledged = false"
+	}
+
+	query += " ORDER BY created_at DESC"
+
+	// Sorguyu çalıştır
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("alarm verileri çekilemedi: %v", err)
+	}
+	defer rows.Close()
+
+	// Sonuçları topla
+	alarms := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var (
+			alarmID      string
+			eventID      string
+			agentID      string
+			status       string
+			metricName   string
+			metricValue  string
+			message      string
+			severity     string
+			createdAt    time.Time
+			acknowledged bool
+		)
+
+		// Satırı oku
+		err := rows.Scan(
+			&alarmID,
+			&eventID,
+			&agentID,
+			&status,
+			&metricName,
+			&metricValue,
+			&message,
+			&severity,
+			&createdAt,
+			&acknowledged,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("satır okuma hatası: %v", err)
+		}
+
+		// Her alarmı map olarak oluştur
+		alarm := map[string]interface{}{
+			"alarm_id":     alarmID,
+			"event_id":     eventID,
+			"agent_id":     agentID,
+			"status":       status,
+			"metric_name":  metricName,
+			"metric_value": metricValue,
+			"message":      message,
+			"severity":     severity,
+			"created_at":   createdAt.Format(time.RFC3339),
+			"acknowledged": acknowledged,
+		}
+
+		alarms = append(alarms, alarm)
+	}
+
+	// Satır okuma hatası kontrolü
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("satır okuma hatası: %v", err)
+	}
+
+	return alarms, nil
+}
+
+// GetAlarmsStatus, alarm verilerini döndürür
+func (s *Server) GetAlarmsStatus(ctx context.Context, _ *structpb.Struct) (*structpb.Value, error) {
+	// Alarmları getir
+	alarms, err := s.GetAlarms(ctx, false)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Alarm verileri alınamadı: %v", err)
+	}
+
+	// JSON verisini structpb.Value'ya dönüştür
+	value, err := structpb.NewValue(alarms)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Veri dönüştürme hatası: %v", err)
+	}
+
+	return value, nil
+}
+
+// AcknowledgeAlarm, belirtilen event_id'ye sahip alarmı acknowledge eder
+func (s *Server) AcknowledgeAlarm(ctx context.Context, eventID string) error {
+	// Veritabanı bağlantısını kontrol et
+	if err := s.checkDatabaseConnection(); err != nil {
+		return fmt.Errorf("veritabanı bağlantı hatası: %v", err)
+	}
+
+	// SQL sorgusu
+	query := `
+		UPDATE alarms 
+		SET acknowledged = true 
+		WHERE event_id = $1
+	`
+
+	result, err := s.db.ExecContext(ctx, query, eventID)
+	if err != nil {
+		return fmt.Errorf("alarm güncellenemedi: %v", err)
+	}
+
+	// Etkilenen satır sayısını kontrol et
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("etkilenen satır sayısı alınamadı: %v", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("belirtilen event_id ile alarm bulunamadı: %s", eventID)
+	}
+
+	return nil
 }

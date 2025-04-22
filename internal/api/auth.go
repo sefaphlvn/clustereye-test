@@ -285,16 +285,6 @@ func CreateUser(db *sql.DB) gin.HandlerFunc {
 // GetUsers, tüm kullanıcıları listeler
 func GetUsers(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Sadece admin kullanıcıların erişimine izin ver
-		adminValue, exists := c.Get("admin")
-		if !exists || adminValue != "true" {
-			c.JSON(http.StatusForbidden, gin.H{
-				"success": false,
-				"error":   "Admin yetkisi gerekiyor",
-			})
-			return
-		}
-
 		// Kullanıcıları çek
 		rows, err := db.Query("SELECT id, username, email, status, admin, created_at FROM users ORDER BY id")
 		if err != nil {
