@@ -269,6 +269,9 @@ type MongoInfo struct {
 	FreeDisk          string                 `protobuf:"bytes,10,opt,name=free_disk,json=freeDisk,proto3" json:"free_disk,omitempty"`
 	FdPercent         int32                  `protobuf:"varint,11,opt,name=fd_percent,json=fdPercent,proto3" json:"fd_percent,omitempty"`
 	Port              string                 `protobuf:"bytes,12,opt,name=port,proto3" json:"port,omitempty"`
+	TotalVcpu         int32                  `protobuf:"varint,13,opt,name=total_vcpu,json=totalVcpu,proto3" json:"total_vcpu,omitempty"`
+	TotalMemory       int64                  `protobuf:"varint,14,opt,name=total_memory,json=totalMemory,proto3" json:"total_memory,omitempty"`
+	ConfigPath        string                 `protobuf:"bytes,15,opt,name=config_path,json=configPath,proto3" json:"config_path,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -383,6 +386,27 @@ func (x *MongoInfo) GetFdPercent() int32 {
 func (x *MongoInfo) GetPort() string {
 	if x != nil {
 		return x.Port
+	}
+	return ""
+}
+
+func (x *MongoInfo) GetTotalVcpu() int32 {
+	if x != nil {
+		return x.TotalVcpu
+	}
+	return 0
+}
+
+func (x *MongoInfo) GetTotalMemory() int64 {
+	if x != nil {
+		return x.TotalMemory
+	}
+	return 0
+}
+
+func (x *MongoInfo) GetConfigPath() string {
+	if x != nil {
+		return x.ConfigPath
 	}
 	return ""
 }
@@ -2814,7 +2838,7 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\tfree_disk\x18\n" +
 	" \x01(\tR\bfreeDisk\x12\x1d\n" +
 	"\n" +
-	"fd_percent\x18\v \x01(\x05R\tfdPercent\"\x89\x03\n" +
+	"fd_percent\x18\v \x01(\x05R\tfdPercent\"\xec\x03\n" +
 	"\tMongoInfo\x12!\n" +
 	"\fcluster_name\x18\x01 \x01(\tR\vclusterName\x12\x0e\n" +
 	"\x02ip\x18\x02 \x01(\tR\x02ip\x12\x1a\n" +
@@ -2830,7 +2854,12 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	" \x01(\tR\bfreeDisk\x12\x1d\n" +
 	"\n" +
 	"fd_percent\x18\v \x01(\x05R\tfdPercent\x12\x12\n" +
-	"\x04port\x18\f \x01(\tR\x04port\"0\n" +
+	"\x04port\x18\f \x01(\tR\x04port\x12\x1d\n" +
+	"\n" +
+	"total_vcpu\x18\r \x01(\x05R\ttotalVcpu\x12!\n" +
+	"\ftotal_memory\x18\x0e \x01(\x03R\vtotalMemory\x12\x1f\n" +
+	"\vconfig_path\x18\x0f \x01(\tR\n" +
+	"configPath\"0\n" +
 	"\x13MongoLogListRequest\x12\x19\n" +
 	"\blog_path\x18\x01 \x01(\tR\alogPath\"o\n" +
 	"\fMongoLogFile\x12\x12\n" +

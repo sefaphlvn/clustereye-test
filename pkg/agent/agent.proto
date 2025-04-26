@@ -46,6 +46,9 @@ message MongoInfo {
   string free_disk = 10;
   int32 fd_percent = 11;
   string port = 12;
+  int32 total_vcpu = 13;  
+  int64 total_memory = 14;
+  string config_path = 15;
 }
 
 // MongoDB log dosyalarını listelemek için istek

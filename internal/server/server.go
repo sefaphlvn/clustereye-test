@@ -124,14 +124,14 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 			log.Printf("Agent bağlantı listesine eklendi - ID: %s, Toplam bağlantı: %d", currentAgentID, len(s.agents))
 
 			// Başarılı kayıt mesajı gönder
-				stream.Send(&pb.ServerMessage{
+			stream.Send(&pb.ServerMessage{
 				Payload: &pb.ServerMessage_Registration{
 					Registration: &pb.RegistrationResult{
 						Status:  "success",
 						Message: "Agent başarıyla kaydedildi",
-						},
 					},
-				})
+				},
+			})
 
 			log.Printf("Agent başarıyla kaydedildi ve bağlandı: %s (Firma: %s)", currentAgentID, company.CompanyName)
 
@@ -185,39 +185,39 @@ func (s *Server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 				Message: "Agent kaydedilemedi",
 			},
 		}, nil
-			}
+	}
 
-			// PostgreSQL bağlantı bilgilerini kaydet
-			log.Printf("PostgreSQL bilgileri kaydediliyor: hostname=%s, cluster=%s, user=%s",
-				agentInfo.Hostname, agentInfo.Platform, agentInfo.PostgresUser)
+	// PostgreSQL bağlantı bilgilerini kaydet
+	log.Printf("PostgreSQL bilgileri kaydediliyor: hostname=%s, cluster=%s, user=%s",
+		agentInfo.Hostname, agentInfo.Platform, agentInfo.PostgresUser)
 
-			// Veritabanı bağlantısını kontrol et
-			if err := s.checkDatabaseConnection(); err != nil {
-				log.Printf("Veritabanı bağlantı hatası: %v", err)
-			}
+	// Veritabanı bağlantısını kontrol et
+	if err := s.checkDatabaseConnection(); err != nil {
+		log.Printf("Veritabanı bağlantı hatası: %v", err)
+	}
 
-			// PostgreSQL bilgilerini kaydet
-			err = s.companyRepo.SavePostgresConnInfo(
+	// PostgreSQL bilgilerini kaydet
+	err = s.companyRepo.SavePostgresConnInfo(
 		ctx,
-				agentInfo.Hostname,
-				agentInfo.Platform,     // Platform alanını cluster adı olarak kullanıyoruz
-				agentInfo.PostgresUser, // Agent'dan gelen kullanıcı adı
-				agentInfo.PostgresPass, // Agent'dan gelen şifre
-			)
+		agentInfo.Hostname,
+		agentInfo.Platform,     // Platform alanını cluster adı olarak kullanıyoruz
+		agentInfo.PostgresUser, // Agent'dan gelen kullanıcı adı
+		agentInfo.PostgresPass, // Agent'dan gelen şifre
+	)
 
-			if err != nil {
-				log.Printf("PostgreSQL bağlantı bilgileri kaydedilemedi: %v", err)
-			} else {
-				log.Printf("PostgreSQL bağlantı bilgileri kaydedildi: %s", agentInfo.Hostname)
-			}
+	if err != nil {
+		log.Printf("PostgreSQL bağlantı bilgileri kaydedilemedi: %v", err)
+	} else {
+		log.Printf("PostgreSQL bağlantı bilgileri kaydedildi: %s", agentInfo.Hostname)
+	}
 
 	log.Printf("Yeni Agent bağlandı ve kaydedildi: %+v (Firma: %s)", agentInfo, company.CompanyName)
 
 	return &pb.RegisterResponse{
-					Registration: &pb.RegistrationResult{
-						Status:  "success",
-						Message: "Agent başarıyla kaydedildi",
-					},
+		Registration: &pb.RegistrationResult{
+			Status:  "success",
+			Message: "Agent başarıyla kaydedildi",
+		},
 	}, nil
 }
 
@@ -1184,6 +1184,7 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 		"MongoVersion":      mongoInfo.MongoVersion,
 		"ReplicaSetName":    mongoInfo.ReplicaSetName,
 		"ReplicationLagSec": mongoInfo.ReplicationLagSec,
+		"Port":              mongoInfo.Port,
 	}
 
 	var jsonData []byte
@@ -2065,7 +2066,7 @@ func (s *Server) sendPostgresLogAnalyzeQuery(ctx context.Context, agentID, logFi
 
 // GetAlarms, veritabanından alarm kayıtlarını çeker
 func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool) ([]map[string]interface{}, error) {
-// Veritabanı bağlantısını kontrol et
+	// Veritabanı bağlantısını kontrol et
 	if err := s.checkDatabaseConnection(); err != nil {
 		return nil, fmt.Errorf("veritabanı bağlantı hatası: %v", err)
 	}
