@@ -1185,6 +1185,9 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 		"ReplicaSetName":    mongoInfo.ReplicaSetName,
 		"ReplicationLagSec": mongoInfo.ReplicationLagSec,
 		"Port":              mongoInfo.Port,
+		"TotalVCPU":         mongoInfo.TotalVcpu,
+		"TotalMemory":       mongoInfo.TotalMemory,
+		"ConfigPath":        mongoInfo.ConfigPath,
 	}
 
 	var jsonData []byte

@@ -143,6 +143,9 @@ type PostgresInfo struct {
 	ReplicationLagSec int64                  `protobuf:"varint,9,opt,name=replication_lag_sec,json=replicationLagSec,proto3" json:"replication_lag_sec,omitempty"`
 	FreeDisk          string                 `protobuf:"bytes,10,opt,name=free_disk,json=freeDisk,proto3" json:"free_disk,omitempty"`
 	FdPercent         int32                  `protobuf:"varint,11,opt,name=fd_percent,json=fdPercent,proto3" json:"fd_percent,omitempty"`
+	TotalVcpu         int32                  `protobuf:"varint,13,opt,name=total_vcpu,json=totalVcpu,proto3" json:"total_vcpu,omitempty"`
+	TotalMemory       int64                  `protobuf:"varint,14,opt,name=total_memory,json=totalMemory,proto3" json:"total_memory,omitempty"`
+	ConfigPath        string                 `protobuf:"bytes,15,opt,name=config_path,json=configPath,proto3" json:"config_path,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -252,6 +255,27 @@ func (x *PostgresInfo) GetFdPercent() int32 {
 		return x.FdPercent
 	}
 	return 0
+}
+
+func (x *PostgresInfo) GetTotalVcpu() int32 {
+	if x != nil {
+		return x.TotalVcpu
+	}
+	return 0
+}
+
+func (x *PostgresInfo) GetTotalMemory() int64 {
+	if x != nil {
+		return x.TotalMemory
+	}
+	return 0
+}
+
+func (x *PostgresInfo) GetConfigPath() string {
+	if x != nil {
+		return x.ConfigPath
+	}
+	return ""
 }
 
 // MongoDB bilgileri için mesaj tanımı
@@ -2822,7 +2846,7 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x04auth\x18\x06 \x01(\bR\x04auth\x12\x12\n" +
 	"\x04test\x18\a \x01(\tR\x04test\x12#\n" +
 	"\rpostgres_user\x18\b \x01(\tR\fpostgresUser\x12#\n" +
-	"\rpostgres_pass\x18\t \x01(\tR\fpostgresPass\"\xfd\x02\n" +
+	"\rpostgres_pass\x18\t \x01(\tR\fpostgresPass\"\xe0\x03\n" +
 	"\fPostgresInfo\x12!\n" +
 	"\fcluster_name\x18\x01 \x01(\tR\vclusterName\x12\x0e\n" +
 	"\x02ip\x18\x02 \x01(\tR\x02ip\x12\x1a\n" +
@@ -2838,7 +2862,12 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\tfree_disk\x18\n" +
 	" \x01(\tR\bfreeDisk\x12\x1d\n" +
 	"\n" +
-	"fd_percent\x18\v \x01(\x05R\tfdPercent\"\xec\x03\n" +
+	"fd_percent\x18\v \x01(\x05R\tfdPercent\x12\x1d\n" +
+	"\n" +
+	"total_vcpu\x18\r \x01(\x05R\ttotalVcpu\x12!\n" +
+	"\ftotal_memory\x18\x0e \x01(\x03R\vtotalMemory\x12\x1f\n" +
+	"\vconfig_path\x18\x0f \x01(\tR\n" +
+	"configPath\"\xec\x03\n" +
 	"\tMongoInfo\x12!\n" +
 	"\fcluster_name\x18\x01 \x01(\tR\vclusterName\x12\x0e\n" +
 	"\x02ip\x18\x02 \x01(\tR\x02ip\x12\x1a\n" +
