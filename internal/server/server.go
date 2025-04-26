@@ -290,6 +290,9 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 		"PGServiceStatus":   pgInfo.PgServiceStatus,
 		"PGVersion":         pgInfo.PgVersion,
 		"ReplicationLagSec": pgInfo.ReplicationLagSec,
+		"TotalVCPU":         pgInfo.TotalVcpu,
+		"TotalMemory":       pgInfo.TotalMemory,
+		"ConfigPath":        pgInfo.ConfigPath,
 	}
 
 	var jsonData []byte
@@ -2209,4 +2212,158 @@ func (s *Server) AcknowledgeAlarm(ctx context.Context, eventID string) error {
 	}
 
 	return nil
+}
+
+// ReadPostgresConfig, belirtilen PostgreSQL config dosyasını okur
+func (s *Server) ReadPostgresConfig(ctx context.Context, req *pb.PostgresConfigRequest) (*pb.PostgresConfigResponse, error) {
+	// Agent ID'yi kontrol et
+	agentID := req.AgentId
+	if agentID == "" {
+		return nil, fmt.Errorf("agent_id gerekli")
+	}
+
+	// Config dosya yolunu kontrol et
+	configPath := req.ConfigPath
+	if configPath == "" {
+		return nil, fmt.Errorf("config_path gerekli")
+	}
+
+	// Config dosyasını okuma isteğini gönder
+	return s.sendPostgresConfigQuery(ctx, agentID, configPath)
+}
+
+// sendPostgresConfigQuery, agent'a PostgreSQL config dosyasını okuması için sorgu gönderir
+func (s *Server) sendPostgresConfigQuery(ctx context.Context, agentID, configPath string) (*pb.PostgresConfigResponse, error) {
+	// Agent'ın bağlı olup olmadığını kontrol et
+	s.mu.RLock()
+	agent, agentExists := s.agents[agentID]
+	s.mu.RUnlock()
+
+	if !agentExists || agent == nil {
+		return nil, fmt.Errorf("agent bulunamadı veya bağlantı kapalı: %s", agentID)
+	}
+
+	// configPath boş mu kontrol et
+	if configPath == "" {
+		return nil, fmt.Errorf("config dosya yolu boş olamaz")
+	}
+
+	// PostgreSQL config okuması için bir komut oluştur
+	command := fmt.Sprintf("read_postgres_config|%s", configPath)
+	queryID := fmt.Sprintf("postgres_config_%d", time.Now().UnixNano())
+
+	log.Printf("PostgreSQL config okuması için komut: %s", command)
+
+	// Sonuç kanalı oluştur
+	resultChan := make(chan *pb.QueryResult, 1)
+	s.queryMu.Lock()
+	s.queryResult[queryID] = &QueryResponse{
+		ResultChan: resultChan,
+	}
+	s.queryMu.Unlock()
+
+	// Context'in iptal durumunda kaynakları temizle
+	defer func() {
+		s.queryMu.Lock()
+		delete(s.queryResult, queryID)
+		s.queryMu.Unlock()
+		close(resultChan)
+	}()
+
+	// Sorguyu gönder
+	err := agent.Stream.Send(&pb.ServerMessage{
+		Payload: &pb.ServerMessage_Query{
+			Query: &pb.Query{
+				QueryId: queryID,
+				Command: command,
+			},
+		},
+	})
+	if err != nil {
+		log.Printf("PostgreSQL config sorgusu gönderilemedi - Hata: %v", err)
+		return nil, fmt.Errorf("sorgu gönderilemedi: %v", err)
+	}
+
+	log.Printf("PostgreSQL config için sorgu gönderildi - Agent: %s, Path: %s, QueryID: %s",
+		agentID, configPath, queryID)
+
+	// Cevabı bekle
+	select {
+	case result := <-resultChan:
+		// Sonuç geldi
+		if result == nil {
+			log.Printf("Null sorgu sonucu alındı - QueryID: %s", queryID)
+			return nil, fmt.Errorf("null sorgu sonucu alındı")
+		}
+
+		log.Printf("Agent'tan yanıt alındı - QueryID: %s, TypeUrl: %s", queryID, result.Result.TypeUrl)
+
+		// Önce struct olarak ayrıştırmayı dene (Agent'ın gönderdiği tipte)
+		var resultStruct structpb.Struct
+		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
+			log.Printf("Struct ayrıştırma hatası: %v", err)
+
+			// Struct ayrıştırma başarısız olursa, PostgresConfigResponse olarak dene
+			var configResponse pb.PostgresConfigResponse
+			if err := result.Result.UnmarshalTo(&configResponse); err != nil {
+				log.Printf("PostgresConfigResponse ayrıştırma hatası: %v", err)
+				return nil, fmt.Errorf("sonuç ayrıştırma hatası: %v", err)
+			}
+
+			log.Printf("Doğrudan PostgresConfigResponse'a başarıyla ayrıştırıldı - Config girişleri: %d", len(configResponse.Configurations))
+			return &configResponse, nil
+		}
+
+		// Sonucun içeriğini logla
+		jsonBytes, _ := json.Marshal(resultStruct.AsMap())
+		log.Printf("Config yanıtı içeriği: %s", string(jsonBytes))
+
+		// Struct'tan PostgresConfigResponse oluştur
+		configEntries := make([]*pb.PostgresConfigEntry, 0)
+		entriesValue, ok := resultStruct.Fields["configurations"]
+		if ok && entriesValue != nil && entriesValue.GetListValue() != nil {
+			for _, entryValue := range entriesValue.GetListValue().Values {
+				if entryValue.GetStructValue() != nil {
+					entryStruct := entryValue.GetStructValue()
+
+					// Config giriş değerlerini al
+					parameter := entryStruct.Fields["parameter"].GetStringValue()
+					value := entryStruct.Fields["value"].GetStringValue()
+					description := entryStruct.Fields["description"].GetStringValue()
+					isDefault := entryStruct.Fields["is_default"].GetBoolValue()
+					category := entryStruct.Fields["category"].GetStringValue()
+
+					// PostgresConfigEntry oluştur
+					configEntry := &pb.PostgresConfigEntry{
+						Parameter:   parameter,
+						Value:       value,
+						Description: description,
+						IsDefault:   isDefault,
+						Category:    category,
+					}
+
+					configEntries = append(configEntries, configEntry)
+				}
+			}
+		}
+
+		log.Printf("Struct'tan oluşturulan config girişleri sayısı: %d", len(configEntries))
+
+		// Config dosya yolunu al
+		configPathValue := ""
+		if pathValue, exists := resultStruct.Fields["config_path"]; exists {
+			configPathValue = pathValue.GetStringValue()
+		}
+
+		return &pb.PostgresConfigResponse{
+			Status:         "success",
+			ConfigPath:     configPathValue,
+			Configurations: configEntries,
+		}, nil
+
+	case <-ctx.Done():
+		// Context iptal edildi veya zaman aşımına uğradı
+		log.Printf("Context iptal edildi veya zaman aşımına uğradı - QueryID: %s", queryID)
+		return nil, ctx.Err()
+	}
 }

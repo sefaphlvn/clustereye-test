@@ -54,6 +54,9 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 
 		// PostgreSQL log dosyasını analiz et
 		agents.POST("/:agent_id/postgres/logs/analyze", analyzePostgresLog(server))
+
+		// PostgreSQL config dosyasını okumasını ister
+		agents.POST("/:agent_id/postgres/config", readPostgresConfig(server))
 	}
 
 	// Status Endpoint'leri
@@ -727,6 +730,89 @@ func acknowledgeAlarm(server *server.Server) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "success",
 			"message": "Alarm başarıyla acknowledge edildi",
+		})
+	}
+}
+
+// readPostgresConfig, belirtilen agent'tan PostgreSQL config dosyasını okumasını ister
+func readPostgresConfig(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Param("agent_id")
+
+		if agentID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "agent_id parametresi gerekli",
+			})
+			return
+		}
+
+		var req struct {
+			ConfigPath string `json:"config_path" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz istek formatı: " + err.Error(),
+			})
+			return
+		}
+
+		// Context oluştur ve zaman aşımı ayarla
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		// PostgreSQL config dosyasını oku
+		configReq := &pb.PostgresConfigRequest{
+			AgentId:    agentID,
+			ConfigPath: req.ConfigPath,
+		}
+
+		response, err := server.ReadPostgresConfig(ctx, configReq)
+		if err != nil {
+			httpStatus := http.StatusInternalServerError
+			message := "PostgreSQL config dosyası okunurken bir hata oluştu: " + err.Error()
+
+			if err == context.DeadlineExceeded {
+				httpStatus = http.StatusGatewayTimeout
+				message = "İstek zaman aşımına uğradı"
+			} else if st, ok := grpcstatus.FromError(err); ok {
+				if st.Code() == codes.NotFound {
+					c.JSON(http.StatusNotFound, gin.H{
+						"status": "error",
+						"error":  st.Message(),
+					})
+					return
+				}
+				message = st.Message()
+			}
+
+			c.JSON(httpStatus, gin.H{
+				"status": "error",
+				"error":  message,
+			})
+			return
+		}
+
+		// Yapılandırma girişlerini daha okunabilir hale getir
+		configEntries := make([]map[string]interface{}, 0, len(response.Configurations))
+		for _, entry := range response.Configurations {
+			configEntries = append(configEntries, map[string]interface{}{
+				"parameter":   entry.Parameter,
+				"value":       entry.Value,
+				"description": entry.Description,
+				"is_default":  entry.IsDefault,
+				"category":    entry.Category,
+			})
+		}
+
+		// Başarılı yanıt
+		c.JSON(http.StatusOK, gin.H{
+			"status":         "success",
+			"agent_id":       agentID,
+			"config_path":    response.ConfigPath,
+			"configurations": configEntries,
 		})
 	}
 }

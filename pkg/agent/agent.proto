@@ -309,6 +309,28 @@ message PostgresLogAnalyzeResponse {
     repeated PostgresLogEntry log_entries = 1;
 }
 
+// PostgreSQL config dosyasını okumak için isteği tanımlayan mesaj
+message PostgresConfigRequest {
+    string agent_id = 1;
+    string config_path = 2;  // Config dosyasının yolu
+}
+
+// PostgreSQL config bilgisi için bir yapı
+message PostgresConfigEntry {
+    string parameter = 1;     // Parametre adı
+    string value = 2;         // Parametre değeri
+    string description = 3;   // Açıklama (varsa)
+    bool is_default = 4;      // Varsayılan değer mi?
+    string category = 5;      // Kategori (memory, logging, etc.)
+}
+
+// PostgreSQL config yanıtı
+message PostgresConfigResponse {
+    string status = 1;
+    string config_path = 2;          // Okunan config dosyasının yolu
+    repeated PostgresConfigEntry configurations = 3; // Yapılandırma girişleri
+}
+
 service AgentService {
   // Eski bağlantı metodu (geriye dönük uyumluluk için)
   rpc Connect(stream AgentMessage) returns (stream ServerMessage);
@@ -347,4 +369,7 @@ service AgentService {
 
   // PostgreSQL log dosyasını analiz eder
   rpc AnalyzePostgresLog(PostgresLogAnalyzeRequest) returns (PostgresLogAnalyzeResponse) {}
+  
+  // PostgreSQL config dosyasını okur
+  rpc ReadPostgresConfig(PostgresConfigRequest) returns (PostgresConfigResponse) {}
 }
