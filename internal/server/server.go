@@ -767,10 +767,14 @@ func (s *Server) ReportAlarm(ctx context.Context, req *pb.ReportAlarmRequest) (*
 
 // saveAlarmToDatabase, alarm olayını veritabanına kaydeder
 func (s *Server) saveAlarmToDatabase(ctx context.Context, event *pb.AlarmEvent) error {
+	log.Printf("[DEBUG] Starting saveAlarmToDatabase for alarm ID: %s", event.AlarmId)
+
 	// Veritabanı bağlantısını kontrol et
 	if err := s.checkDatabaseConnection(); err != nil {
+		log.Printf("[ERROR] Database connection check failed: %v", err)
 		return fmt.Errorf("veritabanı bağlantı hatası: %v", err)
 	}
+	log.Printf("[DEBUG] Database connection check passed")
 
 	// SQL sorgusu hazırla
 	query := `
@@ -779,7 +783,7 @@ func (s *Server) saveAlarmToDatabase(ctx context.Context, event *pb.AlarmEvent) 
 			event_id, 
 			agent_id, 
 			status, 
-			metric_name, 
+			 metric_name, 
 			metric_value, 
 			message, 
 			severity,
@@ -790,11 +794,19 @@ func (s *Server) saveAlarmToDatabase(ctx context.Context, event *pb.AlarmEvent) 
 	// Zaman damgasını parse et
 	timestamp, err := time.Parse(time.RFC3339, event.Timestamp)
 	if err != nil {
+		log.Printf("[WARN] Failed to parse timestamp %q: %v, using current time", event.Timestamp, err)
 		timestamp = time.Now() // Parse edilemezse şu anki zamanı kullan
-		log.Printf("Zaman damgası parse edilemedi: %v, şu anki zaman kullanılıyor", err)
+	} else {
+		log.Printf("[DEBUG] Successfully parsed timestamp: %v", timestamp)
 	}
 
 	// Veritabanına kaydet
+	if event.MetricName == "postgresql_slow_queries" {
+		log.Printf("[DEBUG] Slow query alarm received - Agent: %s, Value: %s, Message: %s",
+			event.AgentId, event.MetricValue, event.Message)
+	}
+
+	log.Printf("[DEBUG] Executing database insert for alarm ID: %s, Event ID: %s", event.AlarmId, event.Id)
 	_, err = s.db.ExecContext(
 		ctx,
 		query,
@@ -810,10 +822,12 @@ func (s *Server) saveAlarmToDatabase(ctx context.Context, event *pb.AlarmEvent) 
 	)
 
 	if err != nil {
+		log.Printf("[ERROR] Failed to save alarm to database: %v", err)
 		return fmt.Errorf("alarm veritabanına kaydedilemedi: %v", err)
 	}
 
-	log.Printf("Alarm veritabanına kaydedildi - ID: %s", event.Id)
+	log.Printf("[INFO] Successfully saved alarm to database - ID: %s, Metric: %s, Agent: %s",
+		event.Id, event.MetricName, event.AgentId)
 	return nil
 }
 
@@ -933,22 +947,22 @@ func (s *Server) sendSlackNotification(event *pb.AlarmEvent, webhookURL string) 
 				"ts":          time.Now().Unix(),
 				"fields": []map[string]interface{}{
 					{
-						"title": "Metrik",
+						"title": "Metric",
 						"value": event.MetricName,
 						"short": true,
 					},
 					{
-						"title": "Değer",
+						"title": "Value",
 						"value": event.MetricValue,
 						"short": true,
 					},
 					{
-						"title": "Önem",
+						"title": "Severity",
 						"value": event.Severity,
 						"short": true,
 					},
 					{
-						"title": "Durum",
+						"title": "Status",
 						"value": event.Status,
 						"short": true,
 					},
@@ -2352,4 +2366,71 @@ func (s *Server) sendPostgresConfigQuery(ctx context.Context, agentID, configPat
 		log.Printf("Context iptal edildi veya zaman aşımına uğradı - QueryID: %s", queryID)
 		return nil, ctx.Err()
 	}
+}
+
+// ReportVersion, agent'ın versiyon bilgilerini işler
+func (s *Server) ReportVersion(ctx context.Context, req *pb.ReportVersionRequest) (*pb.ReportVersionResponse, error) {
+	log.Printf("ReportVersion metodu çağrıldı - Agent ID: %s", req.AgentId)
+
+	// Veritabanı bağlantısını kontrol et
+	if err := s.checkDatabaseConnection(); err != nil {
+		log.Printf("Veritabanı bağlantı hatası: %v", err)
+		return &pb.ReportVersionResponse{
+			Status: "error",
+		}, fmt.Errorf("veritabanı bağlantı hatası: %v", err)
+	}
+
+	// Versiyon bilgilerini logla
+	versionInfo := req.VersionInfo
+	log.Printf("Agent versiyon bilgileri alındı:")
+	log.Printf("  Version: %s", versionInfo.Version)
+	log.Printf("  Platform: %s", versionInfo.Platform)
+	log.Printf("  Architecture: %s", versionInfo.Architecture)
+	log.Printf("  Hostname: %s", versionInfo.Hostname)
+	log.Printf("  OS Version: %s", versionInfo.OsVersion)
+	log.Printf("  Go Version: %s", versionInfo.GoVersion)
+
+	// Versiyon bilgilerini veritabanına kaydet
+	query := `
+		INSERT INTO agent_versions (
+			agent_id,
+			version,
+			platform,
+			architecture,
+			hostname,
+			os_version,
+			go_version,
+			reported_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+		ON CONFLICT (agent_id) DO UPDATE SET
+			version = EXCLUDED.version,
+			platform = EXCLUDED.platform,
+			architecture = EXCLUDED.architecture,
+			hostname = EXCLUDED.hostname,
+			os_version = EXCLUDED.os_version,
+			go_version = EXCLUDED.go_version,
+			reported_at = CURRENT_TIMESTAMP
+	`
+
+	_, err := s.db.ExecContext(ctx, query,
+		req.AgentId,
+		versionInfo.Version,
+		versionInfo.Platform,
+		versionInfo.Architecture,
+		versionInfo.Hostname,
+		versionInfo.OsVersion,
+		versionInfo.GoVersion,
+	)
+
+	if err != nil {
+		log.Printf("Versiyon bilgileri kaydedilemedi: %v", err)
+		return &pb.ReportVersionResponse{
+			Status: "error",
+		}, fmt.Errorf("versiyon bilgileri kaydedilemedi: %v", err)
+	}
+
+	log.Printf("Agent versiyon bilgileri başarıyla kaydedildi - Agent ID: %s", req.AgentId)
+	return &pb.ReportVersionResponse{
+		Status: "success",
+	}, nil
 }

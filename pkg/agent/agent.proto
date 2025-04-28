@@ -350,6 +350,27 @@ message GetThresholdSettingsResponse {
   ThresholdSettings settings = 1;
 }
 
+// Agent versiyon bilgileri için mesaj tanımı
+message AgentVersionInfo {
+  string version = 1;        // agent'ın versiyon numarası
+  string platform = 2;       // işletim sistemi (linux, darwin vs)
+  string architecture = 3;   // cpu mimarisi (amd64, arm64 vs)
+  string hostname = 4;       // sunucu hostname
+  string os_version = 5;     // işletim sistemi versiyonu
+  string go_version = 6;     // Go runtime versiyonu
+}
+
+// Agent versiyon bildirimi için istek mesajı
+message ReportVersionRequest {
+  string agent_id = 1;
+  AgentVersionInfo version_info = 2;
+}
+
+// Agent versiyon bildirimi için yanıt mesajı
+message ReportVersionResponse {
+  string status = 1;
+}
+
 service AgentService {
   // Eski bağlantı metodu (geriye dönük uyumluluk için)
   rpc Connect(stream AgentMessage) returns (stream ServerMessage);
@@ -394,4 +415,7 @@ service AgentService {
   
   // Threshold ayarları için yeni RPC metodu
   rpc GetThresholdSettings(GetThresholdSettingsRequest) returns (GetThresholdSettingsResponse) {}
+  
+  // Yeni versiyon bildirimi metodu
+  rpc ReportVersion(ReportVersionRequest) returns (ReportVersionResponse);
 }

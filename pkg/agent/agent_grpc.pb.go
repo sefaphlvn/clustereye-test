@@ -35,6 +35,7 @@ const (
 	AgentService_AnalyzePostgresLog_FullMethodName     = "/agent.AgentService/AnalyzePostgresLog"
 	AgentService_ReadPostgresConfig_FullMethodName     = "/agent.AgentService/ReadPostgresConfig"
 	AgentService_GetThresholdSettings_FullMethodName   = "/agent.AgentService/GetThresholdSettings"
+	AgentService_ReportVersion_FullMethodName          = "/agent.AgentService/ReportVersion"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -71,6 +72,8 @@ type AgentServiceClient interface {
 	ReadPostgresConfig(ctx context.Context, in *PostgresConfigRequest, opts ...grpc.CallOption) (*PostgresConfigResponse, error)
 	// Threshold ayarları için yeni RPC metodu
 	GetThresholdSettings(ctx context.Context, in *GetThresholdSettingsRequest, opts ...grpc.CallOption) (*GetThresholdSettingsResponse, error)
+	// Yeni versiyon bildirimi metodu
+	ReportVersion(ctx context.Context, in *ReportVersionRequest, opts ...grpc.CallOption) (*ReportVersionResponse, error)
 }
 
 type agentServiceClient struct {
@@ -250,6 +253,16 @@ func (c *agentServiceClient) GetThresholdSettings(ctx context.Context, in *GetTh
 	return out, nil
 }
 
+func (c *agentServiceClient) ReportVersion(ctx context.Context, in *ReportVersionRequest, opts ...grpc.CallOption) (*ReportVersionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReportVersionResponse)
+	err := c.cc.Invoke(ctx, AgentService_ReportVersion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -284,6 +297,8 @@ type AgentServiceServer interface {
 	ReadPostgresConfig(context.Context, *PostgresConfigRequest) (*PostgresConfigResponse, error)
 	// Threshold ayarları için yeni RPC metodu
 	GetThresholdSettings(context.Context, *GetThresholdSettingsRequest) (*GetThresholdSettingsResponse, error)
+	// Yeni versiyon bildirimi metodu
+	ReportVersion(context.Context, *ReportVersionRequest) (*ReportVersionResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -341,6 +356,9 @@ func (UnimplementedAgentServiceServer) ReadPostgresConfig(context.Context, *Post
 }
 func (UnimplementedAgentServiceServer) GetThresholdSettings(context.Context, *GetThresholdSettingsRequest) (*GetThresholdSettingsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetThresholdSettings not implemented")
+}
+func (UnimplementedAgentServiceServer) ReportVersion(context.Context, *ReportVersionRequest) (*ReportVersionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReportVersion not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -618,6 +636,24 @@ func _AgentService_GetThresholdSettings_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_ReportVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReportVersionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ReportVersion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ReportVersion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ReportVersion(ctx, req.(*ReportVersionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -676,6 +712,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetThresholdSettings",
 			Handler:    _AgentService_GetThresholdSettings_Handler,
+		},
+		{
+			MethodName: "ReportVersion",
+			Handler:    _AgentService_ReportVersion_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
