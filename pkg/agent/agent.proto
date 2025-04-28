@@ -332,6 +332,24 @@ message PostgresConfigResponse {
     repeated PostgresConfigEntry configurations = 3; // Yapılandırma girişleri
 }
 
+// Threshold ayarları için mesaj tanımları
+message ThresholdSettings {
+  double cpu_threshold = 1;
+  double memory_threshold = 2;
+  double disk_threshold = 3;
+  int64 slow_query_threshold_ms = 4;
+  int32 connection_threshold = 5;
+  int32 replication_lag_threshold = 6;
+}
+
+message GetThresholdSettingsRequest {
+  string agent_id = 1;
+}
+
+message GetThresholdSettingsResponse {
+  ThresholdSettings settings = 1;
+}
+
 service AgentService {
   // Eski bağlantı metodu (geriye dönük uyumluluk için)
   rpc Connect(stream AgentMessage) returns (stream ServerMessage);
@@ -373,4 +391,7 @@ service AgentService {
   
   // PostgreSQL config dosyasını okur
   rpc ReadPostgresConfig(PostgresConfigRequest) returns (PostgresConfigResponse) {}
+  
+  // Threshold ayarları için yeni RPC metodu
+  rpc GetThresholdSettings(GetThresholdSettingsRequest) returns (GetThresholdSettingsResponse) {}
 }

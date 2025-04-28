@@ -34,6 +34,7 @@ const (
 	AgentService_ListPostgresLogs_FullMethodName       = "/agent.AgentService/ListPostgresLogs"
 	AgentService_AnalyzePostgresLog_FullMethodName     = "/agent.AgentService/AnalyzePostgresLog"
 	AgentService_ReadPostgresConfig_FullMethodName     = "/agent.AgentService/ReadPostgresConfig"
+	AgentService_GetThresholdSettings_FullMethodName   = "/agent.AgentService/GetThresholdSettings"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -68,6 +69,8 @@ type AgentServiceClient interface {
 	AnalyzePostgresLog(ctx context.Context, in *PostgresLogAnalyzeRequest, opts ...grpc.CallOption) (*PostgresLogAnalyzeResponse, error)
 	// PostgreSQL config dosyasını okur
 	ReadPostgresConfig(ctx context.Context, in *PostgresConfigRequest, opts ...grpc.CallOption) (*PostgresConfigResponse, error)
+	// Threshold ayarları için yeni RPC metodu
+	GetThresholdSettings(ctx context.Context, in *GetThresholdSettingsRequest, opts ...grpc.CallOption) (*GetThresholdSettingsResponse, error)
 }
 
 type agentServiceClient struct {
@@ -237,6 +240,16 @@ func (c *agentServiceClient) ReadPostgresConfig(ctx context.Context, in *Postgre
 	return out, nil
 }
 
+func (c *agentServiceClient) GetThresholdSettings(ctx context.Context, in *GetThresholdSettingsRequest, opts ...grpc.CallOption) (*GetThresholdSettingsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetThresholdSettingsResponse)
+	err := c.cc.Invoke(ctx, AgentService_GetThresholdSettings_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -269,6 +282,8 @@ type AgentServiceServer interface {
 	AnalyzePostgresLog(context.Context, *PostgresLogAnalyzeRequest) (*PostgresLogAnalyzeResponse, error)
 	// PostgreSQL config dosyasını okur
 	ReadPostgresConfig(context.Context, *PostgresConfigRequest) (*PostgresConfigResponse, error)
+	// Threshold ayarları için yeni RPC metodu
+	GetThresholdSettings(context.Context, *GetThresholdSettingsRequest) (*GetThresholdSettingsResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -323,6 +338,9 @@ func (UnimplementedAgentServiceServer) AnalyzePostgresLog(context.Context, *Post
 }
 func (UnimplementedAgentServiceServer) ReadPostgresConfig(context.Context, *PostgresConfigRequest) (*PostgresConfigResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReadPostgresConfig not implemented")
+}
+func (UnimplementedAgentServiceServer) GetThresholdSettings(context.Context, *GetThresholdSettingsRequest) (*GetThresholdSettingsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetThresholdSettings not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -582,6 +600,24 @@ func _AgentService_ReadPostgresConfig_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_GetThresholdSettings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetThresholdSettingsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).GetThresholdSettings(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_GetThresholdSettings_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).GetThresholdSettings(ctx, req.(*GetThresholdSettingsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -636,6 +672,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReadPostgresConfig",
 			Handler:    _AgentService_ReadPostgresConfig_Handler,
+		},
+		{
+			MethodName: "GetThresholdSettings",
+			Handler:    _AgentService_GetThresholdSettings_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

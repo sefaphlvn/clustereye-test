@@ -86,6 +86,15 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		// Slack webhook'unu test et - Sadece admin erişebilir
 		notification.POST("/test-slack", AuthMiddleware(), TestSlackNotification(server.GetDB()))
 	}
+
+	// Threshold Settings Endpoint'leri
+	threshold := v1.Group("/threshold-settings")
+	{
+		// Threshold ayarlarını getir - Sadece admin erişebilir
+		threshold.GET("", AuthMiddleware(), GetThresholdSettings(server.GetDB()))
+		// Threshold ayarlarını güncelle - Sadece admin erişebilir
+		threshold.POST("", AuthMiddleware(), UpdateThresholdSettings(server.GetDB()))
+	}
 }
 
 // getAgents, bağlı tüm agent'ları listeler

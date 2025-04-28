@@ -3031,6 +3031,179 @@ func (x *PostgresConfigResponse) GetConfigurations() []*PostgresConfigEntry {
 	return nil
 }
 
+// Threshold ayarları için mesaj tanımları
+type ThresholdSettings struct {
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	CpuThreshold            float64                `protobuf:"fixed64,1,opt,name=cpu_threshold,json=cpuThreshold,proto3" json:"cpu_threshold,omitempty"`
+	MemoryThreshold         float64                `protobuf:"fixed64,2,opt,name=memory_threshold,json=memoryThreshold,proto3" json:"memory_threshold,omitempty"`
+	DiskThreshold           float64                `protobuf:"fixed64,3,opt,name=disk_threshold,json=diskThreshold,proto3" json:"disk_threshold,omitempty"`
+	SlowQueryThresholdMs    int64                  `protobuf:"varint,4,opt,name=slow_query_threshold_ms,json=slowQueryThresholdMs,proto3" json:"slow_query_threshold_ms,omitempty"`
+	ConnectionThreshold     int32                  `protobuf:"varint,5,opt,name=connection_threshold,json=connectionThreshold,proto3" json:"connection_threshold,omitempty"`
+	ReplicationLagThreshold int32                  `protobuf:"varint,6,opt,name=replication_lag_threshold,json=replicationLagThreshold,proto3" json:"replication_lag_threshold,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
+}
+
+func (x *ThresholdSettings) Reset() {
+	*x = ThresholdSettings{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ThresholdSettings) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ThresholdSettings) ProtoMessage() {}
+
+func (x *ThresholdSettings) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ThresholdSettings.ProtoReflect.Descriptor instead.
+func (*ThresholdSettings) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *ThresholdSettings) GetCpuThreshold() float64 {
+	if x != nil {
+		return x.CpuThreshold
+	}
+	return 0
+}
+
+func (x *ThresholdSettings) GetMemoryThreshold() float64 {
+	if x != nil {
+		return x.MemoryThreshold
+	}
+	return 0
+}
+
+func (x *ThresholdSettings) GetDiskThreshold() float64 {
+	if x != nil {
+		return x.DiskThreshold
+	}
+	return 0
+}
+
+func (x *ThresholdSettings) GetSlowQueryThresholdMs() int64 {
+	if x != nil {
+		return x.SlowQueryThresholdMs
+	}
+	return 0
+}
+
+func (x *ThresholdSettings) GetConnectionThreshold() int32 {
+	if x != nil {
+		return x.ConnectionThreshold
+	}
+	return 0
+}
+
+func (x *ThresholdSettings) GetReplicationLagThreshold() int32 {
+	if x != nil {
+		return x.ReplicationLagThreshold
+	}
+	return 0
+}
+
+type GetThresholdSettingsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetThresholdSettingsRequest) Reset() {
+	*x = GetThresholdSettingsRequest{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetThresholdSettingsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetThresholdSettingsRequest) ProtoMessage() {}
+
+func (x *GetThresholdSettingsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetThresholdSettingsRequest.ProtoReflect.Descriptor instead.
+func (*GetThresholdSettingsRequest) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *GetThresholdSettingsRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+type GetThresholdSettingsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Settings      *ThresholdSettings     `protobuf:"bytes,1,opt,name=settings,proto3" json:"settings,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetThresholdSettingsResponse) Reset() {
+	*x = GetThresholdSettingsResponse{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetThresholdSettingsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetThresholdSettingsResponse) ProtoMessage() {}
+
+func (x *GetThresholdSettingsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetThresholdSettingsResponse.ProtoReflect.Descriptor instead.
+func (*GetThresholdSettingsResponse) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *GetThresholdSettingsResponse) GetSettings() *ThresholdSettings {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
+}
+
 var File_pkg_agent_agent_proto protoreflect.FileDescriptor
 
 const file_pkg_agent_agent_proto_rawDesc = "" +
@@ -3279,7 +3452,18 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x1f\n" +
 	"\vconfig_path\x18\x02 \x01(\tR\n" +
 	"configPath\x12B\n" +
-	"\x0econfigurations\x18\x03 \x03(\v2\x1a.agent.PostgresConfigEntryR\x0econfigurations2\xf2\b\n" +
+	"\x0econfigurations\x18\x03 \x03(\v2\x1a.agent.PostgresConfigEntryR\x0econfigurations\"\xb0\x02\n" +
+	"\x11ThresholdSettings\x12#\n" +
+	"\rcpu_threshold\x18\x01 \x01(\x01R\fcpuThreshold\x12)\n" +
+	"\x10memory_threshold\x18\x02 \x01(\x01R\x0fmemoryThreshold\x12%\n" +
+	"\x0edisk_threshold\x18\x03 \x01(\x01R\rdiskThreshold\x125\n" +
+	"\x17slow_query_threshold_ms\x18\x04 \x01(\x03R\x14slowQueryThresholdMs\x121\n" +
+	"\x14connection_threshold\x18\x05 \x01(\x05R\x13connectionThreshold\x12:\n" +
+	"\x19replication_lag_threshold\x18\x06 \x01(\x05R\x17replicationLagThreshold\"8\n" +
+	"\x1bGetThresholdSettingsRequest\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\"T\n" +
+	"\x1cGetThresholdSettingsResponse\x124\n" +
+	"\bsettings\x18\x01 \x01(\v2\x18.agent.ThresholdSettingsR\bsettings2\xd5\t\n" +
 	"\fAgentService\x128\n" +
 	"\aConnect\x12\x13.agent.AgentMessage\x1a\x14.agent.ServerMessage(\x010\x01\x12;\n" +
 	"\bRegister\x12\x16.agent.RegisterRequest\x1a\x17.agent.RegisterResponse\x129\n" +
@@ -3295,7 +3479,8 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x0fAnalyzeMongoLog\x12\x1d.agent.MongoLogAnalyzeRequest\x1a\x1e.agent.MongoLogAnalyzeResponse\"\x00\x12S\n" +
 	"\x10ListPostgresLogs\x12\x1d.agent.PostgresLogListRequest\x1a\x1e.agent.PostgresLogListResponse\"\x00\x12[\n" +
 	"\x12AnalyzePostgresLog\x12 .agent.PostgresLogAnalyzeRequest\x1a!.agent.PostgresLogAnalyzeResponse\"\x00\x12S\n" +
-	"\x12ReadPostgresConfig\x12\x1c.agent.PostgresConfigRequest\x1a\x1d.agent.PostgresConfigResponse\"\x00B0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
+	"\x12ReadPostgresConfig\x12\x1c.agent.PostgresConfigRequest\x1a\x1d.agent.PostgresConfigResponse\"\x00\x12a\n" +
+	"\x14GetThresholdSettings\x12\".agent.GetThresholdSettingsRequest\x1a#.agent.GetThresholdSettingsResponse\"\x00B0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
 
 var (
 	file_pkg_agent_agent_proto_rawDescOnce sync.Once
@@ -3309,58 +3494,61 @@ func file_pkg_agent_agent_proto_rawDescGZIP() []byte {
 	return file_pkg_agent_agent_proto_rawDescData
 }
 
-var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 43)
+var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 46)
 var file_pkg_agent_agent_proto_goTypes = []any{
-	(*AgentInfo)(nil),                  // 0: agent.AgentInfo
-	(*PostgresInfo)(nil),               // 1: agent.PostgresInfo
-	(*MongoInfo)(nil),                  // 2: agent.MongoInfo
-	(*MongoLogListRequest)(nil),        // 3: agent.MongoLogListRequest
-	(*MongoLogFile)(nil),               // 4: agent.MongoLogFile
-	(*MongoLogListResponse)(nil),       // 5: agent.MongoLogListResponse
-	(*MongoLogAnalyzeRequest)(nil),     // 6: agent.MongoLogAnalyzeRequest
-	(*MongoLogEntry)(nil),              // 7: agent.MongoLogEntry
-	(*MongoLogAnalyzeResponse)(nil),    // 8: agent.MongoLogAnalyzeResponse
-	(*AlarmCondition)(nil),             // 9: agent.AlarmCondition
-	(*AlarmConfiguration)(nil),         // 10: agent.AlarmConfiguration
-	(*AlarmEvent)(nil),                 // 11: agent.AlarmEvent
-	(*Query)(nil),                      // 12: agent.Query
-	(*QueryResult)(nil),                // 13: agent.QueryResult
-	(*Error)(nil),                      // 14: agent.Error
-	(*RegistrationResult)(nil),         // 15: agent.RegistrationResult
-	(*ReportAlarmRequest)(nil),         // 16: agent.ReportAlarmRequest
-	(*ReportAlarmResponse)(nil),        // 17: agent.ReportAlarmResponse
-	(*RegisterRequest)(nil),            // 18: agent.RegisterRequest
-	(*RegisterResponse)(nil),           // 19: agent.RegisterResponse
-	(*QueryRequest)(nil),               // 20: agent.QueryRequest
-	(*QueryResponse)(nil),              // 21: agent.QueryResponse
-	(*PostgresInfoRequest)(nil),        // 22: agent.PostgresInfoRequest
-	(*MongoInfoRequest)(nil),           // 23: agent.MongoInfoRequest
-	(*PostgresInfoResponse)(nil),       // 24: agent.PostgresInfoResponse
-	(*MongoInfoResponse)(nil),          // 25: agent.MongoInfoResponse
-	(*ErrorResponse)(nil),              // 26: agent.ErrorResponse
-	(*ServerMessage)(nil),              // 27: agent.ServerMessage
-	(*AgentMessage)(nil),               // 28: agent.AgentMessage
-	(*SystemMetrics)(nil),              // 29: agent.SystemMetrics
-	(*SystemMetricsRequest)(nil),       // 30: agent.SystemMetricsRequest
-	(*SystemMetricsResponse)(nil),      // 31: agent.SystemMetricsResponse
-	(*AlarmConfigRequest)(nil),         // 32: agent.AlarmConfigRequest
-	(*AlarmConfigResponse)(nil),        // 33: agent.AlarmConfigResponse
-	(*PostgresLogFile)(nil),            // 34: agent.PostgresLogFile
-	(*PostgresLogListRequest)(nil),     // 35: agent.PostgresLogListRequest
-	(*PostgresLogListResponse)(nil),    // 36: agent.PostgresLogListResponse
-	(*PostgresLogAnalyzeRequest)(nil),  // 37: agent.PostgresLogAnalyzeRequest
-	(*PostgresLogEntry)(nil),           // 38: agent.PostgresLogEntry
-	(*PostgresLogAnalyzeResponse)(nil), // 39: agent.PostgresLogAnalyzeResponse
-	(*PostgresConfigRequest)(nil),      // 40: agent.PostgresConfigRequest
-	(*PostgresConfigEntry)(nil),        // 41: agent.PostgresConfigEntry
-	(*PostgresConfigResponse)(nil),     // 42: agent.PostgresConfigResponse
-	(*any1.Any)(nil),                   // 43: google.protobuf.Any
+	(*AgentInfo)(nil),                    // 0: agent.AgentInfo
+	(*PostgresInfo)(nil),                 // 1: agent.PostgresInfo
+	(*MongoInfo)(nil),                    // 2: agent.MongoInfo
+	(*MongoLogListRequest)(nil),          // 3: agent.MongoLogListRequest
+	(*MongoLogFile)(nil),                 // 4: agent.MongoLogFile
+	(*MongoLogListResponse)(nil),         // 5: agent.MongoLogListResponse
+	(*MongoLogAnalyzeRequest)(nil),       // 6: agent.MongoLogAnalyzeRequest
+	(*MongoLogEntry)(nil),                // 7: agent.MongoLogEntry
+	(*MongoLogAnalyzeResponse)(nil),      // 8: agent.MongoLogAnalyzeResponse
+	(*AlarmCondition)(nil),               // 9: agent.AlarmCondition
+	(*AlarmConfiguration)(nil),           // 10: agent.AlarmConfiguration
+	(*AlarmEvent)(nil),                   // 11: agent.AlarmEvent
+	(*Query)(nil),                        // 12: agent.Query
+	(*QueryResult)(nil),                  // 13: agent.QueryResult
+	(*Error)(nil),                        // 14: agent.Error
+	(*RegistrationResult)(nil),           // 15: agent.RegistrationResult
+	(*ReportAlarmRequest)(nil),           // 16: agent.ReportAlarmRequest
+	(*ReportAlarmResponse)(nil),          // 17: agent.ReportAlarmResponse
+	(*RegisterRequest)(nil),              // 18: agent.RegisterRequest
+	(*RegisterResponse)(nil),             // 19: agent.RegisterResponse
+	(*QueryRequest)(nil),                 // 20: agent.QueryRequest
+	(*QueryResponse)(nil),                // 21: agent.QueryResponse
+	(*PostgresInfoRequest)(nil),          // 22: agent.PostgresInfoRequest
+	(*MongoInfoRequest)(nil),             // 23: agent.MongoInfoRequest
+	(*PostgresInfoResponse)(nil),         // 24: agent.PostgresInfoResponse
+	(*MongoInfoResponse)(nil),            // 25: agent.MongoInfoResponse
+	(*ErrorResponse)(nil),                // 26: agent.ErrorResponse
+	(*ServerMessage)(nil),                // 27: agent.ServerMessage
+	(*AgentMessage)(nil),                 // 28: agent.AgentMessage
+	(*SystemMetrics)(nil),                // 29: agent.SystemMetrics
+	(*SystemMetricsRequest)(nil),         // 30: agent.SystemMetricsRequest
+	(*SystemMetricsResponse)(nil),        // 31: agent.SystemMetricsResponse
+	(*AlarmConfigRequest)(nil),           // 32: agent.AlarmConfigRequest
+	(*AlarmConfigResponse)(nil),          // 33: agent.AlarmConfigResponse
+	(*PostgresLogFile)(nil),              // 34: agent.PostgresLogFile
+	(*PostgresLogListRequest)(nil),       // 35: agent.PostgresLogListRequest
+	(*PostgresLogListResponse)(nil),      // 36: agent.PostgresLogListResponse
+	(*PostgresLogAnalyzeRequest)(nil),    // 37: agent.PostgresLogAnalyzeRequest
+	(*PostgresLogEntry)(nil),             // 38: agent.PostgresLogEntry
+	(*PostgresLogAnalyzeResponse)(nil),   // 39: agent.PostgresLogAnalyzeResponse
+	(*PostgresConfigRequest)(nil),        // 40: agent.PostgresConfigRequest
+	(*PostgresConfigEntry)(nil),          // 41: agent.PostgresConfigEntry
+	(*PostgresConfigResponse)(nil),       // 42: agent.PostgresConfigResponse
+	(*ThresholdSettings)(nil),            // 43: agent.ThresholdSettings
+	(*GetThresholdSettingsRequest)(nil),  // 44: agent.GetThresholdSettingsRequest
+	(*GetThresholdSettingsResponse)(nil), // 45: agent.GetThresholdSettingsResponse
+	(*any1.Any)(nil),                     // 46: google.protobuf.Any
 }
 var file_pkg_agent_agent_proto_depIdxs = []int32{
 	4,  // 0: agent.MongoLogListResponse.log_files:type_name -> agent.MongoLogFile
 	7,  // 1: agent.MongoLogAnalyzeResponse.log_entries:type_name -> agent.MongoLogEntry
 	9,  // 2: agent.AlarmConfiguration.condition:type_name -> agent.AlarmCondition
-	43, // 3: agent.QueryResult.result:type_name -> google.protobuf.Any
+	46, // 3: agent.QueryResult.result:type_name -> google.protobuf.Any
 	11, // 4: agent.ReportAlarmRequest.events:type_name -> agent.AlarmEvent
 	0,  // 5: agent.RegisterRequest.agent_info:type_name -> agent.AgentInfo
 	15, // 6: agent.RegisterResponse.registration:type_name -> agent.RegistrationResult
@@ -3383,41 +3571,44 @@ var file_pkg_agent_agent_proto_depIdxs = []int32{
 	34, // 23: agent.PostgresLogListResponse.log_files:type_name -> agent.PostgresLogFile
 	38, // 24: agent.PostgresLogAnalyzeResponse.log_entries:type_name -> agent.PostgresLogEntry
 	41, // 25: agent.PostgresConfigResponse.configurations:type_name -> agent.PostgresConfigEntry
-	28, // 26: agent.AgentService.Connect:input_type -> agent.AgentMessage
-	18, // 27: agent.AgentService.Register:input_type -> agent.RegisterRequest
-	20, // 28: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
-	22, // 29: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
-	20, // 30: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
-	22, // 31: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
-	30, // 32: agent.AgentService.SendSystemMetrics:input_type -> agent.SystemMetricsRequest
-	32, // 33: agent.AgentService.GetAlarmConfigurations:input_type -> agent.AlarmConfigRequest
-	16, // 34: agent.AgentService.ReportAlarm:input_type -> agent.ReportAlarmRequest
-	23, // 35: agent.AgentService.SendMongoInfo:input_type -> agent.MongoInfoRequest
-	3,  // 36: agent.AgentService.ListMongoLogs:input_type -> agent.MongoLogListRequest
-	6,  // 37: agent.AgentService.AnalyzeMongoLog:input_type -> agent.MongoLogAnalyzeRequest
-	35, // 38: agent.AgentService.ListPostgresLogs:input_type -> agent.PostgresLogListRequest
-	37, // 39: agent.AgentService.AnalyzePostgresLog:input_type -> agent.PostgresLogAnalyzeRequest
-	40, // 40: agent.AgentService.ReadPostgresConfig:input_type -> agent.PostgresConfigRequest
-	27, // 41: agent.AgentService.Connect:output_type -> agent.ServerMessage
-	19, // 42: agent.AgentService.Register:output_type -> agent.RegisterResponse
-	21, // 43: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
-	24, // 44: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
-	21, // 45: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
-	24, // 46: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
-	31, // 47: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
-	33, // 48: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
-	17, // 49: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
-	25, // 50: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
-	5,  // 51: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
-	8,  // 52: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
-	36, // 53: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
-	39, // 54: agent.AgentService.AnalyzePostgresLog:output_type -> agent.PostgresLogAnalyzeResponse
-	42, // 55: agent.AgentService.ReadPostgresConfig:output_type -> agent.PostgresConfigResponse
-	41, // [41:56] is the sub-list for method output_type
-	26, // [26:41] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	43, // 26: agent.GetThresholdSettingsResponse.settings:type_name -> agent.ThresholdSettings
+	28, // 27: agent.AgentService.Connect:input_type -> agent.AgentMessage
+	18, // 28: agent.AgentService.Register:input_type -> agent.RegisterRequest
+	20, // 29: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
+	22, // 30: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
+	20, // 31: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
+	22, // 32: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
+	30, // 33: agent.AgentService.SendSystemMetrics:input_type -> agent.SystemMetricsRequest
+	32, // 34: agent.AgentService.GetAlarmConfigurations:input_type -> agent.AlarmConfigRequest
+	16, // 35: agent.AgentService.ReportAlarm:input_type -> agent.ReportAlarmRequest
+	23, // 36: agent.AgentService.SendMongoInfo:input_type -> agent.MongoInfoRequest
+	3,  // 37: agent.AgentService.ListMongoLogs:input_type -> agent.MongoLogListRequest
+	6,  // 38: agent.AgentService.AnalyzeMongoLog:input_type -> agent.MongoLogAnalyzeRequest
+	35, // 39: agent.AgentService.ListPostgresLogs:input_type -> agent.PostgresLogListRequest
+	37, // 40: agent.AgentService.AnalyzePostgresLog:input_type -> agent.PostgresLogAnalyzeRequest
+	40, // 41: agent.AgentService.ReadPostgresConfig:input_type -> agent.PostgresConfigRequest
+	44, // 42: agent.AgentService.GetThresholdSettings:input_type -> agent.GetThresholdSettingsRequest
+	27, // 43: agent.AgentService.Connect:output_type -> agent.ServerMessage
+	19, // 44: agent.AgentService.Register:output_type -> agent.RegisterResponse
+	21, // 45: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
+	24, // 46: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
+	21, // 47: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
+	24, // 48: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
+	31, // 49: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
+	33, // 50: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
+	17, // 51: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
+	25, // 52: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
+	5,  // 53: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
+	8,  // 54: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
+	36, // 55: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
+	39, // 56: agent.AgentService.AnalyzePostgresLog:output_type -> agent.PostgresLogAnalyzeResponse
+	42, // 57: agent.AgentService.ReadPostgresConfig:output_type -> agent.PostgresConfigResponse
+	45, // 58: agent.AgentService.GetThresholdSettings:output_type -> agent.GetThresholdSettingsResponse
+	43, // [43:59] is the sub-list for method output_type
+	27, // [27:43] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_pkg_agent_agent_proto_init() }
@@ -3444,7 +3635,7 @@ func file_pkg_agent_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_agent_agent_proto_rawDesc), len(file_pkg_agent_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   43,
+			NumMessages:   46,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
