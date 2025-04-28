@@ -571,7 +571,7 @@ func (s *Server) checkDatabaseConnection() error {
 }
 
 // SendQuery, belirli bir agent'a sorgu gönderir ve cevabı bekler
-func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command string) (*pb.QueryResult, error) {
+func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command, database string) (*pb.QueryResult, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -607,8 +607,9 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command string
 	err := agentConn.Stream.Send(&pb.ServerMessage{
 		Payload: &pb.ServerMessage_Query{
 			Query: &pb.Query{
-				QueryId: queryID,
-				Command: command,
+				QueryId:  queryID,
+				Command:  command,
+				Database: database,
 			},
 		},
 	})
@@ -622,7 +623,6 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command string
 	case result := <-resultChan:
 		// Protobuf sonucunu JSON formatına dönüştür
 		if result.Result != nil {
-
 			// Protobuf struct'ı parse et
 			var structValue structpb.Struct
 			if err := result.Result.UnmarshalTo(&structValue); err != nil {
@@ -1526,7 +1526,6 @@ func (s *Server) sendMongoLogListQuery(ctx context.Context, agentID string) (*pb
 			log.Printf("Doğrudan MongoLogListResponse'a başarıyla ayrıştırıldı - Dosya sayısı: %d", len(logListResponse.LogFiles))
 			return &logListResponse, nil
 		}
-
 
 		// Struct'tan MongoLogListResponse oluştur
 		logFiles := make([]*pb.MongoLogFile, 0)

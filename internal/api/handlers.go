@@ -116,8 +116,9 @@ func sendQueryToAgent(server *server.Server) gin.HandlerFunc {
 		}
 
 		var req struct {
-			QueryID string `json:"query_id" binding:"required"`
-			Command string `json:"command" binding:"required"`
+			QueryID  string `json:"query_id" binding:"required"`
+			Command  string `json:"command" binding:"required"`
+			Database string `json:"database"`
 		}
 
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -133,7 +134,7 @@ func sendQueryToAgent(server *server.Server) gin.HandlerFunc {
 		defer cancel()
 
 		// Sorguyu gönder ve cevabı bekle
-		result, err := server.SendQuery(ctx, agentID, req.QueryID, req.Command)
+		result, err := server.SendQuery(ctx, agentID, req.QueryID, req.Command, req.Database)
 		if err != nil {
 			status := http.StatusInternalServerError
 			message := "Sorgu sırasında bir hata oluştu: " + err.Error()
