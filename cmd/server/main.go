@@ -71,7 +71,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	grpcServer := grpc.NewServer()
+	// gRPC sunucu seçeneklerini ayarla
+	maxMsgSize := 32 * 1024 * 1024 // 32MB
+	opts := []grpc.ServerOption{
+		grpc.MaxRecvMsgSize(maxMsgSize),
+		grpc.MaxSendMsgSize(maxMsgSize),
+	}
+
+	grpcServer := grpc.NewServer(opts...)
 	serverInstance := server.NewServer(db)
 	pb.RegisterAgentServiceServer(grpcServer, serverInstance)
 

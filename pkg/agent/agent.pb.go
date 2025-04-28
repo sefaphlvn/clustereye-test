@@ -1089,6 +1089,7 @@ type Query struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	QueryId       string                 `protobuf:"bytes,1,opt,name=query_id,json=queryId,proto3" json:"query_id,omitempty"`
 	Command       string                 `protobuf:"bytes,2,opt,name=command,proto3" json:"command,omitempty"`
+	Database      string                 `protobuf:"bytes,3,opt,name=database,proto3" json:"database,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1133,6 +1134,13 @@ func (x *Query) GetQueryId() string {
 func (x *Query) GetCommand() string {
 	if x != nil {
 		return x.Command
+	}
+	return ""
+}
+
+func (x *Query) GetDatabase() string {
+	if x != nil {
+		return x.Database
 	}
 	return ""
 }
@@ -3132,10 +3140,11 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\fmetric_value\x18\x06 \x01(\tR\vmetricValue\x12\x18\n" +
 	"\amessage\x18\a \x01(\tR\amessage\x12\x1c\n" +
 	"\ttimestamp\x18\b \x01(\tR\ttimestamp\x12\x1a\n" +
-	"\bseverity\x18\t \x01(\tR\bseverity\"<\n" +
+	"\bseverity\x18\t \x01(\tR\bseverity\"X\n" +
 	"\x05Query\x12\x19\n" +
 	"\bquery_id\x18\x01 \x01(\tR\aqueryId\x12\x18\n" +
-	"\acommand\x18\x02 \x01(\tR\acommand\"V\n" +
+	"\acommand\x18\x02 \x01(\tR\acommand\x12\x1a\n" +
+	"\bdatabase\x18\x03 \x01(\tR\bdatabase\"V\n" +
 	"\vQueryResult\x12\x19\n" +
 	"\bquery_id\x18\x01 \x01(\tR\aqueryId\x12,\n" +
 	"\x06result\x18\x02 \x01(\v2\x14.google.protobuf.AnyR\x06result\"5\n" +

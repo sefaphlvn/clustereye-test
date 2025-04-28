@@ -131,6 +131,7 @@ message AlarmEvent {
 message Query {
   string query_id = 1;
   string command = 2;
+  string database = 3;
 }
 
 message QueryResult {

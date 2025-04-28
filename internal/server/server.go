@@ -1450,8 +1450,6 @@ func (s *Server) AnalyzeMongoLog(ctx context.Context, req *pb.MongoLogAnalyzeReq
 		return nil, status.Errorf(codes.Internal, "MongoDB log analizi için bir hata oluştu: %v", err)
 	}
 
-	log.Printf("MongoDB log analizi başarıyla tamamlandı - Agent: %s, Log girişi sayısı: %d",
-		agentID, len(response.LogEntries))
 	return response, nil
 }
 
@@ -1529,9 +1527,6 @@ func (s *Server) sendMongoLogListQuery(ctx context.Context, agentID string) (*pb
 			return &logListResponse, nil
 		}
 
-		// Sonucun içeriğini logla
-		structBytes, _ := json.Marshal(resultStruct.AsMap())
-		log.Printf("Struct içeriği: %s", string(structBytes))
 
 		// Struct'tan MongoLogListResponse oluştur
 		logFiles := make([]*pb.MongoLogFile, 0)
@@ -1654,11 +1649,7 @@ func (s *Server) sendMongoLogAnalyzeQuery(ctx context.Context, agentID, logFileP
 			return &analyzeResponse, nil
 		}
 
-		// Sonucun içeriğini logla
-		structBytes, _ := json.Marshal(resultStruct.AsMap())
-		log.Printf("Struct içeriği: %s", string(structBytes))
-
-		// Struct'tan MongoLogAnalyzeResponse oluştur
+		// Sonucun içeriğini logla		// Struct'tan MongoLogAnalyzeResponse oluştur
 		logEntries := make([]*pb.MongoLogEntry, 0)
 		entriesValue, ok := resultStruct.Fields["log_entries"]
 		if ok && entriesValue != nil && entriesValue.GetListValue() != nil {
@@ -2313,10 +2304,6 @@ func (s *Server) sendPostgresConfigQuery(ctx context.Context, agentID, configPat
 			log.Printf("Doğrudan PostgresConfigResponse'a başarıyla ayrıştırıldı - Config girişleri: %d", len(configResponse.Configurations))
 			return &configResponse, nil
 		}
-
-		// Sonucun içeriğini logla
-		jsonBytes, _ := json.Marshal(resultStruct.AsMap())
-		log.Printf("Config yanıtı içeriği: %s", string(jsonBytes))
 
 		// Struct'tan PostgresConfigResponse oluştur
 		configEntries := make([]*pb.PostgresConfigEntry, 0)
