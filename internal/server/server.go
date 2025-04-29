@@ -800,6 +800,15 @@ func (s *Server) saveAlarmToDatabase(ctx context.Context, event *pb.AlarmEvent) 
 		log.Printf("[DEBUG] Successfully parsed timestamp: %v", timestamp)
 	}
 
+	// UTC zamanını Türkiye saatine (UTC+3) çevir
+	turkeyLoc, err := time.LoadLocation("Europe/Istanbul")
+	if err != nil {
+		log.Printf("[WARN] Failed to load Turkey timezone: %v, using UTC", err)
+	} else {
+		timestamp = timestamp.In(turkeyLoc)
+		log.Printf("[DEBUG] Converted timestamp to Turkey time: %v", timestamp)
+	}
+
 	// Veritabanına kaydet
 	if event.MetricName == "postgresql_slow_queries" {
 		log.Printf("[DEBUG] Slow query alarm received - Agent: %s, Value: %s, Message: %s",

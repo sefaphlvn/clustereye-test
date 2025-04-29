@@ -34,7 +34,7 @@ jobs:
       - name: Build Linux binary
         run: |
           echo "Building Linux binary..."
-          GOOS=linux GOARCH=amd64 go build -v -o clustereye-api-linux-amd64 ./cmd/api
+          GOOS=linux GOARCH=amd64 go build -v -ldflags "-X main.version=$RELEASE_VERSION" -o clustereye-api-linux-amd64 ./cmd/api
           chmod +x clustereye-api-linux-amd64
           echo "Linux binary built successfully:"
           ls -la clustereye-api-linux-amd64
@@ -42,7 +42,7 @@ jobs:
       - name: Build Darwin binary
         run: |
           echo "Building Darwin binary..."
-          GOOS=darwin GOARCH=amd64 go build -v -o clustereye-api-darwin-amd64 ./cmd/api
+          GOOS=darwin GOARCH=amd64 go build -v -ldflags "-X main.version=$RELEASE_VERSION" -o clustereye-api-darwin-amd64 ./cmd/api
           chmod +x clustereye-api-darwin-amd64
           echo "Darwin binary built successfully:"
           ls -la clustereye-api-darwin-amd64

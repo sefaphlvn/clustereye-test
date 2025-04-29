@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -26,8 +27,10 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 	v1.POST("/users", CreateUser(server.GetDB()))
 	// Kullanıcı listesini getir - Sadece admin erişebilir
 	v1.GET("/users", GetUsers(server.GetDB()))
-	// Kullanıcıyı güncelle - Sadece admin erişebilir
-	v1.PUT("/users/:id", AuthMiddleware(), UpdateUser(server.GetDB()))
+	// Belirli bir kullanıcıyı getir
+	v1.GET("/users/:id", GetUser(server.GetDB()))
+	// Kullanıcıyı güncelle
+	v1.PUT("/users/:id", UpdateUser(server.GetDB()))
 	// Kullanıcıyı sil - Sadece admin erişebilir
 	v1.DELETE("/users/:id", AuthMiddleware(), DeleteUser(server.GetDB()))
 
@@ -691,7 +694,7 @@ func getAlarms(server *server.Server) gin.HandlerFunc {
 		defer cancel()
 
 		// Query parameter'dan sadece acknowledge edilmemiş alarmları getirip getirmeyeceğimizi kontrol et
-		onlyUnacknowledged := c.DefaultQuery("unacknowledged", "true") == "true"
+		onlyUnacknowledged := c.DefaultQuery("unacknowledged", "true") == "false"
 
 		alarms, err := server.GetAlarms(ctx, onlyUnacknowledged)
 		if err != nil {
@@ -849,6 +852,54 @@ func getAgentVersions(server *server.Server) gin.HandlerFunc {
 			"status": "success",
 			"data": gin.H{
 				"versions": versions,
+			},
+		})
+	}
+}
+
+// GetUser, belirli bir kullanıcıyı ID'sine göre getirir
+func GetUser(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.Param("id")
+
+		// Kullanıcıyı veritabanından çek
+		var user struct {
+			ID        int       `json:"id"`
+			Username  string    `json:"username"`
+			Email     string    `json:"email"`
+			Role      string    `json:"role"`
+			CreatedAt time.Time `json:"created_at"`
+			UpdatedAt time.Time `json:"updated_at"`
+		}
+
+		err := db.QueryRow(`
+			SELECT id, username, email, role, created_at, updated_at 
+			FROM users 
+			WHERE id = $1`, userID).Scan(
+			&user.ID, &user.Username, &user.Email, &user.Role,
+			&user.CreatedAt, &user.UpdatedAt,
+		)
+
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{
+				"status": "error",
+				"error":  "Kullanıcı bulunamadı",
+			})
+			return
+		}
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Kullanıcı bilgileri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"user": user,
 			},
 		})
 	}

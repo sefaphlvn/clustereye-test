@@ -1,0 +1,15 @@
+[Unit]
+Description=ClusterEye API Service
+After=network.target
+
+[Service]
+Type=simple
+User=clustereye
+Group=clustereye
+ExecStart=/usr/local/bin/clustereye-api-linux-amd64
+Restart=always
+RestartSec=5
+Environment=ENV=production
+
+[Install]
+WantedBy=multi-user.target 

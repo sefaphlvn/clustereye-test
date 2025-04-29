@@ -333,15 +333,6 @@ func GetUsers(db *sql.DB) gin.HandlerFunc {
 // UpdateUser, kullanıcı bilgilerini günceller
 func UpdateUser(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Sadece admin kullanıcıların erişimine izin ver
-		adminValue, exists := c.Get("admin")
-		if !exists || adminValue != "true" {
-			c.JSON(http.StatusForbidden, gin.H{
-				"success": false,
-				"error":   "Admin yetkisi gerekiyor",
-			})
-			return
-		}
 
 		userID := c.Param("id")
 		if userID == "" {
