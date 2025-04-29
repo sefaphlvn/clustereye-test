@@ -37,6 +37,9 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		// Tüm bağlı agent'ları listele
 		agents.GET("", getAgents(server))
 
+		// Agent versiyon bilgilerini getir
+		agents.GET("/versions", getAgentVersions(server))
+
 		// Agent'a sorgu gönder
 		agents.POST("/:agent_id/query", sendQueryToAgent(server))
 
@@ -823,6 +826,30 @@ func readPostgresConfig(server *server.Server) gin.HandlerFunc {
 			"agent_id":       agentID,
 			"config_path":    response.ConfigPath,
 			"configurations": configEntries,
+		})
+	}
+}
+
+// getAgentVersions, agent versiyon bilgilerini getirir
+func getAgentVersions(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+
+		versions, err := server.GetAgentVersions(ctx)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Agent versiyon bilgileri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"versions": versions,
+			},
 		})
 	}
 }

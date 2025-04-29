@@ -111,6 +111,7 @@ func Login(db *sql.DB) gin.HandlerFunc {
 
 		tokenString, err := token.SignedString(jwtSecretKey)
 		if err != nil {
+			log.Printf("Token generation error: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
 			return
 		}
@@ -125,6 +126,8 @@ func Login(db *sql.DB) gin.HandlerFunc {
 			false,
 			true,
 		)
+
+		log.Printf("Login successful for user: %s", user.Username)
 
 		// Frontend'in beklediği formatta yanıt dön
 		c.JSON(http.StatusOK, gin.H{

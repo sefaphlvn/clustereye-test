@@ -2434,3 +2434,92 @@ func (s *Server) ReportVersion(ctx context.Context, req *pb.ReportVersionRequest
 		Status: "success",
 	}, nil
 }
+
+// GetAgentVersions, veritabanından agent versiyon bilgilerini çeker
+func (s *Server) GetAgentVersions(ctx context.Context) ([]map[string]interface{}, error) {
+	// Veritabanı bağlantısını kontrol et
+	if err := s.checkDatabaseConnection(); err != nil {
+		return nil, fmt.Errorf("veritabanı bağlantı hatası: %v", err)
+	}
+
+	// SQL sorgusu
+	query := `
+		SELECT 
+			agent_id,
+			version,
+			platform,
+			architecture,
+			hostname,
+			os_version,
+			go_version,
+			reported_at,
+			created_at,
+			updated_at
+		FROM agent_versions
+		ORDER BY reported_at DESC
+	`
+
+	// Sorguyu çalıştır
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("versiyon bilgileri çekilemedi: %v", err)
+	}
+	defer rows.Close()
+
+	// Sonuçları topla
+	versions := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var (
+			agentID      string
+			version      string
+			platform     string
+			architecture string
+			hostname     string
+			osVersion    string
+			goVersion    string
+			reportedAt   time.Time
+			createdAt    time.Time
+			updatedAt    time.Time
+		)
+
+		// Satırı oku
+		err := rows.Scan(
+			&agentID,
+			&version,
+			&platform,
+			&architecture,
+			&hostname,
+			&osVersion,
+			&goVersion,
+			&reportedAt,
+			&createdAt,
+			&updatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("satır okuma hatası: %v", err)
+		}
+
+		// Her versiyonu map olarak oluştur
+		versionInfo := map[string]interface{}{
+			"agent_id":     agentID,
+			"version":      version,
+			"platform":     platform,
+			"architecture": architecture,
+			"hostname":     hostname,
+			"os_version":   osVersion,
+			"go_version":   goVersion,
+			"reported_at":  reportedAt.Format(time.RFC3339),
+			"created_at":   createdAt.Format(time.RFC3339),
+			"updated_at":   updatedAt.Format(time.RFC3339),
+		}
+
+		versions = append(versions, versionInfo)
+	}
+
+	// Satır okuma hatası kontrolü
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("satır okuma hatası: %v", err)
+	}
+
+	return versions, nil
+}
