@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // PostgresInfo, PostgreSQL test sonucunu ve bilgilerini temsil eder
@@ -54,6 +55,9 @@ type Server struct {
 	// Son ping zamanlarını tutmak için map
 	lastPingMu   sync.RWMutex
 	lastPingTime map[string]time.Time
+	// Job yönetimi için yeni alanlar
+	jobMu sync.RWMutex
+	jobs  map[string]*pb.Job
 }
 
 // NewServer, yeni bir sunucu nesnesi oluşturur
@@ -64,6 +68,7 @@ func NewServer(db *sql.DB) *Server {
 		db:           db,
 		companyRepo:  database.NewCompanyRepository(db),
 		lastPingTime: make(map[string]time.Time),
+		jobs:         make(map[string]*pb.Job),
 	}
 }
 
@@ -2531,4 +2536,278 @@ func (s *Server) GetAgentVersions(ctx context.Context) ([]map[string]interface{}
 	}
 
 	return versions, nil
+}
+
+// PromoteMongoToPrimary, MongoDB node'unu primary'ye yükseltir
+func (s *Server) PromoteMongoToPrimary(ctx context.Context, req *pb.MongoPromotePrimaryRequest) (*pb.MongoPromotePrimaryResponse, error) {
+	// Job oluştur
+	job := &pb.Job{
+		JobId:     req.JobId,
+		Type:      pb.JobType_JOB_TYPE_MONGO_PROMOTE_PRIMARY,
+		Status:    pb.JobStatus_JOB_STATUS_PENDING,
+		AgentId:   req.AgentId,
+		CreatedAt: timestamppb.Now(),
+		UpdatedAt: timestamppb.Now(),
+		Parameters: map[string]string{
+			"node_hostname": req.NodeHostname,
+			"port":          fmt.Sprintf("%d", req.Port),
+			"replica_set":   req.ReplicaSet,
+		},
+	}
+
+	// Job'ı kaydet
+	s.jobMu.Lock()
+	s.jobs[job.JobId] = job
+	s.jobMu.Unlock()
+
+	// İlgili agent'ı bul
+	s.mu.RLock()
+	agent, exists := s.agents[req.AgentId]
+	s.mu.RUnlock()
+
+	if !exists {
+		job.Status = pb.JobStatus_JOB_STATUS_FAILED
+		job.ErrorMessage = "Agent bulunamadı"
+		job.UpdatedAt = timestamppb.Now()
+		return &pb.MongoPromotePrimaryResponse{
+			JobId:        job.JobId,
+			Status:       job.Status,
+			ErrorMessage: job.ErrorMessage,
+		}, fmt.Errorf("agent bulunamadı: %s", req.AgentId)
+	}
+
+	// Job'ı veritabanına kaydet
+	if err := s.saveJobToDatabase(ctx, job); err != nil {
+		job.Status = pb.JobStatus_JOB_STATUS_FAILED
+		job.ErrorMessage = fmt.Sprintf("Job veritabanına kaydedilemedi: %v", err)
+		job.UpdatedAt = timestamppb.Now()
+		return &pb.MongoPromotePrimaryResponse{
+			JobId:        job.JobId,
+			Status:       job.Status,
+			ErrorMessage: job.ErrorMessage,
+		}, err
+	}
+
+	// Job'ı çalıştır
+	go func() {
+		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
+		job.UpdatedAt = timestamppb.Now()
+		s.updateJobInDatabase(context.Background(), job)
+
+		// Agent'a promote isteği gönder
+		err := agent.Stream.Send(&pb.ServerMessage{
+			Payload: &pb.ServerMessage_Query{
+				Query: &pb.Query{
+					QueryId: job.JobId,
+					Command: fmt.Sprintf("rs.stepDown(%s)", req.NodeHostname),
+				},
+			},
+		})
+
+		if err != nil {
+			job.Status = pb.JobStatus_JOB_STATUS_FAILED
+			job.ErrorMessage = fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)
+		} else {
+			job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
+			job.Result = "Primary promotion request sent successfully"
+		}
+
+		job.UpdatedAt = timestamppb.Now()
+		s.updateJobInDatabase(context.Background(), job)
+	}()
+
+	return &pb.MongoPromotePrimaryResponse{
+		JobId:  job.JobId,
+		Status: pb.JobStatus_JOB_STATUS_PENDING,
+	}, nil
+}
+
+// PromotePostgresToMaster, PostgreSQL node'unu master'a yükseltir
+func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPromoteMasterRequest) (*pb.PostgresPromoteMasterResponse, error) {
+	// Job oluştur
+	job := &pb.Job{
+		JobId:     req.JobId,
+		Type:      pb.JobType_JOB_TYPE_POSTGRES_PROMOTE_MASTER,
+		Status:    pb.JobStatus_JOB_STATUS_PENDING,
+		AgentId:   req.AgentId,
+		CreatedAt: timestamppb.Now(),
+		UpdatedAt: timestamppb.Now(),
+		Parameters: map[string]string{
+			"node_hostname":  req.NodeHostname,
+			"data_directory": req.DataDirectory,
+		},
+	}
+
+	// Job'ı kaydet
+	s.jobMu.Lock()
+	s.jobs[job.JobId] = job
+	s.jobMu.Unlock()
+
+	// İlgili agent'ı bul
+	s.mu.RLock()
+	agent, exists := s.agents[req.AgentId]
+	s.mu.RUnlock()
+
+	if !exists {
+		job.Status = pb.JobStatus_JOB_STATUS_FAILED
+		job.ErrorMessage = "Agent bulunamadı"
+		job.UpdatedAt = timestamppb.Now()
+		return &pb.PostgresPromoteMasterResponse{
+			JobId:        job.JobId,
+			Status:       job.Status,
+			ErrorMessage: job.ErrorMessage,
+		}, fmt.Errorf("agent bulunamadı: %s", req.AgentId)
+	}
+
+	// Job'ı veritabanına kaydet
+	if err := s.saveJobToDatabase(ctx, job); err != nil {
+		job.Status = pb.JobStatus_JOB_STATUS_FAILED
+		job.ErrorMessage = fmt.Sprintf("Job veritabanına kaydedilemedi: %v", err)
+		job.UpdatedAt = timestamppb.Now()
+		return &pb.PostgresPromoteMasterResponse{
+			JobId:        job.JobId,
+			Status:       job.Status,
+			ErrorMessage: job.ErrorMessage,
+		}, err
+	}
+
+	// Job'ı çalıştır
+	go func() {
+		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
+		job.UpdatedAt = timestamppb.Now()
+		s.updateJobInDatabase(context.Background(), job)
+
+		// Agent'a promote isteği gönder
+		err := agent.Stream.Send(&pb.ServerMessage{
+			Payload: &pb.ServerMessage_Query{
+				Query: &pb.Query{
+					QueryId: job.JobId,
+					Command: fmt.Sprintf("pg_ctl promote -D %s", req.DataDirectory),
+				},
+			},
+		})
+
+		if err != nil {
+			job.Status = pb.JobStatus_JOB_STATUS_FAILED
+			job.ErrorMessage = fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)
+		} else {
+			job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
+			job.Result = "Master promotion request sent successfully"
+		}
+
+		job.UpdatedAt = timestamppb.Now()
+		s.updateJobInDatabase(context.Background(), job)
+	}()
+
+	return &pb.PostgresPromoteMasterResponse{
+		JobId:  job.JobId,
+		Status: pb.JobStatus_JOB_STATUS_PENDING,
+	}, nil
+}
+
+// GetJob, belirli bir job'ın detaylarını getirir
+func (s *Server) GetJob(ctx context.Context, req *pb.GetJobRequest) (*pb.GetJobResponse, error) {
+	s.jobMu.RLock()
+	job, exists := s.jobs[req.JobId]
+	s.jobMu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("job bulunamadı: %s", req.JobId)
+	}
+
+	return &pb.GetJobResponse{
+		Job: job,
+	}, nil
+}
+
+// ListJobs, job listesini getirir
+func (s *Server) ListJobs(ctx context.Context, req *pb.ListJobsRequest) (*pb.ListJobsResponse, error) {
+	s.jobMu.RLock()
+	defer s.jobMu.RUnlock()
+
+	var filteredJobs []*pb.Job
+	for _, job := range s.jobs {
+		// Agent ID filtresi
+		if req.AgentId != "" && job.AgentId != req.AgentId {
+			continue
+		}
+		// Status filtresi
+		if req.Status != pb.JobStatus_JOB_STATUS_UNKNOWN && job.Status != req.Status {
+			continue
+		}
+		// Type filtresi
+		if req.Type != pb.JobType_JOB_TYPE_UNKNOWN && job.Type != req.Type {
+			continue
+		}
+		filteredJobs = append(filteredJobs, job)
+	}
+
+	// Pagination
+	total := len(filteredJobs)
+	start := int(req.Offset)
+	end := start + int(req.Limit)
+	if end > total {
+		end = total
+	}
+	if start > total {
+		start = total
+	}
+
+	return &pb.ListJobsResponse{
+		Jobs:  filteredJobs[start:end],
+		Total: int32(total),
+	}, nil
+}
+
+// saveJobToDatabase, job'ı veritabanına kaydeder
+func (s *Server) saveJobToDatabase(ctx context.Context, job *pb.Job) error {
+	query := `
+		INSERT INTO jobs (
+			job_id,
+			type,
+			status,
+			agent_id,
+			created_at,
+			updated_at,
+			error_message,
+			parameters,
+			result
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`
+
+	_, err := s.db.ExecContext(ctx, query,
+		job.JobId,
+		job.Type.String(),
+		job.Status.String(),
+		job.AgentId,
+		job.CreatedAt.AsTime(),
+		job.UpdatedAt.AsTime(),
+		job.ErrorMessage,
+		job.Parameters,
+		job.Result,
+	)
+
+	return err
+}
+
+// updateJobInDatabase, job'ı veritabanında günceller
+func (s *Server) updateJobInDatabase(ctx context.Context, job *pb.Job) error {
+	query := `
+		UPDATE jobs SET
+			status = $1,
+			updated_at = $2,
+			error_message = $3,
+			result = $4
+		WHERE job_id = $5
+	`
+
+	_, err := s.db.ExecContext(ctx, query,
+		job.Status.String(),
+		job.UpdatedAt.AsTime(),
+		job.ErrorMessage,
+		job.Result,
+		job.JobId,
+	)
+
+	return err
 }

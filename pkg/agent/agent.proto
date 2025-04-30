@@ -3,6 +3,7 @@ syntax = "proto3";
 package agent;
 
 import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/sefaphlvn/clustereye-test/pkg/agent";
 
@@ -77,7 +78,6 @@ message MongoLogAnalyzeRequest {
   string log_file_path = 1;
   int64 slow_query_threshold_ms = 2; // Yavaş sorgu eşiği (ms)
   string agent_id = 3;
-
 }
 
 // MongoDB log mesajı
@@ -371,6 +371,87 @@ message ReportVersionResponse {
   string status = 1;
 }
 
+// Job ile ilgili mesaj tipleri
+enum JobStatus {
+  JOB_STATUS_UNKNOWN = 0;
+  JOB_STATUS_PENDING = 1;
+  JOB_STATUS_RUNNING = 2;
+  JOB_STATUS_COMPLETED = 3;
+  JOB_STATUS_FAILED = 4;
+  JOB_STATUS_CANCELLED = 5;
+}
+
+enum JobType {
+  JOB_TYPE_UNKNOWN = 0;
+  JOB_TYPE_MONGO_PROMOTE_PRIMARY = 1;
+  JOB_TYPE_POSTGRES_PROMOTE_MASTER = 2;
+}
+
+message Job {
+  string job_id = 1;
+  JobType type = 2;
+  JobStatus status = 3;
+  string agent_id = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  string error_message = 7;
+  map<string, string> parameters = 8;
+  string result = 9;
+}
+
+// MongoDB Primary Promotion
+message MongoPromotePrimaryRequest {
+  string job_id = 1;
+  string agent_id = 2;
+  string node_hostname = 3;
+  int32 port = 4;
+  string replica_set = 5;
+}
+
+message MongoPromotePrimaryResponse {
+  string job_id = 1;
+  JobStatus status = 2;
+  string error_message = 3;
+  string result = 4;
+}
+
+// PostgreSQL Master Promotion
+message PostgresPromoteMasterRequest {
+  string job_id = 1;
+  string agent_id = 2;
+  string node_hostname = 3;
+  string data_directory = 4;
+}
+
+message PostgresPromoteMasterResponse {
+  string job_id = 1;
+  JobStatus status = 2;
+  string error_message = 3;
+  string result = 4;
+}
+
+// Job Status Request/Response
+message GetJobRequest {
+  string job_id = 1;
+}
+
+message GetJobResponse {
+  Job job = 1;
+}
+
+message ListJobsRequest {
+  string agent_id = 1;  // Optional, if empty returns all jobs
+  JobStatus status = 2; // Optional, if unspecified returns all statuses
+  JobType type = 3;    // Optional, if unspecified returns all types
+  int32 limit = 4;     // Optional, limit the number of results
+  int32 offset = 5;    // Optional, offset for pagination
+}
+
+message ListJobsResponse {
+  repeated Job jobs = 1;
+  int32 total = 2;
+}
+
 service AgentService {
   // Eski bağlantı metodu (geriye dönük uyumluluk için)
   rpc Connect(stream AgentMessage) returns (stream ServerMessage);
@@ -418,4 +499,10 @@ service AgentService {
   
   // Yeni versiyon bildirimi metodu
   rpc ReportVersion(ReportVersionRequest) returns (ReportVersionResponse);
+
+  // Job related methods
+  rpc PromoteMongoToPrimary(MongoPromotePrimaryRequest) returns (MongoPromotePrimaryResponse);
+  rpc PromotePostgresToMaster(PostgresPromoteMasterRequest) returns (PostgresPromoteMasterResponse);
+  rpc GetJob(GetJobRequest) returns (GetJobResponse);
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
 }

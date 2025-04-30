@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/sefaphlvn/clustereye-test/internal/server"
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 	"google.golang.org/grpc/codes"
@@ -100,6 +102,19 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		threshold.GET("", AuthMiddleware(), GetThresholdSettings(server.GetDB()))
 		// Threshold ayarlarını güncelle - Sadece admin erişebilir
 		threshold.POST("", AuthMiddleware(), UpdateThresholdSettings(server.GetDB()))
+	}
+
+	// Job Endpoint'leri
+	jobs := v1.Group("/jobs")
+	{
+		// MongoDB primary promotion
+		jobs.POST("/mongo/promote-primary", promoteMongoToPrimary(server))
+		// PostgreSQL master promotion
+		jobs.POST("/postgres/promote-master", promotePostgresToMaster(server))
+		// Job durumunu sorgula
+		jobs.GET("/:job_id", getJob(server))
+		// Job listesini getir
+		jobs.GET("", listJobs(server))
 	}
 }
 
@@ -900,6 +915,207 @@ func GetUser(db *sql.DB) gin.HandlerFunc {
 			"status": "success",
 			"data": gin.H{
 				"user": user,
+			},
+		})
+	}
+}
+
+// promoteMongoToPrimary, MongoDB node'unu primary'ye yükseltir
+func promoteMongoToPrimary(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			AgentID      string `json:"agent_id" binding:"required"`
+			NodeHostname string `json:"node_hostname" binding:"required"`
+			Port         int32  `json:"port" binding:"required"`
+			ReplicaSet   string `json:"replica_set" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz istek formatı: " + err.Error(),
+			})
+			return
+		}
+
+		// Job ID oluştur
+		jobID := uuid.New().String()
+
+		// gRPC isteği oluştur
+		grpcReq := &pb.MongoPromotePrimaryRequest{
+			JobId:        jobID,
+			AgentId:      req.AgentID,
+			NodeHostname: req.NodeHostname,
+			Port:         req.Port,
+			ReplicaSet:   req.ReplicaSet,
+		}
+
+		// Context oluştur
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		// Promote işlemini başlat
+		response, err := server.PromoteMongoToPrimary(ctx, grpcReq)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Primary promotion başlatılamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusAccepted, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"job_id": response.JobId,
+				"status": response.Status.String(),
+			},
+		})
+	}
+}
+
+// promotePostgresToMaster, PostgreSQL node'unu master'a yükseltir
+func promotePostgresToMaster(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			AgentID       string `json:"agent_id" binding:"required"`
+			NodeHostname  string `json:"node_hostname" binding:"required"`
+			DataDirectory string `json:"data_directory" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz istek formatı: " + err.Error(),
+			})
+			return
+		}
+
+		// Job ID oluştur
+		jobID := uuid.New().String()
+
+		// gRPC isteği oluştur
+		grpcReq := &pb.PostgresPromoteMasterRequest{
+			JobId:         jobID,
+			AgentId:       req.AgentID,
+			NodeHostname:  req.NodeHostname,
+			DataDirectory: req.DataDirectory,
+		}
+
+		// Context oluştur
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		// Promote işlemini başlat
+		response, err := server.PromotePostgresToMaster(ctx, grpcReq)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Master promotion başlatılamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusAccepted, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"job_id": response.JobId,
+				"status": response.Status.String(),
+			},
+		})
+	}
+}
+
+// getJob, belirli bir job'ın detaylarını getirir
+func getJob(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		jobID := c.Param("job_id")
+		if jobID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "job_id parametresi gerekli",
+			})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+
+		response, err := server.GetJob(ctx, &pb.GetJobRequest{JobId: jobID})
+		if err != nil {
+			status := http.StatusInternalServerError
+			if err.Error() == fmt.Sprintf("job bulunamadı: %s", jobID) {
+				status = http.StatusNotFound
+			}
+
+			c.JSON(status, gin.H{
+				"status": "error",
+				"error":  err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"job": response.Job,
+			},
+		})
+	}
+}
+
+// listJobs, job listesini getirir
+func listJobs(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Query parametrelerini al
+		agentID := c.Query("agent_id")
+		status := c.Query("status")
+		jobType := c.Query("type")
+		limit := c.DefaultQuery("limit", "10")
+		offset := c.DefaultQuery("offset", "0")
+
+		// Limit ve offset'i parse et
+		limitInt, _ := strconv.ParseInt(limit, 10, 32)
+		offsetInt, _ := strconv.ParseInt(offset, 10, 32)
+
+		// gRPC isteği oluştur
+		req := &pb.ListJobsRequest{
+			AgentId: agentID,
+			Limit:   int32(limitInt),
+			Offset:  int32(offsetInt),
+		}
+
+		// Status parse et
+		if status != "" {
+			if val, ok := pb.JobStatus_value[status]; ok {
+				req.Status = pb.JobStatus(val)
+			}
+		}
+
+		// Type parse et
+		if jobType != "" {
+			if val, ok := pb.JobType_value[jobType]; ok {
+				req.Type = pb.JobType(val)
+			}
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+
+		response, err := server.ListJobs(ctx, req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Job listesi alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"jobs":  response.Jobs,
+				"total": response.Total,
 			},
 		})
 	}

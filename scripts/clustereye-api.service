@@ -1,15 +1,27 @@
 [Unit]
 Description=ClusterEye API Service
-After=network.target
+After=network.target postgresql.service
 
 [Service]
 Type=simple
-User=clustereye
-Group=clustereye
+User=root
+Group=root
+WorkingDirectory=/etc/clustereye
 ExecStart=/usr/local/bin/clustereye-api-linux-amd64
 Restart=always
 RestartSec=5
 Environment=ENV=production
+Environment=CONFIG_PATH=/etc/clustereye/server.yml
+
+# Ensure log directory exists
+ExecStartPre=/bin/mkdir -p /var/log/clustereye
+ExecStartPre=/bin/chown clustereye:clustereye /var/log/clustereye
+
+# Basic security settings
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target 
