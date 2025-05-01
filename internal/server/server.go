@@ -2552,6 +2552,7 @@ func (s *Server) PromoteMongoToPrimary(ctx context.Context, req *pb.MongoPromote
 			"node_hostname": req.NodeHostname,
 			"port":          fmt.Sprintf("%d", req.Port),
 			"replica_set":   req.ReplicaSet,
+			"node_status":   req.NodeStatus, // Node status'ını ekle
 		},
 	}
 
@@ -2591,15 +2592,23 @@ func (s *Server) PromoteMongoToPrimary(ctx context.Context, req *pb.MongoPromote
 	// Job'ı çalıştır
 	go func() {
 		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
-		job.UpdatedAt = timestamppb.Now()
-		s.updateJobInDatabase(context.Background(), job)
+
+		// MongoDB komutu oluştur - node_status'a göre farklı komut gönder
+		var command string
+		if req.NodeStatus == "primary" {
+			// Eğer node primary ise, primary'i step down yapalım
+			command = "rs.stepDown()"
+		} else {
+			// Secondary node durumunda bir şey yapmaya gerek yok (freeze endpoint'i yoluyla hallolacak)
+			command = fmt.Sprintf("db.hello() // Node %s secondary durumunda", req.NodeHostname)
+		}
 
 		// Agent'a promote isteği gönder
 		err := agent.Stream.Send(&pb.ServerMessage{
 			Payload: &pb.ServerMessage_Query{
 				Query: &pb.Query{
 					QueryId: job.JobId,
-					Command: fmt.Sprintf("rs.stepDown(%s)", req.NodeHostname),
+					Command: command,
 				},
 			},
 		})
@@ -2775,7 +2784,13 @@ func (s *Server) saveJobToDatabase(ctx context.Context, job *pb.Job) error {
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 
-	_, err := s.db.ExecContext(ctx, query,
+	// map[string]string tipini JSON'a çevir
+	paramsJSON, err := json.Marshal(job.Parameters)
+	if err != nil {
+		return fmt.Errorf("parameters JSON'a çevrilemedi: %v", err)
+	}
+
+	_, err = s.db.ExecContext(ctx, query,
 		job.JobId,
 		job.Type.String(),
 		job.Status.String(),
@@ -2783,7 +2798,7 @@ func (s *Server) saveJobToDatabase(ctx context.Context, job *pb.Job) error {
 		job.CreatedAt.AsTime(),
 		job.UpdatedAt.AsTime(),
 		job.ErrorMessage,
-		job.Parameters,
+		paramsJSON, // JSON formatında parameterler
 		job.Result,
 	)
 
@@ -2810,4 +2825,199 @@ func (s *Server) updateJobInDatabase(ctx context.Context, job *pb.Job) error {
 	)
 
 	return err
+}
+
+// CreateJob, genel bir job oluşturur ve veritabanına kaydeder
+func (s *Server) CreateJob(ctx context.Context, job *pb.Job) error {
+	// Job'ı memory'de kaydet
+	s.jobMu.Lock()
+	s.jobs[job.JobId] = job
+	s.jobMu.Unlock()
+
+	// Veritabanına kaydet
+	if err := s.saveJobToDatabase(ctx, job); err != nil {
+		return err
+	}
+
+	// Job tipi ve parametrelere göre uygun işlemi başlat
+	go func() {
+		// Job durumunu çalışıyor olarak güncelle
+		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
+		job.UpdatedAt = timestamppb.Now()
+		s.updateJobInDatabase(context.Background(), job)
+
+		// İlgili agent'ı bul
+		s.mu.RLock()
+		agent, exists := s.agents[job.AgentId]
+		s.mu.RUnlock()
+
+		if !exists {
+			job.Status = pb.JobStatus_JOB_STATUS_FAILED
+			job.ErrorMessage = "Agent bulunamadı"
+			job.UpdatedAt = timestamppb.Now()
+			s.updateJobInDatabase(context.Background(), job)
+			return
+		}
+
+		var err error
+		var command string
+
+		// Job tipine göre işlemi belirle
+		switch job.Type {
+		case pb.JobType_JOB_TYPE_MONGO_PROMOTE_PRIMARY:
+			nodeHostname := job.Parameters["node_hostname"]
+			replicaSet := job.Parameters["replica_set"]
+			nodeStatus := job.Parameters["node_status"]
+			if nodeHostname == "" || replicaSet == "" {
+				job.Status = pb.JobStatus_JOB_STATUS_FAILED
+				job.ErrorMessage = "Eksik parametreler: node_hostname veya replica_set"
+				break
+			}
+
+			// Node status'a göre komutu belirle
+			if nodeStatus == "primary" {
+				// Eğer node zaten primary ise, farklı bir komut gönder
+				command = fmt.Sprintf("db.isMaster() // Node %s zaten primary", nodeHostname)
+			} else {
+				// Secondary node'u primary'ye yükselt
+				command = fmt.Sprintf("rs.stepDown('%s')", nodeHostname)
+			}
+
+		case pb.JobType_JOB_TYPE_POSTGRES_PROMOTE_MASTER:
+			dataDir := job.Parameters["data_directory"]
+			if dataDir == "" {
+				job.Status = pb.JobStatus_JOB_STATUS_FAILED
+				job.ErrorMessage = "Eksik parametre: data_directory"
+				break
+			}
+			command = fmt.Sprintf("pg_ctl promote -D %s", dataDir)
+
+		default:
+			job.Status = pb.JobStatus_JOB_STATUS_FAILED
+			job.ErrorMessage = fmt.Sprintf("Desteklenmeyen job tipi: %s", job.Type.String())
+		}
+
+		if job.Status == pb.JobStatus_JOB_STATUS_FAILED {
+			job.UpdatedAt = timestamppb.Now()
+			s.updateJobInDatabase(context.Background(), job)
+			return
+		}
+
+		// Agent'a komutu gönder
+		err = agent.Stream.Send(&pb.ServerMessage{
+			Payload: &pb.ServerMessage_Query{
+				Query: &pb.Query{
+					QueryId: job.JobId,
+					Command: command,
+				},
+			},
+		})
+
+		if err != nil {
+			job.Status = pb.JobStatus_JOB_STATUS_FAILED
+			job.ErrorMessage = fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)
+		} else {
+			job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
+			job.Result = "Job request sent successfully"
+		}
+
+		job.UpdatedAt = timestamppb.Now()
+		s.updateJobInDatabase(context.Background(), job)
+	}()
+
+	return nil
+}
+
+// FreezeMongoSecondary, MongoDB secondary node'larını belirli bir süre için dondurur
+func (s *Server) FreezeMongoSecondary(ctx context.Context, req *pb.MongoFreezeSecondaryRequest) (*pb.MongoFreezeSecondaryResponse, error) {
+	// Job oluştur
+	job := &pb.Job{
+		JobId:     req.JobId,
+		Type:      pb.JobType_JOB_TYPE_MONGO_FREEZE_SECONDARY,
+		Status:    pb.JobStatus_JOB_STATUS_PENDING,
+		AgentId:   req.AgentId,
+		CreatedAt: timestamppb.Now(),
+		UpdatedAt: timestamppb.Now(),
+		Parameters: map[string]string{
+			"node_hostname": req.NodeHostname,
+			"port":          fmt.Sprintf("%d", req.Port),
+			"replica_set":   req.ReplicaSet,
+			"seconds":       fmt.Sprintf("%d", req.Seconds),
+		},
+	}
+
+	// Job'ı kaydet
+	s.jobMu.Lock()
+	s.jobs[job.JobId] = job
+	s.jobMu.Unlock()
+
+	// İlgili agent'ı bul
+	s.mu.RLock()
+	agent, exists := s.agents[req.AgentId]
+	s.mu.RUnlock()
+
+	if !exists {
+		job.Status = pb.JobStatus_JOB_STATUS_FAILED
+		job.ErrorMessage = "Agent bulunamadı"
+		job.UpdatedAt = timestamppb.Now()
+		return &pb.MongoFreezeSecondaryResponse{
+			JobId:        job.JobId,
+			Status:       job.Status,
+			ErrorMessage: job.ErrorMessage,
+		}, fmt.Errorf("agent bulunamadı: %s", req.AgentId)
+	}
+
+	// Job'ı veritabanına kaydet
+	if err := s.saveJobToDatabase(ctx, job); err != nil {
+		job.Status = pb.JobStatus_JOB_STATUS_FAILED
+		job.ErrorMessage = fmt.Sprintf("Job veritabanına kaydedilemedi: %v", err)
+		job.UpdatedAt = timestamppb.Now()
+		return &pb.MongoFreezeSecondaryResponse{
+			JobId:        job.JobId,
+			Status:       job.Status,
+			ErrorMessage: job.ErrorMessage,
+		}, err
+	}
+
+	// Job'ı çalıştır
+	go func() {
+		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
+		job.UpdatedAt = timestamppb.Now()
+		s.updateJobInDatabase(context.Background(), job)
+
+		// Seconds parametresini kontrol et, varsayılan 60
+		seconds := 60
+		if req.Seconds > 0 {
+			seconds = int(req.Seconds)
+		}
+
+		// rs.freeze() komutu oluştur
+		command := fmt.Sprintf("rs.freeze(%d)", seconds)
+
+		// Agent'a freeze isteği gönder
+		err := agent.Stream.Send(&pb.ServerMessage{
+			Payload: &pb.ServerMessage_Query{
+				Query: &pb.Query{
+					QueryId: job.JobId,
+					Command: command,
+				},
+			},
+		})
+
+		if err != nil {
+			job.Status = pb.JobStatus_JOB_STATUS_FAILED
+			job.ErrorMessage = fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)
+		} else {
+			job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
+			job.Result = fmt.Sprintf("MongoDB node %s successfully frozen for %d seconds", req.NodeHostname, seconds)
+		}
+
+		job.UpdatedAt = timestamppb.Now()
+		s.updateJobInDatabase(context.Background(), job)
+	}()
+
+	return &pb.MongoFreezeSecondaryResponse{
+		JobId:  job.JobId,
+		Status: pb.JobStatus_JOB_STATUS_PENDING,
+	}, nil
 }

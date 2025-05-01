@@ -385,6 +385,7 @@ enum JobType {
   JOB_TYPE_UNKNOWN = 0;
   JOB_TYPE_MONGO_PROMOTE_PRIMARY = 1;
   JOB_TYPE_POSTGRES_PROMOTE_MASTER = 2;
+  JOB_TYPE_MONGO_FREEZE_SECONDARY = 3;
 }
 
 message Job {
@@ -406,6 +407,7 @@ message MongoPromotePrimaryRequest {
   string node_hostname = 3;
   int32 port = 4;
   string replica_set = 5;
+  string node_status = 6; // "primary" veya "secondary"
 }
 
 message MongoPromotePrimaryResponse {
@@ -450,6 +452,23 @@ message ListJobsRequest {
 message ListJobsResponse {
   repeated Job jobs = 1;
   int32 total = 2;
+}
+
+// MongoDB Freeze Secondary
+message MongoFreezeSecondaryRequest {
+  string job_id = 1;
+  string agent_id = 2;
+  string node_hostname = 3;
+  int32 port = 4;
+  string replica_set = 5;
+  int32 seconds = 6; // Default to 60 seconds
+}
+
+message MongoFreezeSecondaryResponse {
+  string job_id = 1;
+  JobStatus status = 2;
+  string error_message = 3;
+  string result = 4;
 }
 
 service AgentService {
@@ -502,6 +521,7 @@ service AgentService {
 
   // Job related methods
   rpc PromoteMongoToPrimary(MongoPromotePrimaryRequest) returns (MongoPromotePrimaryResponse);
+  rpc FreezeMongoSecondary(MongoFreezeSecondaryRequest) returns (MongoFreezeSecondaryResponse);
   rpc PromotePostgresToMaster(PostgresPromoteMasterRequest) returns (PostgresPromoteMasterResponse);
   rpc GetJob(GetJobRequest) returns (GetJobResponse);
   rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);

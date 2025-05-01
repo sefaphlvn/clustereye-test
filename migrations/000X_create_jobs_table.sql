@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     job_id VARCHAR(36) PRIMARY KEY,
     type VARCHAR(50) NOT NULL,
     status VARCHAR(20) NOT NULL,
-    agent_id VARCHAR(50) NOT NULL,
+    agent_id VARCHAR(64) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
     error_message TEXT,
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     result TEXT,
     CONSTRAINT fk_agent
         FOREIGN KEY(agent_id)
-        REFERENCES agents(id)
+        REFERENCES agents(agent_id)
         ON DELETE CASCADE
 );
 

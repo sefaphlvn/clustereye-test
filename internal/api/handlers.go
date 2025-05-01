@@ -15,6 +15,7 @@ import (
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // RegisterHandlers, API rotalarını Gin router'a kaydeder
@@ -107,8 +108,12 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 	// Job Endpoint'leri
 	jobs := v1.Group("/jobs")
 	{
+		// Genel job oluşturma endpoint'i
+		jobs.POST("", createJob(server))
 		// MongoDB primary promotion
 		jobs.POST("/mongo/promote-primary", promoteMongoToPrimary(server))
+		// MongoDB secondary freeze
+		jobs.POST("/mongo/freeze-secondary", freezeMongoSecondary(server))
 		// PostgreSQL master promotion
 		jobs.POST("/postgres/promote-master", promotePostgresToMaster(server))
 		// Job durumunu sorgula
@@ -928,12 +933,22 @@ func promoteMongoToPrimary(server *server.Server) gin.HandlerFunc {
 			NodeHostname string `json:"node_hostname" binding:"required"`
 			Port         int32  `json:"port" binding:"required"`
 			ReplicaSet   string `json:"replica_set" binding:"required"`
+			NodeStatus   string `json:"node_status" binding:"required"` // primary veya secondary
 		}
 
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"status": "error",
 				"error":  "Geçersiz istek formatı: " + err.Error(),
+			})
+			return
+		}
+
+		// Node status kontrolü
+		if req.NodeStatus != "primary" && req.NodeStatus != "secondary" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "node_status 'primary' veya 'secondary' olmalıdır",
 			})
 			return
 		}
@@ -948,6 +963,7 @@ func promoteMongoToPrimary(server *server.Server) gin.HandlerFunc {
 			NodeHostname: req.NodeHostname,
 			Port:         req.Port,
 			ReplicaSet:   req.ReplicaSet,
+			NodeStatus:   req.NodeStatus, // node durumunu ekle
 		}
 
 		// Context oluştur
@@ -1116,6 +1132,136 @@ func listJobs(server *server.Server) gin.HandlerFunc {
 			"data": gin.H{
 				"jobs":  response.Jobs,
 				"total": response.Total,
+			},
+		})
+	}
+}
+
+// createJob, genel bir job oluşturur
+func createJob(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Type        string            `json:"type" binding:"required"`
+			AgentID     string            `json:"agent_id" binding:"required"`
+			Parameters  map[string]string `json:"parameters"`
+			CustomJobID string            `json:"job_id"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz istek formatı: " + err.Error(),
+			})
+			return
+		}
+
+		// Job tipini kontrol et
+		jobType, ok := pb.JobType_value[req.Type]
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  fmt.Sprintf("Geçersiz job tipi: %s. Geçerli tipler: %v", req.Type, pb.JobType_name),
+			})
+			return
+		}
+
+		// Job ID oluştur (eğer özel ID verilmemişse)
+		jobID := req.CustomJobID
+		if jobID == "" {
+			jobID = uuid.New().String()
+		}
+
+		// Context oluştur
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		// Job nesnesini oluştur
+		job := &pb.Job{
+			JobId:      jobID,
+			Type:       pb.JobType(jobType),
+			Status:     pb.JobStatus_JOB_STATUS_PENDING,
+			AgentId:    req.AgentID,
+			CreatedAt:  timestamppb.Now(),
+			UpdatedAt:  timestamppb.Now(),
+			Parameters: req.Parameters,
+		}
+
+		// Job'ı veritabanına kaydet
+		if err := server.CreateJob(ctx, job); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Job oluşturulamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusCreated, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"job_id": job.JobId,
+				"type":   job.Type.String(),
+				"status": job.Status.String(),
+			},
+		})
+	}
+}
+
+// freezeMongoSecondary, MongoDB secondary node'larını belirli bir süre için dondurur
+func freezeMongoSecondary(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			AgentID      string `json:"agent_id" binding:"required"`
+			NodeHostname string `json:"node_hostname" binding:"required"`
+			Port         int32  `json:"port" binding:"required"`
+			ReplicaSet   string `json:"replica_set" binding:"required"`
+			Seconds      int32  `json:"seconds"` // Opsiyonel, varsayılan 60
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz istek formatı: " + err.Error(),
+			})
+			return
+		}
+
+		// Seconds parametresini kontrol et
+		if req.Seconds <= 0 {
+			req.Seconds = 60 // Varsayılan değer
+		}
+
+		// Job ID oluştur
+		jobID := uuid.New().String()
+
+		// gRPC isteği oluştur
+		grpcReq := &pb.MongoFreezeSecondaryRequest{
+			JobId:        jobID,
+			AgentId:      req.AgentID,
+			NodeHostname: req.NodeHostname,
+			Port:         req.Port,
+			ReplicaSet:   req.ReplicaSet,
+			Seconds:      req.Seconds,
+		}
+
+		// Context oluştur
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		// Freeze işlemini başlat
+		response, err := server.FreezeMongoSecondary(ctx, grpcReq)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MongoDB secondary freeze işlemi başlatılamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusAccepted, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"job_id": response.JobId,
+				"status": response.Status.String(),
 			},
 		})
 	}

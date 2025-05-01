@@ -88,6 +88,7 @@ const (
 	JobType_JOB_TYPE_UNKNOWN                 JobType = 0
 	JobType_JOB_TYPE_MONGO_PROMOTE_PRIMARY   JobType = 1
 	JobType_JOB_TYPE_POSTGRES_PROMOTE_MASTER JobType = 2
+	JobType_JOB_TYPE_MONGO_FREEZE_SECONDARY  JobType = 3
 )
 
 // Enum value maps for JobType.
@@ -96,11 +97,13 @@ var (
 		0: "JOB_TYPE_UNKNOWN",
 		1: "JOB_TYPE_MONGO_PROMOTE_PRIMARY",
 		2: "JOB_TYPE_POSTGRES_PROMOTE_MASTER",
+		3: "JOB_TYPE_MONGO_FREEZE_SECONDARY",
 	}
 	JobType_value = map[string]int32{
 		"JOB_TYPE_UNKNOWN":                 0,
 		"JOB_TYPE_MONGO_PROMOTE_PRIMARY":   1,
 		"JOB_TYPE_POSTGRES_PROMOTE_MASTER": 2,
+		"JOB_TYPE_MONGO_FREEZE_SECONDARY":  3,
 	}
 )
 
@@ -3612,6 +3615,7 @@ type MongoPromotePrimaryRequest struct {
 	NodeHostname  string                 `protobuf:"bytes,3,opt,name=node_hostname,json=nodeHostname,proto3" json:"node_hostname,omitempty"`
 	Port          int32                  `protobuf:"varint,4,opt,name=port,proto3" json:"port,omitempty"`
 	ReplicaSet    string                 `protobuf:"bytes,5,opt,name=replica_set,json=replicaSet,proto3" json:"replica_set,omitempty"`
+	NodeStatus    string                 `protobuf:"bytes,6,opt,name=node_status,json=nodeStatus,proto3" json:"node_status,omitempty"` // "primary" veya "secondary"
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3677,6 +3681,13 @@ func (x *MongoPromotePrimaryRequest) GetPort() int32 {
 func (x *MongoPromotePrimaryRequest) GetReplicaSet() string {
 	if x != nil {
 		return x.ReplicaSet
+	}
+	return ""
+}
+
+func (x *MongoPromotePrimaryRequest) GetNodeStatus() string {
+	if x != nil {
+		return x.NodeStatus
 	}
 	return ""
 }
@@ -4103,6 +4114,159 @@ func (x *ListJobsResponse) GetTotal() int32 {
 	return 0
 }
 
+// MongoDB Freeze Secondary
+type MongoFreezeSecondaryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	AgentId       string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	NodeHostname  string                 `protobuf:"bytes,3,opt,name=node_hostname,json=nodeHostname,proto3" json:"node_hostname,omitempty"`
+	Port          int32                  `protobuf:"varint,4,opt,name=port,proto3" json:"port,omitempty"`
+	ReplicaSet    string                 `protobuf:"bytes,5,opt,name=replica_set,json=replicaSet,proto3" json:"replica_set,omitempty"`
+	Seconds       int32                  `protobuf:"varint,6,opt,name=seconds,proto3" json:"seconds,omitempty"` // Default to 60 seconds
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MongoFreezeSecondaryRequest) Reset() {
+	*x = MongoFreezeSecondaryRequest{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[58]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MongoFreezeSecondaryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MongoFreezeSecondaryRequest) ProtoMessage() {}
+
+func (x *MongoFreezeSecondaryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[58]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MongoFreezeSecondaryRequest.ProtoReflect.Descriptor instead.
+func (*MongoFreezeSecondaryRequest) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{58}
+}
+
+func (x *MongoFreezeSecondaryRequest) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *MongoFreezeSecondaryRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *MongoFreezeSecondaryRequest) GetNodeHostname() string {
+	if x != nil {
+		return x.NodeHostname
+	}
+	return ""
+}
+
+func (x *MongoFreezeSecondaryRequest) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *MongoFreezeSecondaryRequest) GetReplicaSet() string {
+	if x != nil {
+		return x.ReplicaSet
+	}
+	return ""
+}
+
+func (x *MongoFreezeSecondaryRequest) GetSeconds() int32 {
+	if x != nil {
+		return x.Seconds
+	}
+	return 0
+}
+
+type MongoFreezeSecondaryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	Status        JobStatus              `protobuf:"varint,2,opt,name=status,proto3,enum=agent.JobStatus" json:"status,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,3,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	Result        string                 `protobuf:"bytes,4,opt,name=result,proto3" json:"result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MongoFreezeSecondaryResponse) Reset() {
+	*x = MongoFreezeSecondaryResponse{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[59]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MongoFreezeSecondaryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MongoFreezeSecondaryResponse) ProtoMessage() {}
+
+func (x *MongoFreezeSecondaryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[59]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MongoFreezeSecondaryResponse.ProtoReflect.Descriptor instead.
+func (*MongoFreezeSecondaryResponse) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{59}
+}
+
+func (x *MongoFreezeSecondaryResponse) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *MongoFreezeSecondaryResponse) GetStatus() JobStatus {
+	if x != nil {
+		return x.Status
+	}
+	return JobStatus_JOB_STATUS_UNKNOWN
+}
+
+func (x *MongoFreezeSecondaryResponse) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
+func (x *MongoFreezeSecondaryResponse) GetResult() string {
+	if x != nil {
+		return x.Result
+	}
+	return ""
+}
+
 var File_pkg_agent_agent_proto protoreflect.FileDescriptor
 
 const file_pkg_agent_agent_proto_rawDesc = "" +
@@ -4393,14 +4557,16 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x06result\x18\t \x01(\tR\x06result\x1a=\n" +
 	"\x0fParametersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa8\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc9\x01\n" +
 	"\x1aMongoPromotePrimaryRequest\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x19\n" +
 	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12#\n" +
 	"\rnode_hostname\x18\x03 \x01(\tR\fnodeHostname\x12\x12\n" +
 	"\x04port\x18\x04 \x01(\x05R\x04port\x12\x1f\n" +
 	"\vreplica_set\x18\x05 \x01(\tR\n" +
-	"replicaSet\"\x9b\x01\n" +
+	"replicaSet\x12\x1f\n" +
+	"\vnode_status\x18\x06 \x01(\tR\n" +
+	"nodeStatus\"\x9b\x01\n" +
 	"\x1bMongoPromotePrimaryResponse\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12(\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x10.agent.JobStatusR\x06status\x12#\n" +
@@ -4430,18 +4596,32 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x10ListJobsResponse\x12\x1e\n" +
 	"\x04jobs\x18\x01 \x03(\v2\n" +
 	".agent.JobR\x04jobs\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total*\x9e\x01\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\"\xc3\x01\n" +
+	"\x1bMongoFreezeSecondaryRequest\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x19\n" +
+	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12#\n" +
+	"\rnode_hostname\x18\x03 \x01(\tR\fnodeHostname\x12\x12\n" +
+	"\x04port\x18\x04 \x01(\x05R\x04port\x12\x1f\n" +
+	"\vreplica_set\x18\x05 \x01(\tR\n" +
+	"replicaSet\x12\x18\n" +
+	"\aseconds\x18\x06 \x01(\x05R\aseconds\"\x9c\x01\n" +
+	"\x1cMongoFreezeSecondaryResponse\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12(\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x10.agent.JobStatusR\x06status\x12#\n" +
+	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\x12\x16\n" +
+	"\x06result\x18\x04 \x01(\tR\x06result*\x9e\x01\n" +
 	"\tJobStatus\x12\x16\n" +
 	"\x12JOB_STATUS_UNKNOWN\x10\x00\x12\x16\n" +
 	"\x12JOB_STATUS_PENDING\x10\x01\x12\x16\n" +
 	"\x12JOB_STATUS_RUNNING\x10\x02\x12\x18\n" +
 	"\x14JOB_STATUS_COMPLETED\x10\x03\x12\x15\n" +
 	"\x11JOB_STATUS_FAILED\x10\x04\x12\x18\n" +
-	"\x14JOB_STATUS_CANCELLED\x10\x05*i\n" +
+	"\x14JOB_STATUS_CANCELLED\x10\x05*\x8e\x01\n" +
 	"\aJobType\x12\x14\n" +
 	"\x10JOB_TYPE_UNKNOWN\x10\x00\x12\"\n" +
 	"\x1eJOB_TYPE_MONGO_PROMOTE_PRIMARY\x10\x01\x12$\n" +
-	" JOB_TYPE_POSTGRES_PROMOTE_MASTER\x10\x022\xdb\f\n" +
+	" JOB_TYPE_POSTGRES_PROMOTE_MASTER\x10\x02\x12#\n" +
+	"\x1fJOB_TYPE_MONGO_FREEZE_SECONDARY\x10\x032\xbc\r\n" +
 	"\fAgentService\x128\n" +
 	"\aConnect\x12\x13.agent.AgentMessage\x1a\x14.agent.ServerMessage(\x010\x01\x12;\n" +
 	"\bRegister\x12\x16.agent.RegisterRequest\x1a\x17.agent.RegisterResponse\x129\n" +
@@ -4460,7 +4640,8 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x12ReadPostgresConfig\x12\x1c.agent.PostgresConfigRequest\x1a\x1d.agent.PostgresConfigResponse\"\x00\x12a\n" +
 	"\x14GetThresholdSettings\x12\".agent.GetThresholdSettingsRequest\x1a#.agent.GetThresholdSettingsResponse\"\x00\x12J\n" +
 	"\rReportVersion\x12\x1b.agent.ReportVersionRequest\x1a\x1c.agent.ReportVersionResponse\x12^\n" +
-	"\x15PromoteMongoToPrimary\x12!.agent.MongoPromotePrimaryRequest\x1a\".agent.MongoPromotePrimaryResponse\x12d\n" +
+	"\x15PromoteMongoToPrimary\x12!.agent.MongoPromotePrimaryRequest\x1a\".agent.MongoPromotePrimaryResponse\x12_\n" +
+	"\x14FreezeMongoSecondary\x12\".agent.MongoFreezeSecondaryRequest\x1a#.agent.MongoFreezeSecondaryResponse\x12d\n" +
 	"\x17PromotePostgresToMaster\x12#.agent.PostgresPromoteMasterRequest\x1a$.agent.PostgresPromoteMasterResponse\x125\n" +
 	"\x06GetJob\x12\x14.agent.GetJobRequest\x1a\x15.agent.GetJobResponse\x12;\n" +
 	"\bListJobs\x12\x16.agent.ListJobsRequest\x1a\x17.agent.ListJobsResponseB0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
@@ -4478,7 +4659,7 @@ func file_pkg_agent_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_pkg_agent_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 59)
+var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 61)
 var file_pkg_agent_agent_proto_goTypes = []any{
 	(JobStatus)(0),                        // 0: agent.JobStatus
 	(JobType)(0),                          // 1: agent.JobType
@@ -4540,15 +4721,17 @@ var file_pkg_agent_agent_proto_goTypes = []any{
 	(*GetJobResponse)(nil),                // 57: agent.GetJobResponse
 	(*ListJobsRequest)(nil),               // 58: agent.ListJobsRequest
 	(*ListJobsResponse)(nil),              // 59: agent.ListJobsResponse
-	nil,                                   // 60: agent.Job.ParametersEntry
-	(*anypb.Any)(nil),                     // 61: google.protobuf.Any
-	(*timestamppb.Timestamp)(nil),         // 62: google.protobuf.Timestamp
+	(*MongoFreezeSecondaryRequest)(nil),   // 60: agent.MongoFreezeSecondaryRequest
+	(*MongoFreezeSecondaryResponse)(nil),  // 61: agent.MongoFreezeSecondaryResponse
+	nil,                                   // 62: agent.Job.ParametersEntry
+	(*anypb.Any)(nil),                     // 63: google.protobuf.Any
+	(*timestamppb.Timestamp)(nil),         // 64: google.protobuf.Timestamp
 }
 var file_pkg_agent_agent_proto_depIdxs = []int32{
 	6,  // 0: agent.MongoLogListResponse.log_files:type_name -> agent.MongoLogFile
 	9,  // 1: agent.MongoLogAnalyzeResponse.log_entries:type_name -> agent.MongoLogEntry
 	11, // 2: agent.AlarmConfiguration.condition:type_name -> agent.AlarmCondition
-	61, // 3: agent.QueryResult.result:type_name -> google.protobuf.Any
+	63, // 3: agent.QueryResult.result:type_name -> google.protobuf.Any
 	13, // 4: agent.ReportAlarmRequest.events:type_name -> agent.AlarmEvent
 	2,  // 5: agent.RegisterRequest.agent_info:type_name -> agent.AgentInfo
 	17, // 6: agent.RegisterResponse.registration:type_name -> agent.RegistrationResult
@@ -4575,62 +4758,65 @@ var file_pkg_agent_agent_proto_depIdxs = []int32{
 	48, // 27: agent.ReportVersionRequest.version_info:type_name -> agent.AgentVersionInfo
 	1,  // 28: agent.Job.type:type_name -> agent.JobType
 	0,  // 29: agent.Job.status:type_name -> agent.JobStatus
-	62, // 30: agent.Job.created_at:type_name -> google.protobuf.Timestamp
-	62, // 31: agent.Job.updated_at:type_name -> google.protobuf.Timestamp
-	60, // 32: agent.Job.parameters:type_name -> agent.Job.ParametersEntry
+	64, // 30: agent.Job.created_at:type_name -> google.protobuf.Timestamp
+	64, // 31: agent.Job.updated_at:type_name -> google.protobuf.Timestamp
+	62, // 32: agent.Job.parameters:type_name -> agent.Job.ParametersEntry
 	0,  // 33: agent.MongoPromotePrimaryResponse.status:type_name -> agent.JobStatus
 	0,  // 34: agent.PostgresPromoteMasterResponse.status:type_name -> agent.JobStatus
 	51, // 35: agent.GetJobResponse.job:type_name -> agent.Job
 	0,  // 36: agent.ListJobsRequest.status:type_name -> agent.JobStatus
 	1,  // 37: agent.ListJobsRequest.type:type_name -> agent.JobType
 	51, // 38: agent.ListJobsResponse.jobs:type_name -> agent.Job
-	30, // 39: agent.AgentService.Connect:input_type -> agent.AgentMessage
-	20, // 40: agent.AgentService.Register:input_type -> agent.RegisterRequest
-	22, // 41: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
-	24, // 42: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
-	22, // 43: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
-	24, // 44: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
-	32, // 45: agent.AgentService.SendSystemMetrics:input_type -> agent.SystemMetricsRequest
-	34, // 46: agent.AgentService.GetAlarmConfigurations:input_type -> agent.AlarmConfigRequest
-	18, // 47: agent.AgentService.ReportAlarm:input_type -> agent.ReportAlarmRequest
-	25, // 48: agent.AgentService.SendMongoInfo:input_type -> agent.MongoInfoRequest
-	5,  // 49: agent.AgentService.ListMongoLogs:input_type -> agent.MongoLogListRequest
-	8,  // 50: agent.AgentService.AnalyzeMongoLog:input_type -> agent.MongoLogAnalyzeRequest
-	37, // 51: agent.AgentService.ListPostgresLogs:input_type -> agent.PostgresLogListRequest
-	39, // 52: agent.AgentService.AnalyzePostgresLog:input_type -> agent.PostgresLogAnalyzeRequest
-	42, // 53: agent.AgentService.ReadPostgresConfig:input_type -> agent.PostgresConfigRequest
-	46, // 54: agent.AgentService.GetThresholdSettings:input_type -> agent.GetThresholdSettingsRequest
-	49, // 55: agent.AgentService.ReportVersion:input_type -> agent.ReportVersionRequest
-	52, // 56: agent.AgentService.PromoteMongoToPrimary:input_type -> agent.MongoPromotePrimaryRequest
-	54, // 57: agent.AgentService.PromotePostgresToMaster:input_type -> agent.PostgresPromoteMasterRequest
-	56, // 58: agent.AgentService.GetJob:input_type -> agent.GetJobRequest
-	58, // 59: agent.AgentService.ListJobs:input_type -> agent.ListJobsRequest
-	29, // 60: agent.AgentService.Connect:output_type -> agent.ServerMessage
-	21, // 61: agent.AgentService.Register:output_type -> agent.RegisterResponse
-	23, // 62: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
-	26, // 63: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
-	23, // 64: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
-	26, // 65: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
-	33, // 66: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
-	35, // 67: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
-	19, // 68: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
-	27, // 69: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
-	7,  // 70: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
-	10, // 71: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
-	38, // 72: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
-	41, // 73: agent.AgentService.AnalyzePostgresLog:output_type -> agent.PostgresLogAnalyzeResponse
-	44, // 74: agent.AgentService.ReadPostgresConfig:output_type -> agent.PostgresConfigResponse
-	47, // 75: agent.AgentService.GetThresholdSettings:output_type -> agent.GetThresholdSettingsResponse
-	50, // 76: agent.AgentService.ReportVersion:output_type -> agent.ReportVersionResponse
-	53, // 77: agent.AgentService.PromoteMongoToPrimary:output_type -> agent.MongoPromotePrimaryResponse
-	55, // 78: agent.AgentService.PromotePostgresToMaster:output_type -> agent.PostgresPromoteMasterResponse
-	57, // 79: agent.AgentService.GetJob:output_type -> agent.GetJobResponse
-	59, // 80: agent.AgentService.ListJobs:output_type -> agent.ListJobsResponse
-	60, // [60:81] is the sub-list for method output_type
-	39, // [39:60] is the sub-list for method input_type
-	39, // [39:39] is the sub-list for extension type_name
-	39, // [39:39] is the sub-list for extension extendee
-	0,  // [0:39] is the sub-list for field type_name
+	0,  // 39: agent.MongoFreezeSecondaryResponse.status:type_name -> agent.JobStatus
+	30, // 40: agent.AgentService.Connect:input_type -> agent.AgentMessage
+	20, // 41: agent.AgentService.Register:input_type -> agent.RegisterRequest
+	22, // 42: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
+	24, // 43: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
+	22, // 44: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
+	24, // 45: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
+	32, // 46: agent.AgentService.SendSystemMetrics:input_type -> agent.SystemMetricsRequest
+	34, // 47: agent.AgentService.GetAlarmConfigurations:input_type -> agent.AlarmConfigRequest
+	18, // 48: agent.AgentService.ReportAlarm:input_type -> agent.ReportAlarmRequest
+	25, // 49: agent.AgentService.SendMongoInfo:input_type -> agent.MongoInfoRequest
+	5,  // 50: agent.AgentService.ListMongoLogs:input_type -> agent.MongoLogListRequest
+	8,  // 51: agent.AgentService.AnalyzeMongoLog:input_type -> agent.MongoLogAnalyzeRequest
+	37, // 52: agent.AgentService.ListPostgresLogs:input_type -> agent.PostgresLogListRequest
+	39, // 53: agent.AgentService.AnalyzePostgresLog:input_type -> agent.PostgresLogAnalyzeRequest
+	42, // 54: agent.AgentService.ReadPostgresConfig:input_type -> agent.PostgresConfigRequest
+	46, // 55: agent.AgentService.GetThresholdSettings:input_type -> agent.GetThresholdSettingsRequest
+	49, // 56: agent.AgentService.ReportVersion:input_type -> agent.ReportVersionRequest
+	52, // 57: agent.AgentService.PromoteMongoToPrimary:input_type -> agent.MongoPromotePrimaryRequest
+	60, // 58: agent.AgentService.FreezeMongoSecondary:input_type -> agent.MongoFreezeSecondaryRequest
+	54, // 59: agent.AgentService.PromotePostgresToMaster:input_type -> agent.PostgresPromoteMasterRequest
+	56, // 60: agent.AgentService.GetJob:input_type -> agent.GetJobRequest
+	58, // 61: agent.AgentService.ListJobs:input_type -> agent.ListJobsRequest
+	29, // 62: agent.AgentService.Connect:output_type -> agent.ServerMessage
+	21, // 63: agent.AgentService.Register:output_type -> agent.RegisterResponse
+	23, // 64: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
+	26, // 65: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
+	23, // 66: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
+	26, // 67: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
+	33, // 68: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
+	35, // 69: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
+	19, // 70: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
+	27, // 71: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
+	7,  // 72: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
+	10, // 73: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
+	38, // 74: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
+	41, // 75: agent.AgentService.AnalyzePostgresLog:output_type -> agent.PostgresLogAnalyzeResponse
+	44, // 76: agent.AgentService.ReadPostgresConfig:output_type -> agent.PostgresConfigResponse
+	47, // 77: agent.AgentService.GetThresholdSettings:output_type -> agent.GetThresholdSettingsResponse
+	50, // 78: agent.AgentService.ReportVersion:output_type -> agent.ReportVersionResponse
+	53, // 79: agent.AgentService.PromoteMongoToPrimary:output_type -> agent.MongoPromotePrimaryResponse
+	61, // 80: agent.AgentService.FreezeMongoSecondary:output_type -> agent.MongoFreezeSecondaryResponse
+	55, // 81: agent.AgentService.PromotePostgresToMaster:output_type -> agent.PostgresPromoteMasterResponse
+	57, // 82: agent.AgentService.GetJob:output_type -> agent.GetJobResponse
+	59, // 83: agent.AgentService.ListJobs:output_type -> agent.ListJobsResponse
+	62, // [62:84] is the sub-list for method output_type
+	40, // [40:62] is the sub-list for method input_type
+	40, // [40:40] is the sub-list for extension type_name
+	40, // [40:40] is the sub-list for extension extendee
+	0,  // [0:40] is the sub-list for field type_name
 }
 
 func init() { file_pkg_agent_agent_proto_init() }
@@ -4657,7 +4843,7 @@ func file_pkg_agent_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_agent_agent_proto_rawDesc), len(file_pkg_agent_agent_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   59,
+			NumMessages:   61,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

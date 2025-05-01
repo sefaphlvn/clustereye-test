@@ -37,6 +37,7 @@ const (
 	AgentService_GetThresholdSettings_FullMethodName    = "/agent.AgentService/GetThresholdSettings"
 	AgentService_ReportVersion_FullMethodName           = "/agent.AgentService/ReportVersion"
 	AgentService_PromoteMongoToPrimary_FullMethodName   = "/agent.AgentService/PromoteMongoToPrimary"
+	AgentService_FreezeMongoSecondary_FullMethodName    = "/agent.AgentService/FreezeMongoSecondary"
 	AgentService_PromotePostgresToMaster_FullMethodName = "/agent.AgentService/PromotePostgresToMaster"
 	AgentService_GetJob_FullMethodName                  = "/agent.AgentService/GetJob"
 	AgentService_ListJobs_FullMethodName                = "/agent.AgentService/ListJobs"
@@ -80,6 +81,7 @@ type AgentServiceClient interface {
 	ReportVersion(ctx context.Context, in *ReportVersionRequest, opts ...grpc.CallOption) (*ReportVersionResponse, error)
 	// Job related methods
 	PromoteMongoToPrimary(ctx context.Context, in *MongoPromotePrimaryRequest, opts ...grpc.CallOption) (*MongoPromotePrimaryResponse, error)
+	FreezeMongoSecondary(ctx context.Context, in *MongoFreezeSecondaryRequest, opts ...grpc.CallOption) (*MongoFreezeSecondaryResponse, error)
 	PromotePostgresToMaster(ctx context.Context, in *PostgresPromoteMasterRequest, opts ...grpc.CallOption) (*PostgresPromoteMasterResponse, error)
 	GetJob(ctx context.Context, in *GetJobRequest, opts ...grpc.CallOption) (*GetJobResponse, error)
 	ListJobs(ctx context.Context, in *ListJobsRequest, opts ...grpc.CallOption) (*ListJobsResponse, error)
@@ -282,6 +284,16 @@ func (c *agentServiceClient) PromoteMongoToPrimary(ctx context.Context, in *Mong
 	return out, nil
 }
 
+func (c *agentServiceClient) FreezeMongoSecondary(ctx context.Context, in *MongoFreezeSecondaryRequest, opts ...grpc.CallOption) (*MongoFreezeSecondaryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MongoFreezeSecondaryResponse)
+	err := c.cc.Invoke(ctx, AgentService_FreezeMongoSecondary_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *agentServiceClient) PromotePostgresToMaster(ctx context.Context, in *PostgresPromoteMasterRequest, opts ...grpc.CallOption) (*PostgresPromoteMasterResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PostgresPromoteMasterResponse)
@@ -350,6 +362,7 @@ type AgentServiceServer interface {
 	ReportVersion(context.Context, *ReportVersionRequest) (*ReportVersionResponse, error)
 	// Job related methods
 	PromoteMongoToPrimary(context.Context, *MongoPromotePrimaryRequest) (*MongoPromotePrimaryResponse, error)
+	FreezeMongoSecondary(context.Context, *MongoFreezeSecondaryRequest) (*MongoFreezeSecondaryResponse, error)
 	PromotePostgresToMaster(context.Context, *PostgresPromoteMasterRequest) (*PostgresPromoteMasterResponse, error)
 	GetJob(context.Context, *GetJobRequest) (*GetJobResponse, error)
 	ListJobs(context.Context, *ListJobsRequest) (*ListJobsResponse, error)
@@ -416,6 +429,9 @@ func (UnimplementedAgentServiceServer) ReportVersion(context.Context, *ReportVer
 }
 func (UnimplementedAgentServiceServer) PromoteMongoToPrimary(context.Context, *MongoPromotePrimaryRequest) (*MongoPromotePrimaryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PromoteMongoToPrimary not implemented")
+}
+func (UnimplementedAgentServiceServer) FreezeMongoSecondary(context.Context, *MongoFreezeSecondaryRequest) (*MongoFreezeSecondaryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FreezeMongoSecondary not implemented")
 }
 func (UnimplementedAgentServiceServer) PromotePostgresToMaster(context.Context, *PostgresPromoteMasterRequest) (*PostgresPromoteMasterResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PromotePostgresToMaster not implemented")
@@ -738,6 +754,24 @@ func _AgentService_PromoteMongoToPrimary_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_FreezeMongoSecondary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MongoFreezeSecondaryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).FreezeMongoSecondary(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_FreezeMongoSecondary_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).FreezeMongoSecondary(ctx, req.(*MongoFreezeSecondaryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AgentService_PromotePostgresToMaster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PostgresPromoteMasterRequest)
 	if err := dec(in); err != nil {
@@ -858,6 +892,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PromoteMongoToPrimary",
 			Handler:    _AgentService_PromoteMongoToPrimary_Handler,
+		},
+		{
+			MethodName: "FreezeMongoSecondary",
+			Handler:    _AgentService_FreezeMongoSecondary_Handler,
 		},
 		{
 			MethodName: "PromotePostgresToMaster",
