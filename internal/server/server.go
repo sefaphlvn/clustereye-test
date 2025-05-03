@@ -819,6 +819,12 @@ func (s *Server) saveAlarmToDatabase(ctx context.Context, event *pb.AlarmEvent) 
 	if event.MetricName == "postgresql_slow_queries" {
 		log.Printf("[DEBUG] Slow query alarm received - Agent: %s, Value: %s, Message: %s",
 			event.AgentId, event.MetricValue, event.Message)
+
+		// postgresql_slow_queries için database alanı boşsa varsayılan olarak "postgres" ata
+		if event.Database == "" {
+			log.Printf("[DEBUG] Setting default database 'postgres' for postgresql_slow_queries alarm")
+			event.Database = "postgres"
+		}
 	}
 
 	log.Printf("[DEBUG] Executing database insert for alarm ID: %s, Event ID: %s", event.AlarmId, event.Id)
@@ -984,7 +990,12 @@ func (s *Server) sendSlackNotification(event *pb.AlarmEvent, webhookURL string) 
 					},
 					{
 						"title": "Database",
-						"value": event.Database,
+						"value": func() string {
+							if event.Database != "" {
+								return event.Database
+							}
+							return "N/A"
+						}(),
 						"short": true,
 					},
 				},
@@ -1111,7 +1122,12 @@ func (s *Server) sendEmailNotification(event *pb.AlarmEvent, server, port, user,
 		event.MetricValue,
 		event.Severity,
 		event.Status,
-		event.Database,
+		func() string {
+			if event.Database != "" {
+				return event.Database
+			}
+			return "N/A"
+		}(),
 		event.AlarmId,
 		event.Id,
 		event.Timestamp,
@@ -1126,7 +1142,12 @@ func (s *Server) sendEmailNotification(event *pb.AlarmEvent, server, port, user,
 		event.MetricValue,
 		event.Severity,
 		event.Status,
-		event.Database,
+		func() string {
+			if event.Database != "" {
+				return event.Database
+			}
+			return "N/A"
+		}(),
 		event.AlarmId,
 		event.Id,
 		event.Timestamp,
@@ -2153,7 +2174,7 @@ func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool) ([]map[
 			severity     string
 			createdAt    time.Time
 			acknowledged bool
-			database     string
+			database     sql.NullString // NULL değerleri kabul edebilmesi için NullString kullanıyoruz
 		)
 
 		// Satırı oku
@@ -2174,6 +2195,14 @@ func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool) ([]map[
 			return nil, fmt.Errorf("satır okuma hatası: %v", err)
 		}
 
+		// Database değerini kontrolle ekle
+		var databaseValue string
+		if database.Valid {
+			databaseValue = database.String
+		} else {
+			databaseValue = "" // Eğer NULL ise boş string atanır
+		}
+
 		// Her alarmı map olarak oluştur
 		alarm := map[string]interface{}{
 			"alarm_id":     alarmID,
@@ -2186,7 +2215,7 @@ func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool) ([]map[
 			"severity":     severity,
 			"created_at":   createdAt.Format(time.RFC3339),
 			"acknowledged": acknowledged,
-			"database":     database,
+			"database":     databaseValue,
 		}
 
 		alarms = append(alarms, alarm)
