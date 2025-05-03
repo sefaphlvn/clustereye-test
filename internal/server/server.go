@@ -2595,7 +2595,7 @@ func (s *Server) PromoteMongoToPrimary(ctx context.Context, req *pb.MongoPromote
 
 		// MongoDB komutu oluştur - node_status'a göre farklı komut gönder
 		var command string
-		if req.NodeStatus == "primary" {
+		if req.NodeStatus == "PRIMARY" {
 			// Eğer node primary ise, primary'i step down yapalım
 			command = "rs.stepDown()"
 		} else {
@@ -3020,4 +3020,78 @@ func (s *Server) FreezeMongoSecondary(ctx context.Context, req *pb.MongoFreezeSe
 		JobId:  job.JobId,
 		Status: pb.JobStatus_JOB_STATUS_PENDING,
 	}, nil
+}
+
+// ExplainQuery, PostgreSQL sorgu planını EXPLAIN ANALYZE kullanarak getirir
+func (s *Server) ExplainQuery(ctx context.Context, req *pb.ExplainQueryRequest) (*pb.ExplainQueryResponse, error) {
+	log.Printf("ExplainQuery metodu çağrıldı - Agent ID: %s, Database: %s", req.AgentId, req.Database)
+
+	// Agent ID'yi kontrol et
+	agentID := req.AgentId
+	if agentID == "" {
+		return &pb.ExplainQueryResponse{
+			Status:       "error",
+			ErrorMessage: "agent_id boş olamaz",
+		}, fmt.Errorf("agent_id boş olamaz")
+	}
+
+	// Sorguyu kontrol et
+	query := req.Query
+	if query == "" {
+		return &pb.ExplainQueryResponse{
+			Status:       "error",
+			ErrorMessage: "sorgu boş olamaz",
+		}, fmt.Errorf("sorgu boş olamaz")
+	}
+
+	// EXPLAIN ANALYZE ile sorguyu çevrele
+	explainQuery := fmt.Sprintf("EXPLAIN ANALYZE %s", query)
+
+	// Unique bir sorgu ID'si oluştur
+	queryID := fmt.Sprintf("explain_%d", time.Now().UnixNano())
+
+	// Agent'a sorguyu gönder ve cevabı al
+	result, err := s.SendQuery(ctx, agentID, queryID, explainQuery, req.Database)
+	if err != nil {
+		log.Printf("Sorgu planı alınırken hata: %v", err)
+		return &pb.ExplainQueryResponse{
+			Status:       "error",
+			ErrorMessage: fmt.Sprintf("Sorgu planı alınırken hata: %v", err),
+		}, err
+	}
+
+	// Sorgu sonucunu döndür
+	if result.Result != nil {
+		// Sonucu okunabilir formata dönüştür
+		var resultStruct structpb.Struct
+		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
+			log.Printf("Sonuç dönüştürülürken hata: %v", err)
+			return &pb.ExplainQueryResponse{
+				Status:       "error",
+				ErrorMessage: fmt.Sprintf("Sonuç dönüştürülürken hata: %v", err),
+			}, err
+		}
+
+		// JSON formatını string'e dönüştür (tek bir string değeri olarak)
+		resultBytes, err := json.Marshal(resultStruct.AsMap())
+		if err != nil {
+			log.Printf("JSON dönüştürme hatası: %v", err)
+			return &pb.ExplainQueryResponse{
+				Status:       "error",
+				ErrorMessage: fmt.Sprintf("JSON dönüştürme hatası: %v", err),
+			}, err
+		}
+
+		// Başarılı sonucu döndür
+		return &pb.ExplainQueryResponse{
+			Status: "success",
+			Plan:   string(resultBytes),
+		}, nil
+	}
+
+	// Sonuç boş ise hata döndür
+	return &pb.ExplainQueryResponse{
+		Status:       "error",
+		ErrorMessage: "Sorgu planı alınamadı",
+	}, fmt.Errorf("sorgu planı alınamadı")
 }

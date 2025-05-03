@@ -41,6 +41,7 @@ const (
 	AgentService_PromotePostgresToMaster_FullMethodName = "/agent.AgentService/PromotePostgresToMaster"
 	AgentService_GetJob_FullMethodName                  = "/agent.AgentService/GetJob"
 	AgentService_ListJobs_FullMethodName                = "/agent.AgentService/ListJobs"
+	AgentService_ExplainQuery_FullMethodName            = "/agent.AgentService/ExplainQuery"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -85,6 +86,8 @@ type AgentServiceClient interface {
 	PromotePostgresToMaster(ctx context.Context, in *PostgresPromoteMasterRequest, opts ...grpc.CallOption) (*PostgresPromoteMasterResponse, error)
 	GetJob(ctx context.Context, in *GetJobRequest, opts ...grpc.CallOption) (*GetJobResponse, error)
 	ListJobs(ctx context.Context, in *ListJobsRequest, opts ...grpc.CallOption) (*ListJobsResponse, error)
+	// Sorgu planı için yeni endpoint
+	ExplainQuery(ctx context.Context, in *ExplainQueryRequest, opts ...grpc.CallOption) (*ExplainQueryResponse, error)
 }
 
 type agentServiceClient struct {
@@ -324,6 +327,16 @@ func (c *agentServiceClient) ListJobs(ctx context.Context, in *ListJobsRequest, 
 	return out, nil
 }
 
+func (c *agentServiceClient) ExplainQuery(ctx context.Context, in *ExplainQueryRequest, opts ...grpc.CallOption) (*ExplainQueryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExplainQueryResponse)
+	err := c.cc.Invoke(ctx, AgentService_ExplainQuery_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -366,6 +379,8 @@ type AgentServiceServer interface {
 	PromotePostgresToMaster(context.Context, *PostgresPromoteMasterRequest) (*PostgresPromoteMasterResponse, error)
 	GetJob(context.Context, *GetJobRequest) (*GetJobResponse, error)
 	ListJobs(context.Context, *ListJobsRequest) (*ListJobsResponse, error)
+	// Sorgu planı için yeni endpoint
+	ExplainQuery(context.Context, *ExplainQueryRequest) (*ExplainQueryResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -441,6 +456,9 @@ func (UnimplementedAgentServiceServer) GetJob(context.Context, *GetJobRequest) (
 }
 func (UnimplementedAgentServiceServer) ListJobs(context.Context, *ListJobsRequest) (*ListJobsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListJobs not implemented")
+}
+func (UnimplementedAgentServiceServer) ExplainQuery(context.Context, *ExplainQueryRequest) (*ExplainQueryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExplainQuery not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -826,6 +844,24 @@ func _AgentService_ListJobs_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_ExplainQuery_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExplainQueryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ExplainQuery(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ExplainQuery_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ExplainQuery(ctx, req.(*ExplainQueryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -908,6 +944,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListJobs",
 			Handler:    _AgentService_ListJobs_Handler,
+		},
+		{
+			MethodName: "ExplainQuery",
+			Handler:    _AgentService_ExplainQuery_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -945,7 +945,7 @@ func promoteMongoToPrimary(server *server.Server) gin.HandlerFunc {
 		}
 
 		// Node status kontrolü
-		if req.NodeStatus != "primary" && req.NodeStatus != "secondary" {
+		if req.NodeStatus != "PRIMARY" && req.NodeStatus != "SECONDARY" {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"status": "error",
 				"error":  "node_status 'primary' veya 'secondary' olmalıdır",

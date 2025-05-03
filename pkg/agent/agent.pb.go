@@ -4267,6 +4267,128 @@ func (x *MongoFreezeSecondaryResponse) GetResult() string {
 	return ""
 }
 
+// PostgreSQL sorgu planı için istek
+type ExplainQueryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Database      string                 `protobuf:"bytes,2,opt,name=database,proto3" json:"database,omitempty"`
+	Query         string                 `protobuf:"bytes,3,opt,name=query,proto3" json:"query,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExplainQueryRequest) Reset() {
+	*x = ExplainQueryRequest{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[60]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExplainQueryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExplainQueryRequest) ProtoMessage() {}
+
+func (x *ExplainQueryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[60]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExplainQueryRequest.ProtoReflect.Descriptor instead.
+func (*ExplainQueryRequest) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{60}
+}
+
+func (x *ExplainQueryRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *ExplainQueryRequest) GetDatabase() string {
+	if x != nil {
+		return x.Database
+	}
+	return ""
+}
+
+func (x *ExplainQueryRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+// PostgreSQL sorgu planı yanıtı
+type ExplainQueryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Plan          string                 `protobuf:"bytes,1,opt,name=plan,proto3" json:"plan,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,3,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExplainQueryResponse) Reset() {
+	*x = ExplainQueryResponse{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[61]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExplainQueryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExplainQueryResponse) ProtoMessage() {}
+
+func (x *ExplainQueryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[61]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExplainQueryResponse.ProtoReflect.Descriptor instead.
+func (*ExplainQueryResponse) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{61}
+}
+
+func (x *ExplainQueryResponse) GetPlan() string {
+	if x != nil {
+		return x.Plan
+	}
+	return ""
+}
+
+func (x *ExplainQueryResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ExplainQueryResponse) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
 var File_pkg_agent_agent_proto protoreflect.FileDescriptor
 
 const file_pkg_agent_agent_proto_rawDesc = "" +
@@ -4609,7 +4731,15 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12(\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x10.agent.JobStatusR\x06status\x12#\n" +
 	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\x12\x16\n" +
-	"\x06result\x18\x04 \x01(\tR\x06result*\x9e\x01\n" +
+	"\x06result\x18\x04 \x01(\tR\x06result\"b\n" +
+	"\x13ExplainQueryRequest\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x1a\n" +
+	"\bdatabase\x18\x02 \x01(\tR\bdatabase\x12\x14\n" +
+	"\x05query\x18\x03 \x01(\tR\x05query\"g\n" +
+	"\x14ExplainQueryResponse\x12\x12\n" +
+	"\x04plan\x18\x01 \x01(\tR\x04plan\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12#\n" +
+	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage*\x9e\x01\n" +
 	"\tJobStatus\x12\x16\n" +
 	"\x12JOB_STATUS_UNKNOWN\x10\x00\x12\x16\n" +
 	"\x12JOB_STATUS_PENDING\x10\x01\x12\x16\n" +
@@ -4621,7 +4751,7 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x10JOB_TYPE_UNKNOWN\x10\x00\x12\"\n" +
 	"\x1eJOB_TYPE_MONGO_PROMOTE_PRIMARY\x10\x01\x12$\n" +
 	" JOB_TYPE_POSTGRES_PROMOTE_MASTER\x10\x02\x12#\n" +
-	"\x1fJOB_TYPE_MONGO_FREEZE_SECONDARY\x10\x032\xbc\r\n" +
+	"\x1fJOB_TYPE_MONGO_FREEZE_SECONDARY\x10\x032\x85\x0e\n" +
 	"\fAgentService\x128\n" +
 	"\aConnect\x12\x13.agent.AgentMessage\x1a\x14.agent.ServerMessage(\x010\x01\x12;\n" +
 	"\bRegister\x12\x16.agent.RegisterRequest\x1a\x17.agent.RegisterResponse\x129\n" +
@@ -4644,7 +4774,8 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x14FreezeMongoSecondary\x12\".agent.MongoFreezeSecondaryRequest\x1a#.agent.MongoFreezeSecondaryResponse\x12d\n" +
 	"\x17PromotePostgresToMaster\x12#.agent.PostgresPromoteMasterRequest\x1a$.agent.PostgresPromoteMasterResponse\x125\n" +
 	"\x06GetJob\x12\x14.agent.GetJobRequest\x1a\x15.agent.GetJobResponse\x12;\n" +
-	"\bListJobs\x12\x16.agent.ListJobsRequest\x1a\x17.agent.ListJobsResponseB0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
+	"\bListJobs\x12\x16.agent.ListJobsRequest\x1a\x17.agent.ListJobsResponse\x12G\n" +
+	"\fExplainQuery\x12\x1a.agent.ExplainQueryRequest\x1a\x1b.agent.ExplainQueryResponseB0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
 
 var (
 	file_pkg_agent_agent_proto_rawDescOnce sync.Once
@@ -4659,7 +4790,7 @@ func file_pkg_agent_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_pkg_agent_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 61)
+var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 63)
 var file_pkg_agent_agent_proto_goTypes = []any{
 	(JobStatus)(0),                        // 0: agent.JobStatus
 	(JobType)(0),                          // 1: agent.JobType
@@ -4723,15 +4854,17 @@ var file_pkg_agent_agent_proto_goTypes = []any{
 	(*ListJobsResponse)(nil),              // 59: agent.ListJobsResponse
 	(*MongoFreezeSecondaryRequest)(nil),   // 60: agent.MongoFreezeSecondaryRequest
 	(*MongoFreezeSecondaryResponse)(nil),  // 61: agent.MongoFreezeSecondaryResponse
-	nil,                                   // 62: agent.Job.ParametersEntry
-	(*anypb.Any)(nil),                     // 63: google.protobuf.Any
-	(*timestamppb.Timestamp)(nil),         // 64: google.protobuf.Timestamp
+	(*ExplainQueryRequest)(nil),           // 62: agent.ExplainQueryRequest
+	(*ExplainQueryResponse)(nil),          // 63: agent.ExplainQueryResponse
+	nil,                                   // 64: agent.Job.ParametersEntry
+	(*anypb.Any)(nil),                     // 65: google.protobuf.Any
+	(*timestamppb.Timestamp)(nil),         // 66: google.protobuf.Timestamp
 }
 var file_pkg_agent_agent_proto_depIdxs = []int32{
 	6,  // 0: agent.MongoLogListResponse.log_files:type_name -> agent.MongoLogFile
 	9,  // 1: agent.MongoLogAnalyzeResponse.log_entries:type_name -> agent.MongoLogEntry
 	11, // 2: agent.AlarmConfiguration.condition:type_name -> agent.AlarmCondition
-	63, // 3: agent.QueryResult.result:type_name -> google.protobuf.Any
+	65, // 3: agent.QueryResult.result:type_name -> google.protobuf.Any
 	13, // 4: agent.ReportAlarmRequest.events:type_name -> agent.AlarmEvent
 	2,  // 5: agent.RegisterRequest.agent_info:type_name -> agent.AgentInfo
 	17, // 6: agent.RegisterResponse.registration:type_name -> agent.RegistrationResult
@@ -4758,9 +4891,9 @@ var file_pkg_agent_agent_proto_depIdxs = []int32{
 	48, // 27: agent.ReportVersionRequest.version_info:type_name -> agent.AgentVersionInfo
 	1,  // 28: agent.Job.type:type_name -> agent.JobType
 	0,  // 29: agent.Job.status:type_name -> agent.JobStatus
-	64, // 30: agent.Job.created_at:type_name -> google.protobuf.Timestamp
-	64, // 31: agent.Job.updated_at:type_name -> google.protobuf.Timestamp
-	62, // 32: agent.Job.parameters:type_name -> agent.Job.ParametersEntry
+	66, // 30: agent.Job.created_at:type_name -> google.protobuf.Timestamp
+	66, // 31: agent.Job.updated_at:type_name -> google.protobuf.Timestamp
+	64, // 32: agent.Job.parameters:type_name -> agent.Job.ParametersEntry
 	0,  // 33: agent.MongoPromotePrimaryResponse.status:type_name -> agent.JobStatus
 	0,  // 34: agent.PostgresPromoteMasterResponse.status:type_name -> agent.JobStatus
 	51, // 35: agent.GetJobResponse.job:type_name -> agent.Job
@@ -4790,30 +4923,32 @@ var file_pkg_agent_agent_proto_depIdxs = []int32{
 	54, // 59: agent.AgentService.PromotePostgresToMaster:input_type -> agent.PostgresPromoteMasterRequest
 	56, // 60: agent.AgentService.GetJob:input_type -> agent.GetJobRequest
 	58, // 61: agent.AgentService.ListJobs:input_type -> agent.ListJobsRequest
-	29, // 62: agent.AgentService.Connect:output_type -> agent.ServerMessage
-	21, // 63: agent.AgentService.Register:output_type -> agent.RegisterResponse
-	23, // 64: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
-	26, // 65: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
-	23, // 66: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
-	26, // 67: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
-	33, // 68: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
-	35, // 69: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
-	19, // 70: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
-	27, // 71: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
-	7,  // 72: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
-	10, // 73: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
-	38, // 74: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
-	41, // 75: agent.AgentService.AnalyzePostgresLog:output_type -> agent.PostgresLogAnalyzeResponse
-	44, // 76: agent.AgentService.ReadPostgresConfig:output_type -> agent.PostgresConfigResponse
-	47, // 77: agent.AgentService.GetThresholdSettings:output_type -> agent.GetThresholdSettingsResponse
-	50, // 78: agent.AgentService.ReportVersion:output_type -> agent.ReportVersionResponse
-	53, // 79: agent.AgentService.PromoteMongoToPrimary:output_type -> agent.MongoPromotePrimaryResponse
-	61, // 80: agent.AgentService.FreezeMongoSecondary:output_type -> agent.MongoFreezeSecondaryResponse
-	55, // 81: agent.AgentService.PromotePostgresToMaster:output_type -> agent.PostgresPromoteMasterResponse
-	57, // 82: agent.AgentService.GetJob:output_type -> agent.GetJobResponse
-	59, // 83: agent.AgentService.ListJobs:output_type -> agent.ListJobsResponse
-	62, // [62:84] is the sub-list for method output_type
-	40, // [40:62] is the sub-list for method input_type
+	62, // 62: agent.AgentService.ExplainQuery:input_type -> agent.ExplainQueryRequest
+	29, // 63: agent.AgentService.Connect:output_type -> agent.ServerMessage
+	21, // 64: agent.AgentService.Register:output_type -> agent.RegisterResponse
+	23, // 65: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
+	26, // 66: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
+	23, // 67: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
+	26, // 68: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
+	33, // 69: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
+	35, // 70: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
+	19, // 71: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
+	27, // 72: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
+	7,  // 73: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
+	10, // 74: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
+	38, // 75: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
+	41, // 76: agent.AgentService.AnalyzePostgresLog:output_type -> agent.PostgresLogAnalyzeResponse
+	44, // 77: agent.AgentService.ReadPostgresConfig:output_type -> agent.PostgresConfigResponse
+	47, // 78: agent.AgentService.GetThresholdSettings:output_type -> agent.GetThresholdSettingsResponse
+	50, // 79: agent.AgentService.ReportVersion:output_type -> agent.ReportVersionResponse
+	53, // 80: agent.AgentService.PromoteMongoToPrimary:output_type -> agent.MongoPromotePrimaryResponse
+	61, // 81: agent.AgentService.FreezeMongoSecondary:output_type -> agent.MongoFreezeSecondaryResponse
+	55, // 82: agent.AgentService.PromotePostgresToMaster:output_type -> agent.PostgresPromoteMasterResponse
+	57, // 83: agent.AgentService.GetJob:output_type -> agent.GetJobResponse
+	59, // 84: agent.AgentService.ListJobs:output_type -> agent.ListJobsResponse
+	63, // 85: agent.AgentService.ExplainQuery:output_type -> agent.ExplainQueryResponse
+	63, // [63:86] is the sub-list for method output_type
+	40, // [40:63] is the sub-list for method input_type
 	40, // [40:40] is the sub-list for extension type_name
 	40, // [40:40] is the sub-list for extension extendee
 	0,  // [0:40] is the sub-list for field type_name
@@ -4843,7 +4978,7 @@ func file_pkg_agent_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_agent_agent_proto_rawDesc), len(file_pkg_agent_agent_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   61,
+			NumMessages:   63,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
