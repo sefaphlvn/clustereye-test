@@ -3091,7 +3091,7 @@ func (s *Server) ExplainQuery(ctx context.Context, req *pb.ExplainQueryRequest) 
 	}
 
 	// EXPLAIN ANALYZE ile sorguyu çevrele
-	explainQuery := fmt.Sprintf("EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) %s", query)
+	explainQuery := fmt.Sprintf("EXPLAIN (ANALYZE true, BUFFERS true, COSTS true, TIMING true, VERBOSE true, FORMAT TEXT) %s", query)
 
 	// Unique bir sorgu ID'si oluştur
 	queryID := fmt.Sprintf("explain_%d", time.Now().UnixNano())
@@ -3108,18 +3108,32 @@ func (s *Server) ExplainQuery(ctx context.Context, req *pb.ExplainQueryRequest) 
 
 	// Sorgu sonucunu döndür
 	if result.Result != nil {
+		log.Printf("Sorgu sonucu alındı, type_url: %s", result.Result.TypeUrl)
+
 		// Sonucu okunabilir formata dönüştür
 		var resultStruct structpb.Struct
 		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
-			log.Printf("Sonuç dönüştürülürken hata: %v", err)
+			log.Printf("Sonuç structpb.Struct'a dönüştürülürken hata: %v", err)
+
+			// Farklı bir yöntem deneyelim - doğrudan JSON string'e çevirmeyi deneyelim
+			resultStr := string(result.Result.Value)
+			if len(resultStr) > 0 {
+				log.Printf("Result.Value doğrudan string olarak kullanılıyor: %d byte", len(resultStr))
+				return &pb.ExplainQueryResponse{
+					Status: "success",
+					Plan:   resultStr,
+				}, nil
+			}
+
 			return &pb.ExplainQueryResponse{
 				Status:       "error",
 				ErrorMessage: fmt.Sprintf("Sonuç dönüştürülürken hata: %v", err),
 			}, err
 		}
 
-		// JSON formatını string'e dönüştür (tek bir string değeri olarak)
-		resultBytes, err := json.Marshal(resultStruct.AsMap())
+		// Struct'ı doğrudan JSON string'e dönüştür
+		resultMap := resultStruct.AsMap()
+		resultBytes, err := json.Marshal(resultMap)
 		if err != nil {
 			log.Printf("JSON dönüştürme hatası: %v", err)
 			return &pb.ExplainQueryResponse{
@@ -3128,10 +3142,40 @@ func (s *Server) ExplainQuery(ctx context.Context, req *pb.ExplainQueryRequest) 
 			}, err
 		}
 
-		// Başarılı sonucu döndür
+		// Eğer resultMap içinde özellikle "result" veya "explain" anahtarı varsa,
+		// bunları kullanarak okunabilir bir açıklama formatı oluştur
+		var planText string
+		if explainResult, ok := resultMap["result"]; ok {
+			// Sonuç "result" anahtarında ise
+			if explainStr, ok := explainResult.(string); ok {
+				planText = explainStr
+			} else {
+				// Eğer doğrudan string değilse JSON olarak dönüştür
+				if explainBytes, err := json.MarshalIndent(explainResult, "", "  "); err == nil {
+					planText = string(explainBytes)
+				}
+			}
+		} else if explainResult, ok := resultMap["explain"]; ok {
+			// Sonuç "explain" anahtarında ise
+			if explainStr, ok := explainResult.(string); ok {
+				planText = explainStr
+			} else {
+				// Eğer doğrudan string değilse JSON olarak dönüştür
+				if explainBytes, err := json.MarshalIndent(explainResult, "", "  "); err == nil {
+					planText = string(explainBytes)
+				}
+			}
+		}
+
+		// Eğer özel format bulunamadıysa, tüm JSON formatını kullan
+		if planText == "" {
+			planText = string(resultBytes)
+		}
+
+		// JSON string'i doğrudan plan alanında kullan
 		return &pb.ExplainQueryResponse{
 			Status: "success",
-			Plan:   string(resultBytes),
+			Plan:   planText,
 		}, nil
 	}
 
