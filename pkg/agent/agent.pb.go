@@ -1100,6 +1100,7 @@ type AlarmEvent struct {
 	Message       string                 `protobuf:"bytes,7,opt,name=message,proto3" json:"message,omitempty"`
 	Timestamp     string                 `protobuf:"bytes,8,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	Severity      string                 `protobuf:"bytes,9,opt,name=severity,proto3" json:"severity,omitempty"`
+	Database      string                 `protobuf:"bytes,10,opt,name=database,proto3" json:"database,omitempty"` // Sorgunun çalıştırıldığı veritabanı
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1193,6 +1194,13 @@ func (x *AlarmEvent) GetTimestamp() string {
 func (x *AlarmEvent) GetSeverity() string {
 	if x != nil {
 		return x.Severity
+	}
+	return ""
+}
+
+func (x *AlarmEvent) GetDatabase() string {
+	if x != nil {
+		return x.Database
 	}
 	return ""
 }
@@ -4486,7 +4494,7 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\bseverity\x18\x04 \x01(\tR\bseverity\x123\n" +
 	"\tcondition\x18\x05 \x01(\v2\x15.agent.AlarmConditionR\tcondition\x12\x18\n" +
 	"\aenabled\x18\x06 \x01(\bR\aenabled\x12\x1a\n" +
-	"\bchannels\x18\a \x03(\tR\bchannels\"\x82\x02\n" +
+	"\bchannels\x18\a \x03(\tR\bchannels\"\x9e\x02\n" +
 	"\n" +
 	"AlarmEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
@@ -4498,7 +4506,9 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\fmetric_value\x18\x06 \x01(\tR\vmetricValue\x12\x18\n" +
 	"\amessage\x18\a \x01(\tR\amessage\x12\x1c\n" +
 	"\ttimestamp\x18\b \x01(\tR\ttimestamp\x12\x1a\n" +
-	"\bseverity\x18\t \x01(\tR\bseverity\"X\n" +
+	"\bseverity\x18\t \x01(\tR\bseverity\x12\x1a\n" +
+	"\bdatabase\x18\n" +
+	" \x01(\tR\bdatabase\"X\n" +
 	"\x05Query\x12\x19\n" +
 	"\bquery_id\x18\x01 \x01(\tR\aqueryId\x12\x18\n" +
 	"\acommand\x18\x02 \x01(\tR\acommand\x12\x1a\n" +

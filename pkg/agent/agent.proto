@@ -126,6 +126,7 @@ message AlarmEvent {
   string message = 7;
   string timestamp = 8;
   string severity = 9;
+  string database = 10;       // Sorgunun çalıştırıldığı veritabanı
 }
 
 message Query {

@@ -788,12 +788,13 @@ func (s *Server) saveAlarmToDatabase(ctx context.Context, event *pb.AlarmEvent) 
 			event_id, 
 			agent_id, 
 			status, 
-			 metric_name, 
+			metric_name, 
 			metric_value, 
 			message, 
 			severity,
-			created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			created_at,
+			database
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 
 	// Zaman damgasını parse et
@@ -833,6 +834,7 @@ func (s *Server) saveAlarmToDatabase(ctx context.Context, event *pb.AlarmEvent) 
 		event.Message,
 		event.Severity,
 		timestamp,
+		event.Database,
 	)
 
 	if err != nil {
@@ -980,6 +982,11 @@ func (s *Server) sendSlackNotification(event *pb.AlarmEvent, webhookURL string) 
 						"value": event.Status,
 						"short": true,
 					},
+					{
+						"title": "Database",
+						"value": event.Database,
+						"short": true,
+					},
 				},
 			},
 		},
@@ -1073,6 +1080,10 @@ func (s *Server) sendEmailNotification(event *pb.AlarmEvent, server, port, user,
 					<div>%s</div>
 				</div>
 				<div class="detail-row">
+					<div class="detail-label">Veritabanı:</div>
+					<div>%s</div>
+				</div>
+				<div class="detail-row">
 					<div class="detail-label">Alarm ID:</div>
 					<div>%s</div>
 				</div>
@@ -1100,13 +1111,14 @@ func (s *Server) sendEmailNotification(event *pb.AlarmEvent, server, port, user,
 		event.MetricValue,
 		event.Severity,
 		event.Status,
+		event.Database,
 		event.AlarmId,
 		event.Id,
 		event.Timestamp,
 	)
 
 	// Basit metin içeriği
-	textBody := fmt.Sprintf("ClusterEye Alarm Bildirimi\n\n%s\n\n%s\n\nAgent: %s\nMetrik: %s\nDeğer: %s\nÖnem: %s\nDurum: %s\nAlarm ID: %s\nOlay ID: %s\nZaman: %s",
+	textBody := fmt.Sprintf("ClusterEye Alarm Bildirimi\n\n%s\n\n%s\n\nAgent: %s\nMetrik: %s\nDeğer: %s\nÖnem: %s\nDurum: %s\nVeritabanı: %s\nAlarm ID: %s\nOlay ID: %s\nZaman: %s",
 		subject,
 		event.Message,
 		event.AgentId,
@@ -1114,6 +1126,7 @@ func (s *Server) sendEmailNotification(event *pb.AlarmEvent, server, port, user,
 		event.MetricValue,
 		event.Severity,
 		event.Status,
+		event.Database,
 		event.AlarmId,
 		event.Id,
 		event.Timestamp,
@@ -2107,7 +2120,8 @@ func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool) ([]map[
 			message,
 			severity,
 			created_at,
-			acknowledged
+			acknowledged,
+			database
 		FROM alarms
 	`
 
@@ -2139,6 +2153,7 @@ func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool) ([]map[
 			severity     string
 			createdAt    time.Time
 			acknowledged bool
+			database     string
 		)
 
 		// Satırı oku
@@ -2153,6 +2168,7 @@ func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool) ([]map[
 			&severity,
 			&createdAt,
 			&acknowledged,
+			&database,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("satır okuma hatası: %v", err)
@@ -2170,6 +2186,7 @@ func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool) ([]map[
 			"severity":     severity,
 			"created_at":   createdAt.Format(time.RFC3339),
 			"acknowledged": acknowledged,
+			"database":     database,
 		}
 
 		alarms = append(alarms, alarm)
@@ -3045,7 +3062,7 @@ func (s *Server) ExplainQuery(ctx context.Context, req *pb.ExplainQueryRequest) 
 	}
 
 	// EXPLAIN ANALYZE ile sorguyu çevrele
-	explainQuery := fmt.Sprintf("EXPLAIN ANALYZE %s", query)
+	explainQuery := fmt.Sprintf("EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) %s", query)
 
 	// Unique bir sorgu ID'si oluştur
 	queryID := fmt.Sprintf("explain_%d", time.Now().UnixNano())

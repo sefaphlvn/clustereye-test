@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -66,6 +67,9 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 
 		// PostgreSQL config dosyasını okumasını ister
 		agents.POST("/:agent_id/postgres/config", readPostgresConfig(server))
+
+		// Explain Query endpoint'i - PostgreSQL sorgu planını analiz et
+		agents.POST("/:agent_id/explain", explainQuery(server))
 	}
 
 	// Status Endpoint'leri
@@ -1264,5 +1268,79 @@ func freezeMongoSecondary(server *server.Server) gin.HandlerFunc {
 				"status": response.Status.String(),
 			},
 		})
+	}
+}
+
+// explainQuery, PostgreSQL sorgusunun EXPLAIN ANALYZE planını çalıştırır
+func explainQuery(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Param("agent_id")
+
+		if agentID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "agent_id parametresi gerekli",
+			})
+			return
+		}
+
+		var req struct {
+			Database string `json:"database" binding:"required"`
+			Query    string `json:"query" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz JSON verisi: " + err.Error(),
+			})
+			return
+		}
+
+		// Context oluştur
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		// Sorgu planını getir
+		result, err := server.ExplainQuery(ctx, &pb.ExplainQueryRequest{
+			AgentId:  agentID,
+			Database: req.Database,
+			Query:    req.Query,
+		})
+
+		if err != nil {
+			status := http.StatusInternalServerError
+			message := "Sorgu planı alınırken bir hata oluştu: " + err.Error()
+
+			if err == context.DeadlineExceeded {
+				status = http.StatusGatewayTimeout
+				message = "Sorgu zaman aşımına uğradı"
+			} else if strings.Contains(err.Error(), "agent bulunamadı") {
+				status = http.StatusNotFound
+				message = "Agent bulunamadı veya bağlantı kapalı"
+			}
+
+			c.JSON(status, gin.H{
+				"status": "error",
+				"error":  message,
+			})
+			return
+		}
+
+		// Başarılı yanıt
+		if result.Status == "success" {
+			c.JSON(http.StatusOK, gin.H{
+				"status":   "success",
+				"agent_id": agentID,
+				"query":    req.Query,
+				"database": req.Database,
+				"plan":     result.Plan,
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  result.ErrorMessage,
+			})
+		}
 	}
 }
