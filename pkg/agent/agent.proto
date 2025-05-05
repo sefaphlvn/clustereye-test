@@ -4,6 +4,7 @@ package agent;
 
 import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
 
 option go_package = "github.com/sefaphlvn/clustereye-test/pkg/agent";
 
@@ -244,7 +245,7 @@ message SystemMetricsRequest {
 
 message SystemMetricsResponse {
   string status = 1;
-  SystemMetrics metrics = 2;
+  google.protobuf.Struct data = 2;
 }
 
 // Alarm yapılandırmaları için tanımlanan mesajlar

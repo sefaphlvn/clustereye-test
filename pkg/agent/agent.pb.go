@@ -10,6 +10,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	anypb "google.golang.org/protobuf/types/known/anypb"
+	structpb "google.golang.org/protobuf/types/known/structpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -2352,7 +2353,7 @@ func (x *SystemMetricsRequest) GetAgentId() string {
 type SystemMetricsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
-	Metrics       *SystemMetrics         `protobuf:"bytes,2,opt,name=metrics,proto3" json:"metrics,omitempty"`
+	Data          *structpb.Struct       `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2394,9 +2395,9 @@ func (x *SystemMetricsResponse) GetStatus() string {
 	return ""
 }
 
-func (x *SystemMetricsResponse) GetMetrics() *SystemMetrics {
+func (x *SystemMetricsResponse) GetData() *structpb.Struct {
 	if x != nil {
-		return x.Metrics
+		return x.Data
 	}
 	return nil
 }
@@ -4401,7 +4402,7 @@ var File_pkg_agent_agent_proto protoreflect.FileDescriptor
 
 const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x15pkg/agent/agent.proto\x12\x05agent\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf2\x01\n" +
+	"\x15pkg/agent/agent.proto\x12\x05agent\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xf2\x01\n" +
 	"\tAgentInfo\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x19\n" +
 	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x1a\n" +
@@ -4581,10 +4582,10 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x0ekernel_version\x18\f \x01(\tR\rkernelVersion\x12\x16\n" +
 	"\x06uptime\x18\r \x01(\x03R\x06uptime\"1\n" +
 	"\x14SystemMetricsRequest\x12\x19\n" +
-	"\bagent_id\x18\x01 \x01(\tR\aagentId\"_\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\"\\\n" +
 	"\x15SystemMetricsResponse\x12\x16\n" +
-	"\x06status\x18\x01 \x01(\tR\x06status\x12.\n" +
-	"\ametrics\x18\x02 \x01(\v2\x14.agent.SystemMetricsR\ametrics\"/\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12+\n" +
+	"\x04data\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x04data\"/\n" +
 	"\x12AlarmConfigRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\"p\n" +
 	"\x13AlarmConfigResponse\x12\x16\n" +
@@ -4868,7 +4869,8 @@ var file_pkg_agent_agent_proto_goTypes = []any{
 	(*ExplainQueryResponse)(nil),          // 63: agent.ExplainQueryResponse
 	nil,                                   // 64: agent.Job.ParametersEntry
 	(*anypb.Any)(nil),                     // 65: google.protobuf.Any
-	(*timestamppb.Timestamp)(nil),         // 66: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),               // 66: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),         // 67: google.protobuf.Timestamp
 }
 var file_pkg_agent_agent_proto_depIdxs = []int32{
 	6,  // 0: agent.MongoLogListResponse.log_files:type_name -> agent.MongoLogFile
@@ -4892,7 +4894,7 @@ var file_pkg_agent_agent_proto_depIdxs = []int32{
 	3,  // 18: agent.AgentMessage.postgres_info:type_name -> agent.PostgresInfo
 	31, // 19: agent.AgentMessage.system_metrics:type_name -> agent.SystemMetrics
 	4,  // 20: agent.AgentMessage.mongo_info:type_name -> agent.MongoInfo
-	31, // 21: agent.SystemMetricsResponse.metrics:type_name -> agent.SystemMetrics
+	66, // 21: agent.SystemMetricsResponse.data:type_name -> google.protobuf.Struct
 	12, // 22: agent.AlarmConfigResponse.configurations:type_name -> agent.AlarmConfiguration
 	36, // 23: agent.PostgresLogListResponse.log_files:type_name -> agent.PostgresLogFile
 	40, // 24: agent.PostgresLogAnalyzeResponse.log_entries:type_name -> agent.PostgresLogEntry
@@ -4901,8 +4903,8 @@ var file_pkg_agent_agent_proto_depIdxs = []int32{
 	48, // 27: agent.ReportVersionRequest.version_info:type_name -> agent.AgentVersionInfo
 	1,  // 28: agent.Job.type:type_name -> agent.JobType
 	0,  // 29: agent.Job.status:type_name -> agent.JobStatus
-	66, // 30: agent.Job.created_at:type_name -> google.protobuf.Timestamp
-	66, // 31: agent.Job.updated_at:type_name -> google.protobuf.Timestamp
+	67, // 30: agent.Job.created_at:type_name -> google.protobuf.Timestamp
+	67, // 31: agent.Job.updated_at:type_name -> google.protobuf.Timestamp
 	64, // 32: agent.Job.parameters:type_name -> agent.Job.ParametersEntry
 	0,  // 33: agent.MongoPromotePrimaryResponse.status:type_name -> agent.JobStatus
 	0,  // 34: agent.PostgresPromoteMasterResponse.status:type_name -> agent.JobStatus

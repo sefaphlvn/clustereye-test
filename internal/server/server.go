@@ -661,68 +661,108 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command, datab
 
 // SendSystemMetrics, agent'dan sistem metriklerini alır
 func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsRequest) (*pb.SystemMetricsResponse, error) {
-	log.Printf("[DEBUG] SendSystemMetrics başladı: agent_id=%s", req.AgentId)
+	log.Printf("[INFO] SendSystemMetrics başladı - basitleştirilmiş yaklaşım: agent_id=%s", req.AgentId)
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+	// Agent ID'yi standart formata getir
 	agentID := req.AgentId
 	if !strings.HasPrefix(agentID, "agent_") {
 		agentID = "agent_" + agentID
 		log.Printf("[DEBUG] Agent ID düzeltildi: %s", agentID)
 	}
 
+	// Agent bağlantısını bul
+	s.mu.RLock()
 	agentConn, ok := s.agents[agentID]
+	s.mu.RUnlock()
+
 	if !ok {
 		log.Printf("[ERROR] Agent bulunamadı: %s", agentID)
 		return nil, fmt.Errorf("agent bulunamadı: %s", agentID)
 	}
 
-	log.Printf("[DEBUG] Agent bağlantısı bulundu: %s", agentID)
-
-	// gRPC stream'in durumunu kontrol et
 	if agentConn.Stream == nil {
-		log.Printf("[ERROR] gRPC stream nil: agent_id=%s", agentID)
-		return nil, fmt.Errorf("gRPC stream bağlantısı kopmuş")
+		log.Printf("[ERROR] Agent stream bağlantısı yok: %s", agentID)
+		return nil, fmt.Errorf("agent stream bağlantısı yok: %s", agentID)
 	}
 
-	// Metrik isteğini agent'a gönder
-	log.Printf("[DEBUG] Metrik isteği gönderiliyor: agent_id=%s", agentID)
+	// Metrics için bir kanal oluştur
+	metricsChan := make(chan *pb.SystemMetrics, 1)
+	errorChan := make(chan error, 1)
+
+	// Unique bir query ID oluştur
+	queryID := fmt.Sprintf("metrics_%d", time.Now().UnixNano())
+
+	// Query sonucu için bir kanal oluştur
+	resultChan := make(chan *pb.QueryResult, 1)
+	s.queryMu.Lock()
+	s.queryResult[queryID] = &QueryResponse{
+		ResultChan: resultChan,
+	}
+	s.queryMu.Unlock()
+
+	// İşlem bitince cleanup yap
+	defer func() {
+		s.queryMu.Lock()
+		delete(s.queryResult, queryID)
+		s.queryMu.Unlock()
+		close(resultChan)
+		close(metricsChan)
+		close(errorChan)
+	}()
+
+	log.Printf("[INFO] Metrik almak için özel sorgu gönderiliyor - QueryID: %s", queryID)
+
+	// Metrik almak için "get_system_metrics" adında özel bir sorgu gönder
 	err := agentConn.Stream.Send(&pb.ServerMessage{
-		Payload: &pb.ServerMessage_MetricsRequest{
-			MetricsRequest: &pb.SystemMetricsRequest{
-				AgentId: agentID,
+		Payload: &pb.ServerMessage_Query{
+			Query: &pb.Query{
+				QueryId:  queryID,
+				Command:  "get_system_metrics",
+				Database: "",
 			},
 		},
 	})
 
 	if err != nil {
-		log.Printf("[ERROR] Metrik isteği gönderilemedi: agent_id=%s, error=%v", agentID, err)
-		return nil, err
-	}
-	log.Printf("[DEBUG] Metrik isteği başarıyla gönderildi: agent_id=%s", agentID)
-
-	// Agent yanıtını bekle
-	msg, err := agentConn.Stream.Recv()
-	if err != nil {
-		log.Printf("[ERROR] Agent yanıtı alınamadı: agent_id=%s, error=%v", agentID, err)
-		return &pb.SystemMetricsResponse{
-			Status: "error",
-		}, err
+		log.Printf("[ERROR] Metrik sorgusu gönderilemedi: %v", err)
+		return nil, fmt.Errorf("metrik sorgusu gönderilemedi: %v", err)
 	}
 
-	log.Printf("[DEBUG] Agent yanıtı alındı: agent_id=%s, payload_type=%T", agentID, msg.Payload)
-	if metrics, ok := msg.Payload.(*pb.AgentMessage_SystemMetrics); ok {
-		log.Printf("[DEBUG] SystemMetrics yanıtı alındı: agent_id=%s", agentID)
-		return &pb.SystemMetricsResponse{
-			Status:  "success",
-			Metrics: metrics.SystemMetrics,
-		}, nil
-	} else {
-		log.Printf("[ERROR] Beklenmeyen yanıt tipi: agent_id=%s, payload_type=%T", agentID, msg.Payload)
-		return &pb.SystemMetricsResponse{
-			Status: "error",
-		}, fmt.Errorf("beklenmeyen yanıt tipi: %T", msg.Payload)
+	log.Printf("[INFO] Metrik sorgusu gönderildi, yanıt bekleniyor... QueryID: %s", queryID)
+
+	// 3 saniyelik timeout ayarla
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	// Yanıtı bekle
+	select {
+	case result := <-resultChan:
+		if result == nil {
+			log.Printf("[ERROR] Boş metrik yanıtı alındı")
+			return nil, fmt.Errorf("boş metrik yanıtı alındı")
+		}
+
+		log.Printf("[INFO] Metrik yanıtı alındı - QueryID: %s", queryID)
+
+		// Result içerisindeki Any tipini Struct'a dönüştür
+		var metricsStruct structpb.Struct
+		if err := result.Result.UnmarshalTo(&metricsStruct); err != nil {
+			log.Printf("[ERROR] Metrik yapısı çözümlenemedi: %v", err)
+			return nil, fmt.Errorf("metrik yapısı çözümlenemedi: %v", err)
+		}
+
+		// Yanıtı oluştur ve döndür
+		response := &pb.SystemMetricsResponse{
+			Status: "success",
+			Data:   &metricsStruct,
+		}
+
+		log.Printf("[INFO] Metrik yanıtı başarıyla döndürülüyor")
+		return response, nil
+
+	case <-ctx.Done():
+		log.Printf("[ERROR] Metrik yanıtı beklerken timeout: %v", ctx.Err())
+		return nil, ctx.Err()
 	}
 }
 
