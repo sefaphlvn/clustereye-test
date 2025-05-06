@@ -1,10 +1,12 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -1371,6 +1373,18 @@ func explainMongoQuery(server *server.Server) gin.HandlerFunc {
 			Query    string `json:"query" binding:"required"`
 		}
 
+		// Raw sorgu içeriğini al
+		bodyBytes, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Sorgu okunamadı: " + err.Error(),
+			})
+			return
+		}
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+		// JSON request'i parse et - temel validasyon için
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"status": "error",
@@ -1379,50 +1393,41 @@ func explainMongoQuery(server *server.Server) gin.HandlerFunc {
 			return
 		}
 
-		// Context oluştur
+		// Context timeout ayarlama
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
 
-		// MongoDB sorgu planını getir
-		result, err := server.ExplainMongoQuery(ctx, &pb.ExplainQueryRequest{
+		// Ham JSON sorguyu string olarak kullan
+		queryStr := string(bodyBytes)
+
+		// ExplainMongoQuery servis metodunu çağır
+		response, err := server.ExplainMongoQuery(ctx, &pb.ExplainQueryRequest{
 			AgentId:  agentID,
 			Database: req.Database,
-			Query:    req.Query,
+			Query:    queryStr,
 		})
 
 		if err != nil {
-			status := http.StatusInternalServerError
-			message := "MongoDB sorgu planı alınırken bir hata oluştu: " + err.Error()
-
-			if err == context.DeadlineExceeded {
-				status = http.StatusGatewayTimeout
-				message = "MongoDB sorgusu zaman aşımına uğradı"
-			} else if strings.Contains(err.Error(), "agent bulunamadı") {
-				status = http.StatusNotFound
-				message = "Agent bulunamadı veya bağlantı kapalı"
-			}
-
-			c.JSON(status, gin.H{
+			log.Printf("MongoDB sorgu planı alınırken bir hata oluştu: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{
 				"status": "error",
-				"error":  message,
+				"error":  "MongoDB sorgu planı alınırken bir hata oluştu: " + err.Error(),
 			})
 			return
 		}
 
-		// Başarılı yanıt
-		if result.Status == "success" {
-			c.JSON(http.StatusOK, gin.H{
-				"status":   "success",
-				"agent_id": agentID,
-				"query":    req.Query,
-				"database": req.Database,
-				"plan":     result.Plan,
-			})
-		} else {
+		if response.Status == "error" {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status": "error",
-				"error":  result.ErrorMessage,
+				"error":  response.ErrorMessage,
 			})
+			return
 		}
+
+		// Başarılı cevap
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"plan":   response.Plan,
+		})
 	}
 }

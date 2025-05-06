@@ -3228,7 +3228,7 @@ func (s *Server) ExplainQuery(ctx context.Context, req *pb.ExplainQueryRequest) 
 
 // ExplainMongoQuery, MongoDB sorgu planını explain() kullanarak getirir
 func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequest) (*pb.ExplainQueryResponse, error) {
-	log.Printf("ExplainMongoQuery metodu çağrıldı - Agent ID: %s, Database: %s", req.AgentId, req.Database)
+	log.Printf("[INFO] ExplainMongoQuery çağrıldı - Agent ID: %s, Database: %s", req.AgentId, req.Database)
 
 	// Agent ID'yi kontrol et
 	agentID := req.AgentId
@@ -3257,36 +3257,47 @@ func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequ
 		}, fmt.Errorf("database boş olamaz")
 	}
 
-	// MongoDB'de explain formatını oluştur
-	// MongoDB için BSON formatında bir explain komutu oluşturuyoruz
-	explainCommand := fmt.Sprintf("db.runCommand({explain: %s, verbosity: 'allPlansExecution'})", query)
+	// Sorguyu MongoDB explain komutu olarak gönder
+	// Özel bir protokol formatı kullanıyoruz: MONGODB_EXPLAIN||<query_json>
+	explainCommand := fmt.Sprintf("MONGODB_EXPLAIN||%s", query)
+
+	log.Printf("[DEBUG] MongoDB Explain komutu oluşturuldu, uzunluk: %d bytes", len(explainCommand))
 
 	// Unique bir sorgu ID'si oluştur
 	queryID := fmt.Sprintf("mongo_explain_%d", time.Now().UnixNano())
 
+	// Uzun işlem için timeout süresini artır (60 saniye)
+	longCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	// Agent'a sorguyu gönder ve cevabı al
-	result, err := s.SendQuery(ctx, agentID, queryID, explainCommand, database)
+	log.Printf("[DEBUG] MongoDB sorgusu agent'a gönderiliyor: %s", agentID)
+	result, err := s.SendQuery(longCtx, agentID, queryID, explainCommand, database)
 	if err != nil {
-		log.Printf("MongoDB sorgu planı alınırken hata: %v", err)
+		log.Printf("[ERROR] MongoDB sorgu planı alınırken hata: %v", err)
+		errMsg := err.Error()
+		if err == context.DeadlineExceeded {
+			errMsg = "sorgu zaman aşımına uğradı"
+		}
 		return &pb.ExplainQueryResponse{
 			Status:       "error",
-			ErrorMessage: fmt.Sprintf("MongoDB sorgu planı alınırken hata: %v", err),
+			ErrorMessage: fmt.Sprintf("MongoDB sorgu planı alınırken bir hata oluştu: %s", errMsg),
 		}, err
 	}
 
 	// Sorgu sonucunu döndür
 	if result.Result != nil {
-		log.Printf("MongoDB sorgu planı alındı, type_url: %s", result.Result.TypeUrl)
+		log.Printf("[DEBUG] MongoDB sorgu planı alındı, type_url: %s", result.Result.TypeUrl)
 
 		// Sonucu okunabilir formata dönüştür
 		var resultStruct structpb.Struct
 		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
-			log.Printf("MongoDB sonucu structpb.Struct'a dönüştürülürken hata: %v", err)
+			log.Printf("[ERROR] MongoDB sonucu structpb.Struct'a dönüştürülürken hata: %v", err)
 
 			// Farklı bir yöntem deneyelim - doğrudan JSON string'e çevirmeyi deneyelim
 			resultStr := string(result.Result.Value)
 			if len(resultStr) > 0 {
-				log.Printf("MongoDB result.Value doğrudan string olarak kullanılıyor: %d byte", len(resultStr))
+				log.Printf("[DEBUG] MongoDB result.Value doğrudan string olarak kullanılıyor: %d byte", len(resultStr))
 				return &pb.ExplainQueryResponse{
 					Status: "success",
 					Plan:   resultStr,
@@ -3303,56 +3314,24 @@ func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequ
 		resultMap := resultStruct.AsMap()
 		resultBytes, err := json.MarshalIndent(resultMap, "", "  ")
 		if err != nil {
-			log.Printf("MongoDB JSON dönüştürme hatası: %v", err)
+			log.Printf("[ERROR] MongoDB JSON dönüştürme hatası: %v", err)
 			return &pb.ExplainQueryResponse{
 				Status:       "error",
 				ErrorMessage: fmt.Sprintf("MongoDB JSON dönüştürme hatası: %v", err),
 			}, err
 		}
 
-		// MongoDB sonuçlarını analiz et ve formatla
-		var planText string
-
-		// MongoDB explain sonuçları farklı anahtarlarda olabilir
-		if explainResult, ok := resultMap["queryPlanner"]; ok {
-			// queryPlanner formatında
-			explainBytes, err := json.MarshalIndent(explainResult, "", "  ")
-			if err == nil {
-				planText += "## Query Planner\n" + string(explainBytes) + "\n\n"
-			}
-		}
-
-		if explainResult, ok := resultMap["executionStats"]; ok {
-			// executionStats formatında
-			explainBytes, err := json.MarshalIndent(explainResult, "", "  ")
-			if err == nil {
-				planText += "## Execution Stats\n" + string(explainBytes) + "\n\n"
-			}
-		}
-
-		if explainResult, ok := resultMap["serverInfo"]; ok {
-			// serverInfo formatında
-			explainBytes, err := json.MarshalIndent(explainResult, "", "  ")
-			if err == nil {
-				planText += "## Server Info\n" + string(explainBytes) + "\n\n"
-			}
-		}
-
-		// Eğer özel formatlar bulunamadıysa, tüm JSON yanıtını kullan
-		if planText == "" {
-			planText = string(resultBytes)
-		}
-
-		// JSON string'i doğrudan plan alanında kullan
+		// Plan sonucunu doğrudan kullan
 		return &pb.ExplainQueryResponse{
 			Status: "success",
-			Plan:   planText,
+			Plan:   string(resultBytes),
 		}, nil
 	}
 
 	// Sonuç boş ise hata döndür
+	log.Printf("[ERROR] MongoDB sorgu planı boş sonuç döndü")
 	return &pb.ExplainQueryResponse{
 		Status:       "error",
-		ErrorMessage: "MongoDB sorgu planı alınamadı",
-	}, fmt.Errorf("MongoDB sorgu planı alınamadı")
+		ErrorMessage: "MongoDB sorgu planı alınamadı: Boş sonuç",
+	}, fmt.Errorf("MongoDB sorgu planı alınamadı: Boş sonuç")
 }
