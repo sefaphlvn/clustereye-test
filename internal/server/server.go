@@ -577,6 +577,22 @@ func (s *Server) checkDatabaseConnection() error {
 
 // SendQuery, belirli bir agent'a sorgu gönderir ve cevabı bekler
 func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command, database string) (*pb.QueryResult, error) {
+	// Detaylı loglama ekleyelim
+	log.Printf("[DEBUG] ------ Query Detayları ------")
+	log.Printf("[DEBUG] Agent ID: %s", agentID)
+	log.Printf("[DEBUG] Query ID: %s", queryID)
+	log.Printf("[DEBUG] Database: %s", database)
+	log.Printf("[DEBUG] Komut Türü: %s", strings.Split(command, ":")[0])
+	log.Printf("[DEBUG] Komut Uzunluğu: %d bytes", len(command))
+
+	// Sorguyu da yazdıralım, ama çok uzunsa kısaltarak
+	if len(command) > 1000 {
+		log.Printf("[DEBUG] Komut (ilk 1000 karakter): %s...", command[:1000])
+	} else {
+		log.Printf("[DEBUG] Komut: %s", command)
+	}
+	log.Printf("[DEBUG] -----------------------------")
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -620,8 +636,11 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command, datab
 	})
 
 	if err != nil {
+		log.Printf("[ERROR] Sorgu gönderimi başarısız: %v", err)
 		return nil, err
 	}
+
+	log.Printf("[DEBUG] Sorgu gönderildi, yanıt bekleniyor - Query ID: %s", queryID)
 
 	// Cevabı bekle (timeout ile)
 	select {
@@ -651,10 +670,13 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command, datab
 				Value:   jsonBytes,
 			}
 		}
+		log.Printf("[DEBUG] Sorgu yanıtı alındı - Query ID: %s", queryID)
 		return result, nil
 	case <-ctx.Done():
+		log.Printf("[ERROR] Context iptal edildi - Query ID: %s, Hata: %v", queryID, ctx.Err())
 		return nil, ctx.Err()
 	case <-time.After(10 * time.Second): // 10 saniye timeout
+		log.Printf("[ERROR] Sorgu zaman aşımına uğradı - Query ID: %s", queryID)
 		return nil, fmt.Errorf("sorgu zaman aşımına uğradı")
 	}
 }
@@ -3230,6 +3252,9 @@ func (s *Server) ExplainQuery(ctx context.Context, req *pb.ExplainQueryRequest) 
 func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequest) (*pb.ExplainQueryResponse, error) {
 	log.Printf("[INFO] ExplainMongoQuery çağrıldı - Agent ID: %s, Database: %s", req.AgentId, req.Database)
 
+	// Ham sorguyu loglayalım
+	log.Printf("[DEBUG] Ham sorgu (JSON): %s", req.Query)
+
 	// Agent ID'yi kontrol et
 	agentID := req.AgentId
 	if agentID == "" {
@@ -3258,10 +3283,18 @@ func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequ
 	}
 
 	// Sorguyu MongoDB explain komutu olarak gönder
-	// Özel bir protokol formatı kullanıyoruz: MONGODB_EXPLAIN||<query_json>
-	explainCommand := fmt.Sprintf("MONGODB_EXPLAIN||%s", query)
+	// Yeni protokol formatı: MONGO_EXPLAIN|<database>|<query_json>
+	explainCommand := fmt.Sprintf("MONGO_EXPLAIN|%s|%s", database, query)
 
-	log.Printf("[DEBUG] MongoDB Explain komutu oluşturuldu, uzunluk: %d bytes", len(explainCommand))
+	log.Printf("[DEBUG] MongoDB Explain protokol formatı: MONGO_EXPLAIN|<database>|<query_json>")
+	log.Printf("[DEBUG] Hazırlanan sorgu komut uzunluğu: %d bytes", len(explainCommand))
+
+	// Sorgunun ilk kısmını loglayalım, çok uzunsa sadece başını
+	if len(query) > 500 {
+		log.Printf("[DEBUG] Sorgu (ilk 500 karakter): %s...", query[:500])
+	} else {
+		log.Printf("[DEBUG] Sorgu: %s", query)
+	}
 
 	// Unique bir sorgu ID'si oluştur
 	queryID := fmt.Sprintf("mongo_explain_%d", time.Now().UnixNano())
@@ -3272,7 +3305,8 @@ func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequ
 
 	// Agent'a sorguyu gönder ve cevabı al
 	log.Printf("[DEBUG] MongoDB sorgusu agent'a gönderiliyor: %s", agentID)
-	result, err := s.SendQuery(longCtx, agentID, queryID, explainCommand, database)
+	// Burada database parametresini boş geçiyoruz çünkü zaten explainCommand içinde belirttik
+	result, err := s.SendQuery(longCtx, agentID, queryID, explainCommand, "")
 	if err != nil {
 		log.Printf("[ERROR] MongoDB sorgu planı alınırken hata: %v", err)
 		errMsg := err.Error()

@@ -1368,24 +1368,31 @@ func explainMongoQuery(server *server.Server) gin.HandlerFunc {
 			return
 		}
 
-		var req struct {
-			Database string `json:"database" binding:"required"`
-			Query    string `json:"query" binding:"required"`
-		}
-
-		// Raw sorgu içeriğini al
+		// İstek body'sini raw olarak oku
 		bodyBytes, err := io.ReadAll(c.Request.Body)
 		if err != nil {
+			log.Printf("[ERROR] İstek body'si okunamadı: %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{
 				"status": "error",
 				"error":  "Sorgu okunamadı: " + err.Error(),
 			})
 			return
 		}
+
+		// Body'yi loglayalım
+		log.Printf("[DEBUG] MongoDB explain ham istek (JSON): %s", string(bodyBytes))
+
+		// Body'yi yeniden kullanmak için geri koy
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+		var req struct {
+			Database string `json:"database" binding:"required"`
+			Query    string `json:"query" binding:"required"`
+		}
 
 		// JSON request'i parse et - temel validasyon için
 		if err := c.ShouldBindJSON(&req); err != nil {
+			log.Printf("[ERROR] JSON parse hatası: %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{
 				"status": "error",
 				"error":  "Geçersiz JSON verisi: " + err.Error(),
@@ -1393,12 +1400,15 @@ func explainMongoQuery(server *server.Server) gin.HandlerFunc {
 			return
 		}
 
+		log.Printf("[DEBUG] MongoDB explain istek bilgileri: agent_id=%s, database=%s", agentID, req.Database)
+
 		// Context timeout ayarlama
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
 
 		// Ham JSON sorguyu string olarak kullan
 		queryStr := string(bodyBytes)
+		log.Printf("[DEBUG] Server'a iletilen ham sorgu (karakter sayısı: %d)", len(queryStr))
 
 		// ExplainMongoQuery servis metodunu çağır
 		response, err := server.ExplainMongoQuery(ctx, &pb.ExplainQueryRequest{
@@ -1408,7 +1418,7 @@ func explainMongoQuery(server *server.Server) gin.HandlerFunc {
 		})
 
 		if err != nil {
-			log.Printf("MongoDB sorgu planı alınırken bir hata oluştu: %v", err)
+			log.Printf("[ERROR] MongoDB sorgu planı alınırken bir hata oluştu: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status": "error",
 				"error":  "MongoDB sorgu planı alınırken bir hata oluştu: " + err.Error(),
@@ -1417,6 +1427,7 @@ func explainMongoQuery(server *server.Server) gin.HandlerFunc {
 		}
 
 		if response.Status == "error" {
+			log.Printf("[ERROR] MongoDB sorgu planı hatası: %s", response.ErrorMessage)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status": "error",
 				"error":  response.ErrorMessage,
@@ -1425,6 +1436,7 @@ func explainMongoQuery(server *server.Server) gin.HandlerFunc {
 		}
 
 		// Başarılı cevap
+		log.Printf("[INFO] MongoDB explain başarılı, plan uzunluğu: %d karakter", len(response.Plan))
 		c.JSON(http.StatusOK, gin.H{
 			"status": "success",
 			"plan":   response.Plan,
