@@ -1435,20 +1435,25 @@ func explainMongoQuery(server *server.Server) gin.HandlerFunc {
 			return
 		}
 
-		// Başarılı cevap - Burayı değiştirdik
+		// Başarılı cevap - Tekrar önemli değişiklik yapıldı
 		log.Printf("[INFO] MongoDB explain başarılı, plan uzunluğu: %d karakter", len(response.Plan))
 
-		// Plan içeriğini JSON olarak parse etmeyi deneyelim
-		// Bu, eğer plan içinde geçerli bir JSON varsa, doğrudan o JSON'ı döndürmemize olanak sağlayacak
-		var planData interface{}
-		if err := json.Unmarshal([]byte(response.Plan), &planData); err == nil {
-			// Başarıyla JSON olarak parse edildi, doğrudan döndür
-			c.JSON(http.StatusOK, gin.H{
-				"status": "success",
-				"plan":   planData,
-			})
+		// Plan direkt bir JSON objesi mi yoksa string mi kontrolü yap
+		var jsonData interface{}
+		if err := json.Unmarshal([]byte(response.Plan), &jsonData); err == nil {
+			// Doğrudan JSON ise, yazma işlemi için Writer'a yaz
+			c.Writer.Header().Set("Content-Type", "application/json")
+			c.Writer.WriteHeader(http.StatusOK)
+			_, err = c.Writer.Write([]byte(response.Plan))
+			if err != nil {
+				log.Printf("[ERROR] JSON yanıt yazılırken hata: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"status": "error",
+					"error":  "Yanıt yazılırken hata oluştu",
+				})
+			}
 		} else {
-			// JSON parse edilemedi, plan'ı string olarak döndür
+			// JSON değilse, normal yanıt formatında döndür
 			c.JSON(http.StatusOK, gin.H{
 				"status": "success",
 				"plan":   response.Plan,

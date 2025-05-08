@@ -3323,101 +3323,44 @@ func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequ
 	if result.Result != nil {
 		log.Printf("[DEBUG] MongoDB sorgu planı alındı, type_url: %s", result.Result.TypeUrl)
 
-		// Yeni yaklaşım: Sonucun ham JSON verisini direkt kullanma denemeleri
-		var planText string
+		// Agent'tan gelen ham veriyi direkt kullan
+		var rawResult string
 
-		// Yanıtı değerlendirme
+		// TypeUrl'e göre işlem yap - direkt ham veriyi çıkarmaya çalış
 		if result.Result.TypeUrl == "type.googleapis.com/google.protobuf.Value" {
-			// JSON string olarak direkt kullanmayı dene
-			planText = string(result.Result.Value)
-			log.Printf("[DEBUG] Value direkt string olarak kullanıldı, uzunluk: %d", len(planText))
-
-			// String olarak kullanılan değerin geçerli bir JSON olduğunu doğrula
-			var jsonTest interface{}
-			if json.Unmarshal([]byte(planText), &jsonTest) != nil {
-				log.Printf("[WARN] Value JSON olarak parse edilemedi, yapısal analiz denenecek")
-				planText = "" // Geçersiz JSON ise boşalt, aşağıdaki yapısal analizi deneyelim
-			}
-		}
-
-		// Eğer direkt Value kullanılamadıysa, yapısal analiz dene
-		if planText == "" {
-			// Sonucu structpb.Struct'a dönüştür
+			// Value tipinde olanlar için direkt string değerini kullan
+			rawResult = string(result.Result.Value)
+			log.Printf("[DEBUG] Value tipi veri direkt string olarak kullanıldı, uzunluk: %d", len(rawResult))
+		} else {
+			// Struct veya diğer tipler için unmarshalling yapılmalı
 			var resultStruct structpb.Struct
 			if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
-				log.Printf("[ERROR] MongoDB sonucu structpb.Struct'a dönüştürülemedi: %v", err)
+				log.Printf("[ERROR] MongoDB sonucu ayrıştırılamadı: %v", err)
 				return &pb.ExplainQueryResponse{
 					Status:       "error",
-					ErrorMessage: fmt.Sprintf("MongoDB sonuç dönüştürülürken hata: %v", err),
+					ErrorMessage: fmt.Sprintf("MongoDB sorgu planı ayrıştırılamadı: %v", err),
 				}, err
 			}
 
-			// Struct içinde özel alanları kontrol et (plan, result, explain gibi alanlar)
+			// Struct'ı JSON olarak serialize et
 			resultMap := resultStruct.AsMap()
-
-			// Özel alanları kontrol et
-			if plan, ok := resultMap["plan"]; ok && plan != nil {
-				// Önce doğrudan string olarak deneyelim
-				if planStr, ok := plan.(string); ok {
-					planText = planStr
-					log.Printf("[DEBUG] Plan doğrudan string olarak bulundu")
-				} else {
-					// String değilse JSON olarak serialize edip kullan
-					planBytes, err := json.MarshalIndent(plan, "", "  ")
-					if err == nil {
-						planText = string(planBytes)
-						log.Printf("[DEBUG] Plan JSON serialize edilerek kullanıldı")
-					}
-				}
-			} else if explainResult, ok := resultMap["result"]; ok && explainResult != nil {
-				// Benzer işlem result alanı için
-				if resultStr, ok := explainResult.(string); ok {
-					planText = resultStr
-				} else {
-					resultBytes, err := json.MarshalIndent(explainResult, "", "  ")
-					if err == nil {
-						planText = string(resultBytes)
-					}
-				}
-			} else if explainResult, ok := resultMap["explain"]; ok && explainResult != nil {
-				// Benzer işlem explain alanı için
-				if explainStr, ok := explainResult.(string); ok {
-					planText = explainStr
-				} else {
-					explainBytes, err := json.MarshalIndent(explainResult, "", "  ")
-					if err == nil {
-						planText = string(explainBytes)
-					}
-				}
+			resultBytes, err := json.Marshal(resultMap)
+			if err != nil {
+				log.Printf("[ERROR] MongoDB JSON serileştirilirken hata: %v", err)
+				return &pb.ExplainQueryResponse{
+					Status:       "error",
+					ErrorMessage: fmt.Sprintf("MongoDB JSON serileştirme hatası: %v", err),
+				}, err
 			}
 
-			// Özel alanlar bulunamadıysa tüm map'i kullan
-			if planText == "" {
-				resultBytes, err := json.MarshalIndent(resultMap, "", "  ")
-				if err != nil {
-					log.Printf("[ERROR] MongoDB JSON dönüştürme hatası: %v", err)
-					return &pb.ExplainQueryResponse{
-						Status:       "error",
-						ErrorMessage: fmt.Sprintf("MongoDB JSON dönüştürme hatası: %v", err),
-					}, err
-				}
-				planText = string(resultBytes)
-			}
+			rawResult = string(resultBytes)
 		}
 
-		// Plan metni oluşturulabildiyse kullan
-		if planText != "" {
-			return &pb.ExplainQueryResponse{
-				Status: "success",
-				Plan:   planText,
-			}, nil
-		}
-
-		// Buraya geldiyse sonuç işlenemedi
+		// Yanıtı döndür
 		return &pb.ExplainQueryResponse{
-			Status:       "error",
-			ErrorMessage: "MongoDB sorgu planı işlenemedi: Bilinmeyen format",
-		}, fmt.Errorf("MongoDB sorgu planı işlenemedi: Bilinmeyen format")
+			Status: "success",
+			Plan:   rawResult,
+		}, nil
 	}
 
 	// Sonuç boş ise hata döndür
