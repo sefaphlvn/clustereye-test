@@ -1435,11 +1435,24 @@ func explainMongoQuery(server *server.Server) gin.HandlerFunc {
 			return
 		}
 
-		// Başarılı cevap
+		// Başarılı cevap - Burayı değiştirdik
 		log.Printf("[INFO] MongoDB explain başarılı, plan uzunluğu: %d karakter", len(response.Plan))
-		c.JSON(http.StatusOK, gin.H{
-			"status": "success",
-			"plan":   response.Plan,
-		})
+
+		// Plan içeriğini JSON olarak parse etmeyi deneyelim
+		// Bu, eğer plan içinde geçerli bir JSON varsa, doğrudan o JSON'ı döndürmemize olanak sağlayacak
+		var planData interface{}
+		if err := json.Unmarshal([]byte(response.Plan), &planData); err == nil {
+			// Başarıyla JSON olarak parse edildi, doğrudan döndür
+			c.JSON(http.StatusOK, gin.H{
+				"status": "success",
+				"plan":   planData,
+			})
+		} else {
+			// JSON parse edilemedi, plan'ı string olarak döndür
+			c.JSON(http.StatusOK, gin.H{
+				"status": "success",
+				"plan":   response.Plan,
+			})
+		}
 	}
 }
