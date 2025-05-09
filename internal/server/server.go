@@ -3370,3 +3370,200 @@ func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequ
 		ErrorMessage: "MongoDB sorgu planı alınamadı: Boş sonuç",
 	}, fmt.Errorf("MongoDB sorgu planı alınamadı: Boş sonuç")
 }
+
+// SendMSSQLInfo, agent'dan gelen MSSQL bilgilerini işler
+func (s *Server) SendMSSQLInfo(ctx context.Context, req *pb.MSSQLInfoRequest) (*pb.MSSQLInfoResponse, error) {
+	log.Println("SendMSSQLInfo metodu çağrıldı")
+
+	// Gelen MSSQL bilgilerini logla
+	mssqlInfo := req.MssqlInfo
+	log.Printf("MSSQL bilgileri alındı: %+v", mssqlInfo)
+
+	// Daha detaylı loglama
+	log.Printf("Cluster: %s, IP: %s, Hostname: %s", mssqlInfo.ClusterName, mssqlInfo.Ip, mssqlInfo.Hostname)
+	log.Printf("Node Durumu: %s, MSSQL Sürümü: %s, Konum: %s", mssqlInfo.NodeStatus, mssqlInfo.Version, mssqlInfo.Location)
+	log.Printf("MSSQL Servis Durumu: %s, Instance: %s", mssqlInfo.Status, mssqlInfo.Instance)
+	log.Printf("Boş Disk: %s, FD Yüzdesi: %d%%", mssqlInfo.FreeDisk, mssqlInfo.FdPercent)
+
+	// Veritabanına kaydetme işlemi
+	err := s.saveMSSQLInfoToDatabase(ctx, mssqlInfo)
+	if err != nil {
+		log.Printf("MSSQL bilgileri veritabanına kaydedilemedi: %v", err)
+		return &pb.MSSQLInfoResponse{
+			Status: "error",
+		}, nil
+	}
+
+	log.Printf("MSSQL bilgileri başarıyla işlendi ve kaydedildi")
+
+	return &pb.MSSQLInfoResponse{
+		Status: "success",
+	}, nil
+}
+
+// MSSQL bilgilerini veritabanına kaydetmek için yardımcı fonksiyon
+func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQLInfo) error {
+	// Önce mevcut kaydı kontrol et
+	var existingData []byte
+	var id int
+
+	checkQuery := `
+		SELECT id, jsondata FROM public.mssql_data 
+		WHERE clustername = $1 
+		ORDER BY id DESC LIMIT 1
+	`
+
+	err := s.db.QueryRowContext(ctx, checkQuery, mssqlInfo.ClusterName).Scan(&id, &existingData)
+
+	// Yeni node verisi
+	mssqlData := map[string]interface{}{
+		"ClusterName": mssqlInfo.ClusterName,
+		"Location":    mssqlInfo.Location,
+		"FDPercent":   mssqlInfo.FdPercent,
+		"FreeDisk":    mssqlInfo.FreeDisk,
+		"Hostname":    mssqlInfo.Hostname,
+		"IP":          mssqlInfo.Ip,
+		"NodeStatus":  mssqlInfo.NodeStatus,
+		"Status":      mssqlInfo.Status,
+		"Version":     mssqlInfo.Version,
+		"Instance":    mssqlInfo.Instance,
+		"Port":        mssqlInfo.Port,
+		"TotalVCPU":   mssqlInfo.TotalVcpu,
+		"TotalMemory": mssqlInfo.TotalMemory,
+		"ConfigPath":  mssqlInfo.ConfigPath,
+		"Database":    mssqlInfo.Database,
+		"IsHAEnabled": mssqlInfo.IsHaEnabled,
+		"HARole":      mssqlInfo.HaRole,
+		"Edition":     mssqlInfo.Edition,
+	}
+
+	var jsonData []byte
+
+	if err == nil {
+		// Mevcut kayıt var, güncelle
+		var existingJSON map[string][]interface{}
+		if err := json.Unmarshal(existingData, &existingJSON); err != nil {
+			log.Printf("Mevcut JSON ayrıştırma hatası: %v", err)
+			return err
+		}
+
+		// Cluster array'ini al
+		clusterData, ok := existingJSON[mssqlInfo.ClusterName]
+		if !ok {
+			// Eğer cluster verisi yoksa yeni oluştur
+			clusterData = []interface{}{}
+		}
+
+		// Node'u bul ve güncelle
+		nodeFound := false
+		for i, node := range clusterData {
+			nodeMap, ok := node.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			// Hostname ve IP ile node eşleşmesi kontrol et
+			if nodeMap["Hostname"] == mssqlInfo.Hostname && nodeMap["IP"] == mssqlInfo.Ip {
+				// Sadece değişen alanları güncelle
+				nodeFound = true
+
+				// Mevcut değerleri koru, sadece değişenleri güncelle
+				for key, newValue := range mssqlData {
+					if currentValue, exists := nodeMap[key]; !exists || currentValue != newValue {
+						nodeMap[key] = newValue
+					}
+				}
+
+				clusterData[i] = nodeMap
+				break
+			}
+		}
+
+		// Eğer node bulunamadıysa yeni ekle
+		if !nodeFound {
+			clusterData = append(clusterData, mssqlData)
+			log.Printf("Yeni MSSQL node eklendi: %s", mssqlInfo.Hostname)
+		}
+
+		existingJSON[mssqlInfo.ClusterName] = clusterData
+
+		// JSON'ı güncelle
+		jsonData, err = json.Marshal(existingJSON)
+		if err != nil {
+			log.Printf("JSON dönüştürme hatası: %v", err)
+			return err
+		}
+
+		// Veritabanını güncelle
+		updateQuery := `
+			UPDATE public.mssql_data 
+			SET jsondata = $1, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $2
+		`
+
+		_, err = s.db.ExecContext(ctx, updateQuery, jsonData, id)
+		if err != nil {
+			log.Printf("Veritabanı güncelleme hatası: %v", err)
+			return err
+		}
+
+		log.Printf("MSSQL node bilgileri başarıyla güncellendi")
+	} else {
+		// İlk kayıt oluştur
+		outerJSON := map[string][]interface{}{
+			mssqlInfo.ClusterName: {mssqlData},
+		}
+
+		jsonData, err = json.Marshal(outerJSON)
+		if err != nil {
+			log.Printf("JSON dönüştürme hatası: %v", err)
+			return err
+		}
+
+		insertQuery := `
+			INSERT INTO public.mssql_data (
+				jsondata, clustername, created_at, updated_at
+			) VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		`
+
+		_, err = s.db.ExecContext(ctx, insertQuery, jsonData, mssqlInfo.ClusterName)
+		if err != nil {
+			log.Printf("Veritabanı ekleme hatası: %v", err)
+			return err
+		}
+
+		log.Printf("MSSQL node bilgileri başarıyla veritabanına kaydedildi")
+	}
+
+	return nil
+}
+
+// GetStatusMSSQL, MSSQL veritabanından durum bilgilerini çeker
+func (s *Server) GetStatusMSSQL(ctx context.Context, _ *structpb.Struct) (*structpb.Value, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT json_agg(sub.jsondata) FROM (SELECT jsondata FROM mssql_data ORDER BY id) AS sub")
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Veritabanı sorgusu başarısız: %v", err)
+	}
+	defer rows.Close()
+
+	var jsonData []byte
+	if rows.Next() {
+		err := rows.Scan(&jsonData)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "Veri okuma hatası: %v", err)
+		}
+	}
+
+	// JSON verisini structpb.Value'ya dönüştür
+	var jsonValue interface{}
+	if err := json.Unmarshal(jsonData, &jsonValue); err != nil {
+		return nil, status.Errorf(codes.Internal, "JSON ayrıştırma hatası: %v", err)
+	}
+
+	value, err := structpb.NewValue(jsonValue)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Veri dönüştürme hatası: %v", err)
+	}
+
+	return value, nil
+}

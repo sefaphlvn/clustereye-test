@@ -85,6 +85,8 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		status.GET("/postgres", getPostgresStatus(server))
 		// MongoDB durum bilgilerini getir
 		status.GET("/mongo", getMongoStatus(server))
+		// MSSQL durum bilgilerini getir
+		status.GET("/mssql", getMSSQLStatus(server))
 		// Agent durum bilgilerini getir
 		status.GET("/agents", getAgentStatus(server))
 		// Tüm node sağlık bilgilerini getir
@@ -1459,5 +1461,27 @@ func explainMongoQuery(server *server.Server) gin.HandlerFunc {
 				"plan":   response.Plan,
 			})
 		}
+	}
+}
+
+// getMSSQLStatus, MSSQL durum bilgilerini getirir
+func getMSSQLStatus(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+
+		result, err := server.GetStatusMSSQL(ctx, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MSSQL durum bilgileri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   result.AsInterface(),
+		})
 	}
 }
