@@ -712,10 +712,28 @@ func getNodesHealth(server *server.Server) gin.HandlerFunc {
 			}
 		}
 
+		// MSSQL verisini al
+		mssqlRows, err := db.Query("SELECT json_agg(sub.jsondata) FROM (SELECT jsondata FROM mssql_data ORDER BY id) AS sub")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch MSSQL data: " + err.Error()})
+			return
+		}
+		defer mssqlRows.Close()
+
+		var mssqlData []byte
+		if mssqlRows.Next() {
+			err := mssqlRows.Scan(&mssqlData)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse MSSQL data: " + err.Error()})
+				return
+			}
+		}
+
 		// Verileri tek bir JSON yapısında birleştir
 		responseData := gin.H{
 			"postgresql": json.RawMessage(postgresData), // PostgreSQL verisini raw JSON olarak ekle
 			"mongodb":    json.RawMessage(mongoData),    // MongoDB verisini raw JSON olarak ekle
+			"mssql":      json.RawMessage(mssqlData),    // MSSQL verisini raw JSON olarak ekle
 		}
 
 		// Birleştirilmiş JSON verisini döndür
