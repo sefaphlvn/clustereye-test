@@ -2460,6 +2460,7 @@ type SystemMetricsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
 	Data          *structpb.Struct       `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	Metrics       *SystemMetrics         `protobuf:"bytes,3,opt,name=metrics,proto3" json:"metrics,omitempty"` // Eklenen alan
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2504,6 +2505,13 @@ func (x *SystemMetricsResponse) GetStatus() string {
 func (x *SystemMetricsResponse) GetData() *structpb.Struct {
 	if x != nil {
 		return x.Data
+	}
+	return nil
+}
+
+func (x *SystemMetricsResponse) GetMetrics() *SystemMetrics {
+	if x != nil {
+		return x.Metrics
 	}
 	return nil
 }
@@ -5094,10 +5102,11 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x0ekernel_version\x18\f \x01(\tR\rkernelVersion\x12\x16\n" +
 	"\x06uptime\x18\r \x01(\x03R\x06uptime\"1\n" +
 	"\x14SystemMetricsRequest\x12\x19\n" +
-	"\bagent_id\x18\x01 \x01(\tR\aagentId\"\\\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\"\x8c\x01\n" +
 	"\x15SystemMetricsResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12+\n" +
-	"\x04data\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x04data\"/\n" +
+	"\x04data\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x04data\x12.\n" +
+	"\ametrics\x18\x03 \x01(\v2\x14.agent.SystemMetricsR\ametrics\"/\n" +
 	"\x12AlarmConfigRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\"p\n" +
 	"\x13AlarmConfigResponse\x12\x16\n" +
@@ -5463,77 +5472,78 @@ var file_pkg_agent_agent_proto_depIdxs = []int32{
 	47, // 21: agent.AgentMessage.mssql_info:type_name -> agent.MSSQLInfo
 	47, // 22: agent.MSSQLInfoRequest.mssql_info:type_name -> agent.MSSQLInfo
 	71, // 23: agent.SystemMetricsResponse.data:type_name -> google.protobuf.Struct
-	12, // 24: agent.AlarmConfigResponse.configurations:type_name -> agent.AlarmConfiguration
-	38, // 25: agent.PostgresLogListResponse.log_files:type_name -> agent.PostgresLogFile
-	42, // 26: agent.PostgresLogAnalyzeResponse.log_entries:type_name -> agent.PostgresLogEntry
-	45, // 27: agent.PostgresConfigResponse.configurations:type_name -> agent.PostgresConfigEntry
-	50, // 28: agent.GetThresholdSettingsResponse.settings:type_name -> agent.ThresholdSettings
-	53, // 29: agent.ReportVersionRequest.version_info:type_name -> agent.AgentVersionInfo
-	1,  // 30: agent.Job.type:type_name -> agent.JobType
-	0,  // 31: agent.Job.status:type_name -> agent.JobStatus
-	72, // 32: agent.Job.created_at:type_name -> google.protobuf.Timestamp
-	72, // 33: agent.Job.updated_at:type_name -> google.protobuf.Timestamp
-	69, // 34: agent.Job.parameters:type_name -> agent.Job.ParametersEntry
-	0,  // 35: agent.MongoPromotePrimaryResponse.status:type_name -> agent.JobStatus
-	0,  // 36: agent.PostgresPromoteMasterResponse.status:type_name -> agent.JobStatus
-	56, // 37: agent.GetJobResponse.job:type_name -> agent.Job
-	0,  // 38: agent.ListJobsRequest.status:type_name -> agent.JobStatus
-	1,  // 39: agent.ListJobsRequest.type:type_name -> agent.JobType
-	56, // 40: agent.ListJobsResponse.jobs:type_name -> agent.Job
-	0,  // 41: agent.MongoFreezeSecondaryResponse.status:type_name -> agent.JobStatus
-	30, // 42: agent.AgentService.Connect:input_type -> agent.AgentMessage
-	20, // 43: agent.AgentService.Register:input_type -> agent.RegisterRequest
-	22, // 44: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
-	24, // 45: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
-	22, // 46: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
-	24, // 47: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
-	34, // 48: agent.AgentService.SendSystemMetrics:input_type -> agent.SystemMetricsRequest
-	36, // 49: agent.AgentService.GetAlarmConfigurations:input_type -> agent.AlarmConfigRequest
-	18, // 50: agent.AgentService.ReportAlarm:input_type -> agent.ReportAlarmRequest
-	25, // 51: agent.AgentService.SendMongoInfo:input_type -> agent.MongoInfoRequest
-	5,  // 52: agent.AgentService.ListMongoLogs:input_type -> agent.MongoLogListRequest
-	8,  // 53: agent.AgentService.AnalyzeMongoLog:input_type -> agent.MongoLogAnalyzeRequest
-	39, // 54: agent.AgentService.ListPostgresLogs:input_type -> agent.PostgresLogListRequest
-	41, // 55: agent.AgentService.AnalyzePostgresLog:input_type -> agent.PostgresLogAnalyzeRequest
-	44, // 56: agent.AgentService.ReadPostgresConfig:input_type -> agent.PostgresConfigRequest
-	51, // 57: agent.AgentService.GetThresholdSettings:input_type -> agent.GetThresholdSettingsRequest
-	54, // 58: agent.AgentService.ReportVersion:input_type -> agent.ReportVersionRequest
-	57, // 59: agent.AgentService.PromoteMongoToPrimary:input_type -> agent.MongoPromotePrimaryRequest
-	65, // 60: agent.AgentService.FreezeMongoSecondary:input_type -> agent.MongoFreezeSecondaryRequest
-	59, // 61: agent.AgentService.PromotePostgresToMaster:input_type -> agent.PostgresPromoteMasterRequest
-	61, // 62: agent.AgentService.GetJob:input_type -> agent.GetJobRequest
-	63, // 63: agent.AgentService.ListJobs:input_type -> agent.ListJobsRequest
-	67, // 64: agent.AgentService.ExplainQuery:input_type -> agent.ExplainQueryRequest
-	31, // 65: agent.AgentService.SendMSSQLInfo:input_type -> agent.MSSQLInfoRequest
-	29, // 66: agent.AgentService.Connect:output_type -> agent.ServerMessage
-	21, // 67: agent.AgentService.Register:output_type -> agent.RegisterResponse
-	23, // 68: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
-	26, // 69: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
-	23, // 70: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
-	26, // 71: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
-	35, // 72: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
-	37, // 73: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
-	19, // 74: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
-	27, // 75: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
-	7,  // 76: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
-	10, // 77: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
-	40, // 78: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
-	43, // 79: agent.AgentService.AnalyzePostgresLog:output_type -> agent.PostgresLogAnalyzeResponse
-	46, // 80: agent.AgentService.ReadPostgresConfig:output_type -> agent.PostgresConfigResponse
-	52, // 81: agent.AgentService.GetThresholdSettings:output_type -> agent.GetThresholdSettingsResponse
-	55, // 82: agent.AgentService.ReportVersion:output_type -> agent.ReportVersionResponse
-	58, // 83: agent.AgentService.PromoteMongoToPrimary:output_type -> agent.MongoPromotePrimaryResponse
-	66, // 84: agent.AgentService.FreezeMongoSecondary:output_type -> agent.MongoFreezeSecondaryResponse
-	60, // 85: agent.AgentService.PromotePostgresToMaster:output_type -> agent.PostgresPromoteMasterResponse
-	62, // 86: agent.AgentService.GetJob:output_type -> agent.GetJobResponse
-	64, // 87: agent.AgentService.ListJobs:output_type -> agent.ListJobsResponse
-	68, // 88: agent.AgentService.ExplainQuery:output_type -> agent.ExplainQueryResponse
-	32, // 89: agent.AgentService.SendMSSQLInfo:output_type -> agent.MSSQLInfoResponse
-	66, // [66:90] is the sub-list for method output_type
-	42, // [42:66] is the sub-list for method input_type
-	42, // [42:42] is the sub-list for extension type_name
-	42, // [42:42] is the sub-list for extension extendee
-	0,  // [0:42] is the sub-list for field type_name
+	33, // 24: agent.SystemMetricsResponse.metrics:type_name -> agent.SystemMetrics
+	12, // 25: agent.AlarmConfigResponse.configurations:type_name -> agent.AlarmConfiguration
+	38, // 26: agent.PostgresLogListResponse.log_files:type_name -> agent.PostgresLogFile
+	42, // 27: agent.PostgresLogAnalyzeResponse.log_entries:type_name -> agent.PostgresLogEntry
+	45, // 28: agent.PostgresConfigResponse.configurations:type_name -> agent.PostgresConfigEntry
+	50, // 29: agent.GetThresholdSettingsResponse.settings:type_name -> agent.ThresholdSettings
+	53, // 30: agent.ReportVersionRequest.version_info:type_name -> agent.AgentVersionInfo
+	1,  // 31: agent.Job.type:type_name -> agent.JobType
+	0,  // 32: agent.Job.status:type_name -> agent.JobStatus
+	72, // 33: agent.Job.created_at:type_name -> google.protobuf.Timestamp
+	72, // 34: agent.Job.updated_at:type_name -> google.protobuf.Timestamp
+	69, // 35: agent.Job.parameters:type_name -> agent.Job.ParametersEntry
+	0,  // 36: agent.MongoPromotePrimaryResponse.status:type_name -> agent.JobStatus
+	0,  // 37: agent.PostgresPromoteMasterResponse.status:type_name -> agent.JobStatus
+	56, // 38: agent.GetJobResponse.job:type_name -> agent.Job
+	0,  // 39: agent.ListJobsRequest.status:type_name -> agent.JobStatus
+	1,  // 40: agent.ListJobsRequest.type:type_name -> agent.JobType
+	56, // 41: agent.ListJobsResponse.jobs:type_name -> agent.Job
+	0,  // 42: agent.MongoFreezeSecondaryResponse.status:type_name -> agent.JobStatus
+	30, // 43: agent.AgentService.Connect:input_type -> agent.AgentMessage
+	20, // 44: agent.AgentService.Register:input_type -> agent.RegisterRequest
+	22, // 45: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
+	24, // 46: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
+	22, // 47: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
+	24, // 48: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
+	34, // 49: agent.AgentService.SendSystemMetrics:input_type -> agent.SystemMetricsRequest
+	36, // 50: agent.AgentService.GetAlarmConfigurations:input_type -> agent.AlarmConfigRequest
+	18, // 51: agent.AgentService.ReportAlarm:input_type -> agent.ReportAlarmRequest
+	25, // 52: agent.AgentService.SendMongoInfo:input_type -> agent.MongoInfoRequest
+	5,  // 53: agent.AgentService.ListMongoLogs:input_type -> agent.MongoLogListRequest
+	8,  // 54: agent.AgentService.AnalyzeMongoLog:input_type -> agent.MongoLogAnalyzeRequest
+	39, // 55: agent.AgentService.ListPostgresLogs:input_type -> agent.PostgresLogListRequest
+	41, // 56: agent.AgentService.AnalyzePostgresLog:input_type -> agent.PostgresLogAnalyzeRequest
+	44, // 57: agent.AgentService.ReadPostgresConfig:input_type -> agent.PostgresConfigRequest
+	51, // 58: agent.AgentService.GetThresholdSettings:input_type -> agent.GetThresholdSettingsRequest
+	54, // 59: agent.AgentService.ReportVersion:input_type -> agent.ReportVersionRequest
+	57, // 60: agent.AgentService.PromoteMongoToPrimary:input_type -> agent.MongoPromotePrimaryRequest
+	65, // 61: agent.AgentService.FreezeMongoSecondary:input_type -> agent.MongoFreezeSecondaryRequest
+	59, // 62: agent.AgentService.PromotePostgresToMaster:input_type -> agent.PostgresPromoteMasterRequest
+	61, // 63: agent.AgentService.GetJob:input_type -> agent.GetJobRequest
+	63, // 64: agent.AgentService.ListJobs:input_type -> agent.ListJobsRequest
+	67, // 65: agent.AgentService.ExplainQuery:input_type -> agent.ExplainQueryRequest
+	31, // 66: agent.AgentService.SendMSSQLInfo:input_type -> agent.MSSQLInfoRequest
+	29, // 67: agent.AgentService.Connect:output_type -> agent.ServerMessage
+	21, // 68: agent.AgentService.Register:output_type -> agent.RegisterResponse
+	23, // 69: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
+	26, // 70: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
+	23, // 71: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
+	26, // 72: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
+	35, // 73: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
+	37, // 74: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
+	19, // 75: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
+	27, // 76: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
+	7,  // 77: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
+	10, // 78: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
+	40, // 79: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
+	43, // 80: agent.AgentService.AnalyzePostgresLog:output_type -> agent.PostgresLogAnalyzeResponse
+	46, // 81: agent.AgentService.ReadPostgresConfig:output_type -> agent.PostgresConfigResponse
+	52, // 82: agent.AgentService.GetThresholdSettings:output_type -> agent.GetThresholdSettingsResponse
+	55, // 83: agent.AgentService.ReportVersion:output_type -> agent.ReportVersionResponse
+	58, // 84: agent.AgentService.PromoteMongoToPrimary:output_type -> agent.MongoPromotePrimaryResponse
+	66, // 85: agent.AgentService.FreezeMongoSecondary:output_type -> agent.MongoFreezeSecondaryResponse
+	60, // 86: agent.AgentService.PromotePostgresToMaster:output_type -> agent.PostgresPromoteMasterResponse
+	62, // 87: agent.AgentService.GetJob:output_type -> agent.GetJobResponse
+	64, // 88: agent.AgentService.ListJobs:output_type -> agent.ListJobsResponse
+	68, // 89: agent.AgentService.ExplainQuery:output_type -> agent.ExplainQueryResponse
+	32, // 90: agent.AgentService.SendMSSQLInfo:output_type -> agent.MSSQLInfoResponse
+	67, // [67:91] is the sub-list for method output_type
+	43, // [43:67] is the sub-list for method input_type
+	43, // [43:43] is the sub-list for extension type_name
+	43, // [43:43] is the sub-list for extension extendee
+	0,  // [0:43] is the sub-list for field type_name
 }
 
 func init() { file_pkg_agent_agent_proto_init() }

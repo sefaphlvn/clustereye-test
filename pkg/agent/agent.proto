@@ -257,6 +257,7 @@ message SystemMetricsRequest {
 message SystemMetricsResponse {
   string status = 1;
   google.protobuf.Struct data = 2;
+  SystemMetrics metrics = 3;  // Eklenen alan
 }
 
 // Alarm yapılandırmaları için tanımlanan mesajlar
