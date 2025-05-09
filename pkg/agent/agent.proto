@@ -220,7 +220,18 @@ message AgentMessage {
     PostgresInfo postgres_info = 3;
     SystemMetrics system_metrics = 4;
     MongoInfo mongo_info = 5;
+    MSSQLInfo mssql_info = 6;
   }
+}
+
+// MSSQL bilgilerini göndermek için mesaj
+message MSSQLInfoRequest {
+  MSSQLInfo mssql_info = 1;
+}
+
+// MSSQL bilgileri için yanıt
+message MSSQLInfoResponse {
+  string status = 1;
 }
 
 message SystemMetrics {
@@ -332,6 +343,54 @@ message PostgresConfigResponse {
     string status = 1;
     string config_path = 2;          // Okunan config dosyasının yolu
     repeated PostgresConfigEntry configurations = 3; // Yapılandırma girişleri
+}
+
+// MSSQLInfo Microsoft SQL Server bilgilerini içerir
+message MSSQLInfo {
+  string cluster_name = 1;
+  string ip = 2;
+  string hostname = 3;
+  string node_status = 4;
+  string version = 5;
+  string location = 6;
+  string status = 7;
+  string instance = 8;
+  string free_disk = 9;
+  int32 fd_percent = 10;
+  string port = 11;
+  int32 total_vcpu = 12;
+  int64 total_memory = 13;
+  string config_path = 14;
+  string database = 15;
+  bool is_ha_enabled = 16;
+  string ha_role = 17;
+  string edition = 18;
+}
+
+// SlowQuery yavaş sorgu bilgilerini içerir
+message SlowQuery {
+  string query_text = 1;
+  string database = 2;
+  double duration_ms = 3;
+  string user = 4;
+  string client = 5;
+  int64 timestamp = 6;
+  string status = 7;
+  string command = 8;
+  string wait_type = 9;
+  double wait_time_ms = 10;
+  double cpu_time_ms = 11;
+  int64 reads = 12;
+  int64 writes = 13;
+  int64 logical_reads = 14;
+}
+
+// MSSQLLogFile SQL Server log dosya bilgilerini içerir
+message MSSQLLogFile {
+  string name = 1;
+  string path = 2;
+  int64 size = 3;
+  int64 last_modified = 4;
 }
 
 // Threshold ayarları için mesaj tanımları
@@ -544,4 +603,7 @@ service AgentService {
 
   // Sorgu planı için yeni endpoint
   rpc ExplainQuery(ExplainQueryRequest) returns (ExplainQueryResponse);
+
+  // MSSQL bilgilerini göndermek için kullanılacak servis
+  rpc SendMSSQLInfo(MSSQLInfoRequest) returns (MSSQLInfoResponse);
 }

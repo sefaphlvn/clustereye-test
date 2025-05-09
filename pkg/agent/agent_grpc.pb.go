@@ -42,6 +42,7 @@ const (
 	AgentService_GetJob_FullMethodName                  = "/agent.AgentService/GetJob"
 	AgentService_ListJobs_FullMethodName                = "/agent.AgentService/ListJobs"
 	AgentService_ExplainQuery_FullMethodName            = "/agent.AgentService/ExplainQuery"
+	AgentService_SendMSSQLInfo_FullMethodName           = "/agent.AgentService/SendMSSQLInfo"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -88,6 +89,8 @@ type AgentServiceClient interface {
 	ListJobs(ctx context.Context, in *ListJobsRequest, opts ...grpc.CallOption) (*ListJobsResponse, error)
 	// Sorgu planı için yeni endpoint
 	ExplainQuery(ctx context.Context, in *ExplainQueryRequest, opts ...grpc.CallOption) (*ExplainQueryResponse, error)
+	// MSSQL bilgilerini göndermek için kullanılacak servis
+	SendMSSQLInfo(ctx context.Context, in *MSSQLInfoRequest, opts ...grpc.CallOption) (*MSSQLInfoResponse, error)
 }
 
 type agentServiceClient struct {
@@ -337,6 +340,16 @@ func (c *agentServiceClient) ExplainQuery(ctx context.Context, in *ExplainQueryR
 	return out, nil
 }
 
+func (c *agentServiceClient) SendMSSQLInfo(ctx context.Context, in *MSSQLInfoRequest, opts ...grpc.CallOption) (*MSSQLInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MSSQLInfoResponse)
+	err := c.cc.Invoke(ctx, AgentService_SendMSSQLInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -381,6 +394,8 @@ type AgentServiceServer interface {
 	ListJobs(context.Context, *ListJobsRequest) (*ListJobsResponse, error)
 	// Sorgu planı için yeni endpoint
 	ExplainQuery(context.Context, *ExplainQueryRequest) (*ExplainQueryResponse, error)
+	// MSSQL bilgilerini göndermek için kullanılacak servis
+	SendMSSQLInfo(context.Context, *MSSQLInfoRequest) (*MSSQLInfoResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -459,6 +474,9 @@ func (UnimplementedAgentServiceServer) ListJobs(context.Context, *ListJobsReques
 }
 func (UnimplementedAgentServiceServer) ExplainQuery(context.Context, *ExplainQueryRequest) (*ExplainQueryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExplainQuery not implemented")
+}
+func (UnimplementedAgentServiceServer) SendMSSQLInfo(context.Context, *MSSQLInfoRequest) (*MSSQLInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendMSSQLInfo not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -862,6 +880,24 @@ func _AgentService_ExplainQuery_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_SendMSSQLInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MSSQLInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).SendMSSQLInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_SendMSSQLInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).SendMSSQLInfo(ctx, req.(*MSSQLInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -948,6 +984,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExplainQuery",
 			Handler:    _AgentService_ExplainQuery_Handler,
+		},
+		{
+			MethodName: "SendMSSQLInfo",
+			Handler:    _AgentService_SendMSSQLInfo_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
