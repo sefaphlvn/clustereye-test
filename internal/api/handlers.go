@@ -19,6 +19,7 @@ import (
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -76,6 +77,9 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 
 		// MongoDB Explain Query endpoint'i - MongoDB sorgu planını analiz et
 		agents.POST("/:agent_id/mongo/explain", explainMongoQuery(server))
+
+		// MSSQL Explain Query endpoint'i - MSSQL sorgu planını XML formatında döndürür
+		agents.POST("/:agent_id/mssql/explain", explainMssqlQuery(server))
 	}
 
 	// Status Endpoint'leri
@@ -1477,6 +1481,144 @@ func explainMongoQuery(server *server.Server) gin.HandlerFunc {
 			c.JSON(http.StatusOK, gin.H{
 				"status": "success",
 				"plan":   response.Plan,
+			})
+		}
+	}
+}
+
+// explainMssqlQuery, MSSQL sorgusunun execution planını çalıştırır ve XML formatında döndürür
+func explainMssqlQuery(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Param("agent_id")
+
+		if agentID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "agent_id parametresi gerekli",
+			})
+			return
+		}
+
+		// İstek body'sini raw olarak oku
+		bodyBytes, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			log.Printf("[ERROR] İstek body'si okunamadı: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Sorgu okunamadı: " + err.Error(),
+			})
+			return
+		}
+
+		// Body'yi loglayalım
+		log.Printf("[DEBUG] MSSQL explain ham istek (JSON): %s", string(bodyBytes))
+
+		// Body'yi yeniden kullanmak için geri koy
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+		var req struct {
+			Database string `json:"database" binding:"required"`
+			Query    string `json:"query" binding:"required"`
+		}
+
+		// JSON request'i parse et - temel validasyon için
+		if err := c.ShouldBindJSON(&req); err != nil {
+			log.Printf("[ERROR] JSON parse hatası: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz JSON verisi: " + err.Error(),
+			})
+			return
+		}
+
+		log.Printf("[DEBUG] MSSQL explain istek bilgileri: agent_id=%s, database=%s", agentID, req.Database)
+
+		// Context timeout ayarlama
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		// Ham JSON sorguyu string olarak kullan
+		queryStr := string(bodyBytes)
+		log.Printf("[DEBUG] Server'a iletilen ham sorgu (karakter sayısı: %d)", len(queryStr))
+
+		// Unique bir sorgu ID'si oluştur
+		queryID := fmt.Sprintf("mssql_explain_%d", time.Now().UnixNano())
+
+		// MSSQL_EXPLAIN| formatında komut oluştur
+		command := fmt.Sprintf("MSSQL_EXPLAIN|%s|%s", req.Database, req.Query)
+
+		// Sorguyu agent'a gönder
+		result, err := server.SendQuery(ctx, agentID, queryID, command, "")
+
+		if err != nil {
+			log.Printf("[ERROR] MSSQL sorgu planı alınırken bir hata oluştu: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MSSQL sorgu planı alınırken bir hata oluştu: " + err.Error(),
+			})
+			return
+		}
+
+		if result.Result == nil {
+			log.Printf("[ERROR] MSSQL sorgu planı boş döndü")
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MSSQL sorgu planı boş döndü",
+			})
+			return
+		}
+
+		// Agent'dan dönen sonuç XML formatında olacak
+		var resultValue string
+
+		// Result.Result'ı XML string'e dönüştür
+		if result.Result.TypeUrl == "type.googleapis.com/google.protobuf.Value" {
+			// Value tipinde olanlar için direkt string değerini kullan
+			resultValue = string(result.Result.Value)
+			log.Printf("[DEBUG] Value tipi veri direkt string olarak kullanıldı, uzunluk: %d", len(resultValue))
+		} else {
+			// Struct veya diğer tipler için unmarshalling yapılmalı
+			var resultStruct structpb.Struct
+			if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
+				log.Printf("[ERROR] MSSQL sonucu ayrıştırılamadı: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"status": "error",
+					"error":  fmt.Sprintf("MSSQL sorgu planı ayrıştırılamadı: %v", err),
+				})
+				return
+			}
+
+			// "plan" veya "result" anahtarından XML değerini al
+			if planValue, ok := resultStruct.Fields["plan"]; ok && planValue.GetStringValue() != "" {
+				resultValue = planValue.GetStringValue()
+			} else if planValue, ok := resultStruct.Fields["result"]; ok && planValue.GetStringValue() != "" {
+				resultValue = planValue.GetStringValue()
+			} else {
+				// Tüm struct'ı JSON olarak serialize et
+				resultMap := resultStruct.AsMap()
+				resultBytes, err := json.Marshal(resultMap)
+				if err != nil {
+					log.Printf("[ERROR] MSSQL sonucu JSON serileştirilirken hata: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"status": "error",
+						"error":  fmt.Sprintf("MSSQL JSON serileştirme hatası: %v", err),
+					})
+					return
+				}
+				resultValue = string(resultBytes)
+			}
+		}
+
+		// XML formatında döndür
+		if strings.HasPrefix(strings.TrimSpace(resultValue), "<") {
+			// XML formatında doğrudan döndür
+			c.Header("Content-Type", "application/xml")
+			c.String(http.StatusOK, resultValue)
+		} else {
+			// XML değilse normal JSON yanıt olarak döndür
+			c.JSON(http.StatusOK, gin.H{
+				"status": "success",
+				"plan":   resultValue,
 			})
 		}
 	}
