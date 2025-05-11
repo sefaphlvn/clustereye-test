@@ -15,14 +15,15 @@ type ThresholdSettings struct {
 	SlowQueryThreshold      int64   `json:"slow_query_threshold_ms"`
 	ConnectionThreshold     int     `json:"connection_threshold"`
 	ReplicationLagThreshold int     `json:"replication_lag_threshold"`
+	BlockingQueryThreshold  int64   `json:"blocking_query_threshold_ms"`
 }
 
 // GetThresholdSettings, threshold ayarlarını veritabanından getirir
 func GetThresholdSettings(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var settings ThresholdSettings
-		err := db.QueryRow("SELECT id, cpu_threshold, memory_threshold, disk_threshold, slow_query_threshold_ms, connection_threshold, replication_lag_threshold FROM threshold_settings ORDER BY id DESC LIMIT 1").
-			Scan(&settings.ID, &settings.CPUThreshold, &settings.MemoryThreshold, &settings.DiskThreshold, &settings.SlowQueryThreshold, &settings.ConnectionThreshold, &settings.ReplicationLagThreshold)
+		err := db.QueryRow("SELECT id, cpu_threshold, memory_threshold, disk_threshold, slow_query_threshold_ms, connection_threshold, replication_lag_threshold, blocking_query_threshold_ms FROM threshold_settings ORDER BY id DESC LIMIT 1").
+			Scan(&settings.ID, &settings.CPUThreshold, &settings.MemoryThreshold, &settings.DiskThreshold, &settings.SlowQueryThreshold, &settings.ConnectionThreshold, &settings.ReplicationLagThreshold, &settings.BlockingQueryThreshold)
 
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -34,6 +35,7 @@ func GetThresholdSettings(db *sql.DB) gin.HandlerFunc {
 					SlowQueryThreshold:      1000, // 1 saniye
 					ConnectionThreshold:     100,  // 100 bağlantı
 					ReplicationLagThreshold: 300,  // 300 saniye
+					BlockingQueryThreshold:  1000, // 1 saniye
 				}
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{
@@ -80,14 +82,15 @@ func UpdateThresholdSettings(db *sql.DB) gin.HandlerFunc {
 		// Veritabanında güncelle veya yeni kayıt ekle
 		result, err := db.Exec(`
 			INSERT INTO threshold_settings 
-			(cpu_threshold, memory_threshold, disk_threshold, slow_query_threshold_ms, connection_threshold, replication_lag_threshold)
-			VALUES ($1, $2, $3, $4, $5, $6)`,
+			(cpu_threshold, memory_threshold, disk_threshold, slow_query_threshold_ms, connection_threshold, replication_lag_threshold, blocking_query_threshold_ms)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 			settings.CPUThreshold,
 			settings.MemoryThreshold,
 			settings.DiskThreshold,
 			settings.SlowQueryThreshold,
 			settings.ConnectionThreshold,
 			settings.ReplicationLagThreshold,
+			settings.BlockingQueryThreshold,
 		)
 
 		if err != nil {
