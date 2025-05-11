@@ -121,6 +121,13 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		threshold.POST("", AuthMiddleware(), UpdateThresholdSettings(server.GetDB()))
 	}
 
+	// Lisans Bilgileri Endpoint'leri
+	licenses := v1.Group("/licenses")
+	{
+		// Lisans bilgilerini getir - Sadece admin erişebilir
+		licenses.GET("", AuthMiddleware(), GetLicences(server.GetDB()))
+	}
+
 	// Job Endpoint'leri
 	jobs := v1.Group("/jobs")
 	{
@@ -1642,6 +1649,95 @@ func getMSSQLStatus(server *server.Server) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "success",
 			"data":   result.AsInterface(),
+		})
+	}
+}
+
+// GetLicences, lisans bilgilerini veritabanından çeker ve döndürür
+func GetLicences(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Lisans bilgilerini companies tablosundan çek ve agents tablosu ile join yap
+		query := `
+			SELECT c.id, c.company_name, c.agent_key, c.expiration_date, c.created_at, c.updated_at, 
+				   a.hostname, a.agent_id
+			FROM companies c
+			LEFT JOIN agents a ON c.id = a.company_id
+			ORDER BY c.id
+		`
+
+		rows, err := db.Query(query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Lisans bilgileri alınamadı: " + err.Error(),
+			})
+			return
+		}
+		defer rows.Close()
+
+		// Sonuçları saklamak için map yapısı
+		licenses := make(map[int]map[string]interface{})
+
+		// Sonuçları işle
+		for rows.Next() {
+			var (
+				id             int
+				companyName    string
+				agentKey       string
+				expirationDate time.Time
+				createdAt      time.Time
+				updatedAt      time.Time
+				hostname       sql.NullString // NULL olabilir
+				agentID        sql.NullString // NULL olabilir
+			)
+
+			if err := rows.Scan(&id, &companyName, &agentKey, &expirationDate, &createdAt, &updatedAt, &hostname, &agentID); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"status": "error",
+					"error":  "Kayıtlar okunamadı: " + err.Error(),
+				})
+				return
+			}
+
+			// Bu company için önceden bir giriş yapılmış mı kontrol et
+			license, exists := licenses[id]
+			if !exists {
+				// Company için yeni bir map oluştur
+				license = map[string]interface{}{
+					"id":              id,
+					"company_name":    companyName,
+					"agent_key":       agentKey,
+					"expiration_date": expirationDate.Format(time.RFC3339),
+					"created_at":      createdAt.Format(time.RFC3339),
+					"updated_at":      updatedAt.Format(time.RFC3339),
+					"agents":          []map[string]string{},
+				}
+				licenses[id] = license
+			}
+
+			// Eğer agent bilgisi varsa ekle
+			if hostname.Valid && agentID.Valid {
+				agentList := license["agents"].([]map[string]string)
+				agentList = append(agentList, map[string]string{
+					"hostname": hostname.String,
+					"agent_id": agentID.String,
+				})
+				license["agents"] = agentList
+			}
+		}
+
+		// Map yapısını slice haline getir
+		licenseList := make([]map[string]interface{}, 0, len(licenses))
+		for _, license := range licenses {
+			licenseList = append(licenseList, license)
+		}
+
+		// JSON formatında döndür
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"licenses": licenseList,
+			},
 		})
 	}
 }
