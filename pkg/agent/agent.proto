@@ -402,6 +402,7 @@ message ThresholdSettings {
   int64 slow_query_threshold_ms = 4;
   int32 connection_threshold = 5;
   int32 replication_lag_threshold = 6;
+  int64 blocking_query_threshold_ms = 7;
 }
 
 message GetThresholdSettingsRequest {

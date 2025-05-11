@@ -3667,15 +3667,16 @@ func (x *MSSQLLogFile) GetLastModified() int64 {
 
 // Threshold ayarları için mesaj tanımları
 type ThresholdSettings struct {
-	state                   protoimpl.MessageState `protogen:"open.v1"`
-	CpuThreshold            float64                `protobuf:"fixed64,1,opt,name=cpu_threshold,json=cpuThreshold,proto3" json:"cpu_threshold,omitempty"`
-	MemoryThreshold         float64                `protobuf:"fixed64,2,opt,name=memory_threshold,json=memoryThreshold,proto3" json:"memory_threshold,omitempty"`
-	DiskThreshold           float64                `protobuf:"fixed64,3,opt,name=disk_threshold,json=diskThreshold,proto3" json:"disk_threshold,omitempty"`
-	SlowQueryThresholdMs    int64                  `protobuf:"varint,4,opt,name=slow_query_threshold_ms,json=slowQueryThresholdMs,proto3" json:"slow_query_threshold_ms,omitempty"`
-	ConnectionThreshold     int32                  `protobuf:"varint,5,opt,name=connection_threshold,json=connectionThreshold,proto3" json:"connection_threshold,omitempty"`
-	ReplicationLagThreshold int32                  `protobuf:"varint,6,opt,name=replication_lag_threshold,json=replicationLagThreshold,proto3" json:"replication_lag_threshold,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	state                    protoimpl.MessageState `protogen:"open.v1"`
+	CpuThreshold             float64                `protobuf:"fixed64,1,opt,name=cpu_threshold,json=cpuThreshold,proto3" json:"cpu_threshold,omitempty"`
+	MemoryThreshold          float64                `protobuf:"fixed64,2,opt,name=memory_threshold,json=memoryThreshold,proto3" json:"memory_threshold,omitempty"`
+	DiskThreshold            float64                `protobuf:"fixed64,3,opt,name=disk_threshold,json=diskThreshold,proto3" json:"disk_threshold,omitempty"`
+	SlowQueryThresholdMs     int64                  `protobuf:"varint,4,opt,name=slow_query_threshold_ms,json=slowQueryThresholdMs,proto3" json:"slow_query_threshold_ms,omitempty"`
+	ConnectionThreshold      int32                  `protobuf:"varint,5,opt,name=connection_threshold,json=connectionThreshold,proto3" json:"connection_threshold,omitempty"`
+	ReplicationLagThreshold  int32                  `protobuf:"varint,6,opt,name=replication_lag_threshold,json=replicationLagThreshold,proto3" json:"replication_lag_threshold,omitempty"`
+	BlockingQueryThresholdMs int64                  `protobuf:"varint,7,opt,name=blocking_query_threshold_ms,json=blockingQueryThresholdMs,proto3" json:"blocking_query_threshold_ms,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *ThresholdSettings) Reset() {
@@ -3746,6 +3747,13 @@ func (x *ThresholdSettings) GetConnectionThreshold() int32 {
 func (x *ThresholdSettings) GetReplicationLagThreshold() int32 {
 	if x != nil {
 		return x.ReplicationLagThreshold
+	}
+	return 0
+}
+
+func (x *ThresholdSettings) GetBlockingQueryThresholdMs() int64 {
+	if x != nil {
+		return x.BlockingQueryThresholdMs
 	}
 	return 0
 }
@@ -5217,14 +5225,15 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x12\n" +
 	"\x04size\x18\x03 \x01(\x03R\x04size\x12#\n" +
-	"\rlast_modified\x18\x04 \x01(\x03R\flastModified\"\xb0\x02\n" +
+	"\rlast_modified\x18\x04 \x01(\x03R\flastModified\"\xef\x02\n" +
 	"\x11ThresholdSettings\x12#\n" +
 	"\rcpu_threshold\x18\x01 \x01(\x01R\fcpuThreshold\x12)\n" +
 	"\x10memory_threshold\x18\x02 \x01(\x01R\x0fmemoryThreshold\x12%\n" +
 	"\x0edisk_threshold\x18\x03 \x01(\x01R\rdiskThreshold\x125\n" +
 	"\x17slow_query_threshold_ms\x18\x04 \x01(\x03R\x14slowQueryThresholdMs\x121\n" +
 	"\x14connection_threshold\x18\x05 \x01(\x05R\x13connectionThreshold\x12:\n" +
-	"\x19replication_lag_threshold\x18\x06 \x01(\x05R\x17replicationLagThreshold\"8\n" +
+	"\x19replication_lag_threshold\x18\x06 \x01(\x05R\x17replicationLagThreshold\x12=\n" +
+	"\x1bblocking_query_threshold_ms\x18\a \x01(\x03R\x18blockingQueryThresholdMs\"8\n" +
 	"\x1bGetThresholdSettingsRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\"T\n" +
 	"\x1cGetThresholdSettingsResponse\x124\n" +
