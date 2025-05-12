@@ -753,7 +753,7 @@ func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsReq
 	log.Printf("[INFO] Metrik sorgusu gönderildi, yanıt bekleniyor... QueryID: %s", queryID)
 
 	// 3 saniyelik timeout ayarla
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	// Yanıtı bekle
