@@ -299,9 +299,8 @@ func sendMetricsRequestToAgent(server *server.Server) gin.HandlerFunc {
 		log.Printf("[INFO] Metrik isteği başlatılıyor - Agent ID: %s", agentID)
 
 		// Sadece 5 saniyelik kısa bir timeout kullan
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer cancel()
-
 		// Metrikleri al
 		req := &pb.SystemMetricsRequest{
 			AgentId: agentID,
