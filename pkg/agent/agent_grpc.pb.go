@@ -19,30 +19,31 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AgentService_Connect_FullMethodName                 = "/agent.AgentService/Connect"
-	AgentService_Register_FullMethodName                = "/agent.AgentService/Register"
-	AgentService_ExecuteQuery_FullMethodName            = "/agent.AgentService/ExecuteQuery"
-	AgentService_SendPostgresInfo_FullMethodName        = "/agent.AgentService/SendPostgresInfo"
-	AgentService_StreamQueries_FullMethodName           = "/agent.AgentService/StreamQueries"
-	AgentService_StreamPostgresInfo_FullMethodName      = "/agent.AgentService/StreamPostgresInfo"
-	AgentService_SendSystemMetrics_FullMethodName       = "/agent.AgentService/SendSystemMetrics"
-	AgentService_GetAlarmConfigurations_FullMethodName  = "/agent.AgentService/GetAlarmConfigurations"
-	AgentService_ReportAlarm_FullMethodName             = "/agent.AgentService/ReportAlarm"
-	AgentService_SendMongoInfo_FullMethodName           = "/agent.AgentService/SendMongoInfo"
-	AgentService_ListMongoLogs_FullMethodName           = "/agent.AgentService/ListMongoLogs"
-	AgentService_AnalyzeMongoLog_FullMethodName         = "/agent.AgentService/AnalyzeMongoLog"
-	AgentService_ListPostgresLogs_FullMethodName        = "/agent.AgentService/ListPostgresLogs"
-	AgentService_AnalyzePostgresLog_FullMethodName      = "/agent.AgentService/AnalyzePostgresLog"
-	AgentService_ReadPostgresConfig_FullMethodName      = "/agent.AgentService/ReadPostgresConfig"
-	AgentService_GetThresholdSettings_FullMethodName    = "/agent.AgentService/GetThresholdSettings"
-	AgentService_ReportVersion_FullMethodName           = "/agent.AgentService/ReportVersion"
-	AgentService_PromoteMongoToPrimary_FullMethodName   = "/agent.AgentService/PromoteMongoToPrimary"
-	AgentService_FreezeMongoSecondary_FullMethodName    = "/agent.AgentService/FreezeMongoSecondary"
-	AgentService_PromotePostgresToMaster_FullMethodName = "/agent.AgentService/PromotePostgresToMaster"
-	AgentService_GetJob_FullMethodName                  = "/agent.AgentService/GetJob"
-	AgentService_ListJobs_FullMethodName                = "/agent.AgentService/ListJobs"
-	AgentService_ExplainQuery_FullMethodName            = "/agent.AgentService/ExplainQuery"
-	AgentService_SendMSSQLInfo_FullMethodName           = "/agent.AgentService/SendMSSQLInfo"
+	AgentService_Connect_FullMethodName                  = "/agent.AgentService/Connect"
+	AgentService_Register_FullMethodName                 = "/agent.AgentService/Register"
+	AgentService_ExecuteQuery_FullMethodName             = "/agent.AgentService/ExecuteQuery"
+	AgentService_SendPostgresInfo_FullMethodName         = "/agent.AgentService/SendPostgresInfo"
+	AgentService_StreamQueries_FullMethodName            = "/agent.AgentService/StreamQueries"
+	AgentService_StreamPostgresInfo_FullMethodName       = "/agent.AgentService/StreamPostgresInfo"
+	AgentService_SendSystemMetrics_FullMethodName        = "/agent.AgentService/SendSystemMetrics"
+	AgentService_GetAlarmConfigurations_FullMethodName   = "/agent.AgentService/GetAlarmConfigurations"
+	AgentService_ReportAlarm_FullMethodName              = "/agent.AgentService/ReportAlarm"
+	AgentService_SendMongoInfo_FullMethodName            = "/agent.AgentService/SendMongoInfo"
+	AgentService_ListMongoLogs_FullMethodName            = "/agent.AgentService/ListMongoLogs"
+	AgentService_AnalyzeMongoLog_FullMethodName          = "/agent.AgentService/AnalyzeMongoLog"
+	AgentService_ListPostgresLogs_FullMethodName         = "/agent.AgentService/ListPostgresLogs"
+	AgentService_AnalyzePostgresLog_FullMethodName       = "/agent.AgentService/AnalyzePostgresLog"
+	AgentService_ReadPostgresConfig_FullMethodName       = "/agent.AgentService/ReadPostgresConfig"
+	AgentService_GetThresholdSettings_FullMethodName     = "/agent.AgentService/GetThresholdSettings"
+	AgentService_ReportVersion_FullMethodName            = "/agent.AgentService/ReportVersion"
+	AgentService_PromoteMongoToPrimary_FullMethodName    = "/agent.AgentService/PromoteMongoToPrimary"
+	AgentService_FreezeMongoSecondary_FullMethodName     = "/agent.AgentService/FreezeMongoSecondary"
+	AgentService_PromotePostgresToMaster_FullMethodName  = "/agent.AgentService/PromotePostgresToMaster"
+	AgentService_GetJob_FullMethodName                   = "/agent.AgentService/GetJob"
+	AgentService_ListJobs_FullMethodName                 = "/agent.AgentService/ListJobs"
+	AgentService_ExplainQuery_FullMethodName             = "/agent.AgentService/ExplainQuery"
+	AgentService_SendMSSQLInfo_FullMethodName            = "/agent.AgentService/SendMSSQLInfo"
+	AgentService_GetBestPracticesAnalysis_FullMethodName = "/agent.AgentService/GetBestPracticesAnalysis"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -91,6 +92,8 @@ type AgentServiceClient interface {
 	ExplainQuery(ctx context.Context, in *ExplainQueryRequest, opts ...grpc.CallOption) (*ExplainQueryResponse, error)
 	// MSSQL bilgilerini göndermek için kullanılacak servis
 	SendMSSQLInfo(ctx context.Context, in *MSSQLInfoRequest, opts ...grpc.CallOption) (*MSSQLInfoResponse, error)
+	// SQL Server Best Practices Analizi
+	GetBestPracticesAnalysis(ctx context.Context, in *BestPracticesAnalysisRequest, opts ...grpc.CallOption) (*BestPracticesAnalysisResponse, error)
 }
 
 type agentServiceClient struct {
@@ -350,6 +353,16 @@ func (c *agentServiceClient) SendMSSQLInfo(ctx context.Context, in *MSSQLInfoReq
 	return out, nil
 }
 
+func (c *agentServiceClient) GetBestPracticesAnalysis(ctx context.Context, in *BestPracticesAnalysisRequest, opts ...grpc.CallOption) (*BestPracticesAnalysisResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BestPracticesAnalysisResponse)
+	err := c.cc.Invoke(ctx, AgentService_GetBestPracticesAnalysis_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -396,6 +409,8 @@ type AgentServiceServer interface {
 	ExplainQuery(context.Context, *ExplainQueryRequest) (*ExplainQueryResponse, error)
 	// MSSQL bilgilerini göndermek için kullanılacak servis
 	SendMSSQLInfo(context.Context, *MSSQLInfoRequest) (*MSSQLInfoResponse, error)
+	// SQL Server Best Practices Analizi
+	GetBestPracticesAnalysis(context.Context, *BestPracticesAnalysisRequest) (*BestPracticesAnalysisResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -477,6 +492,9 @@ func (UnimplementedAgentServiceServer) ExplainQuery(context.Context, *ExplainQue
 }
 func (UnimplementedAgentServiceServer) SendMSSQLInfo(context.Context, *MSSQLInfoRequest) (*MSSQLInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendMSSQLInfo not implemented")
+}
+func (UnimplementedAgentServiceServer) GetBestPracticesAnalysis(context.Context, *BestPracticesAnalysisRequest) (*BestPracticesAnalysisResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBestPracticesAnalysis not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -898,6 +916,24 @@ func _AgentService_SendMSSQLInfo_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_GetBestPracticesAnalysis_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BestPracticesAnalysisRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).GetBestPracticesAnalysis(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_GetBestPracticesAnalysis_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).GetBestPracticesAnalysis(ctx, req.(*BestPracticesAnalysisRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -988,6 +1024,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SendMSSQLInfo",
 			Handler:    _AgentService_SendMSSQLInfo_Handler,
+		},
+		{
+			MethodName: "GetBestPracticesAnalysis",
+			Handler:    _AgentService_GetBestPracticesAnalysis_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

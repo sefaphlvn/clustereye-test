@@ -548,6 +548,21 @@ message ExplainQueryResponse {
   string error_message = 3; 
 }
 
+// BestPracticesAnalysisRequest SQL Server best practices analizi için istek
+message BestPracticesAnalysisRequest {
+  string agent_id = 1;
+  string server_name = 2;    // İsteğe bağlı SQL Server adı
+  string database_name = 3;  // İsteğe bağlı veritabanı adı
+}
+
+// BestPracticesAnalysisResponse SQL Server best practices analizi yanıtı
+message BestPracticesAnalysisResponse {
+  string status = 1;
+  string analysis_id = 2;
+  string analysis_timestamp = 3;
+  bytes analysis_results = 4;  // JSON formatında analiz sonuçları
+}
+
 service AgentService {
   // Eski bağlantı metodu (geriye dönük uyumluluk için)
   rpc Connect(stream AgentMessage) returns (stream ServerMessage);
@@ -608,4 +623,7 @@ service AgentService {
 
   // MSSQL bilgilerini göndermek için kullanılacak servis
   rpc SendMSSQLInfo(MSSQLInfoRequest) returns (MSSQLInfoResponse);
+  
+  // SQL Server Best Practices Analizi
+  rpc GetBestPracticesAnalysis(BestPracticesAnalysisRequest) returns (BestPracticesAnalysisResponse) {}
 }

@@ -3567,3 +3567,132 @@ func (s *Server) GetStatusMSSQL(ctx context.Context, _ *structpb.Struct) (*struc
 
 	return value, nil
 }
+
+// GetMSSQLBestPracticesAnalysis, MSSQL best practice analizi gerçekleştirir
+func (s *Server) GetMSSQLBestPracticesAnalysis(ctx context.Context, agentID, database string) (*pb.BestPracticesAnalysisResponse, error) {
+	log.Printf("[INFO] GetMSSQLBestPracticesAnalysis çağrıldı - Agent ID: %s, Database: %s", agentID, database)
+
+	// Agent ID'yi kontrol et
+	if agentID == "" {
+		return nil, fmt.Errorf("agent_id boş olamaz")
+	}
+
+	// BestPracticesAnalysisRequest oluştur
+	req := &pb.BestPracticesAnalysisRequest{
+		AgentId:      agentID,
+		DatabaseName: database,
+	}
+
+	// RPC çağrısını yap
+	return s.GetBestPracticesAnalysis(ctx, req)
+}
+
+// GetBestPracticesAnalysis, MSSQL best practice analizi için gRPC çağrısını yapar
+func (s *Server) GetBestPracticesAnalysis(ctx context.Context, req *pb.BestPracticesAnalysisRequest) (*pb.BestPracticesAnalysisResponse, error) {
+	agentID := req.AgentId
+
+	// Agent'ın bağlı olup olmadığını kontrol et
+	s.mu.RLock()
+	agent, agentExists := s.agents[agentID]
+	s.mu.RUnlock()
+
+	if !agentExists || agent == nil {
+		return nil, fmt.Errorf("agent bulunamadı veya bağlantı kapalı: %s", agentID)
+	}
+
+	// Unique bir sorgu ID'si oluştur
+	queryID := fmt.Sprintf("mssql_bpa_%d", time.Now().UnixNano())
+
+	// MSSQL_BPA formatında komut oluştur (database parametresi opsiyonel)
+	command := "MSSQL_BPA"
+	if req.DatabaseName != "" {
+		command = fmt.Sprintf("MSSQL_BPA|%s", req.DatabaseName)
+	}
+	if req.ServerName != "" {
+		command = fmt.Sprintf("%s|%s", command, req.ServerName)
+	}
+
+	log.Printf("[DEBUG] MSSQL Best Practices Analysis komut: %s", command)
+
+	// Sonuç kanalı oluştur
+	resultChan := make(chan *pb.QueryResult, 1)
+	s.queryMu.Lock()
+	s.queryResult[queryID] = &QueryResponse{
+		ResultChan: resultChan,
+	}
+	s.queryMu.Unlock()
+
+	// Context'in iptal durumunda kaynakları temizle
+	defer func() {
+		s.queryMu.Lock()
+		delete(s.queryResult, queryID)
+		s.queryMu.Unlock()
+		close(resultChan)
+	}()
+
+	// Sorguyu gönder
+	err := agent.Stream.Send(&pb.ServerMessage{
+		Payload: &pb.ServerMessage_Query{
+			Query: &pb.Query{
+				QueryId: queryID,
+				Command: command,
+			},
+		},
+	})
+	if err != nil {
+		log.Printf("[ERROR] MSSQL Best Practices Analysis sorgusu gönderilemedi: %v", err)
+		return nil, fmt.Errorf("sorgu gönderilemedi: %v", err)
+	}
+
+	log.Printf("[INFO] MSSQL Best Practices Analysis sorgusu gönderildi - Agent: %s, QueryID: %s", agentID, queryID)
+
+	// Cevabı bekle
+	select {
+	case result := <-resultChan:
+		// Sonuç geldi
+		if result == nil {
+			log.Printf("[ERROR] Null sorgu sonucu alındı")
+			return nil, fmt.Errorf("null sorgu sonucu alındı")
+		}
+
+		log.Printf("[DEBUG] Agent'tan yanıt alındı - QueryID: %s, TypeUrl: %s", queryID, result.Result.TypeUrl)
+
+		// Sonucu BestPracticesAnalysisResponse'a dönüştür
+		response := &pb.BestPracticesAnalysisResponse{
+			Status:            "success",
+			AnalysisId:        queryID,
+			AnalysisTimestamp: time.Now().Format(time.RFC3339),
+		}
+
+		// Any tipini çözümle
+		if result.Result.TypeUrl == "type.googleapis.com/google.protobuf.Value" {
+			// Value tipinde ise, doğrudan JSON string olarak kullan
+			response.AnalysisResults = result.Result.Value
+			log.Printf("[DEBUG] Best Practices Analysis sonucu alındı (JSON string, %d bytes)", len(response.AnalysisResults))
+		} else {
+			// Struct olarak çözümle
+			var resultStruct structpb.Struct
+			if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
+				log.Printf("[ERROR] Struct çözümleme hatası: %v", err)
+				return nil, fmt.Errorf("sonuç çözümleme hatası: %v", err)
+			}
+
+			// Struct'tan JSON string oluştur
+			resultBytes, err := json.Marshal(resultStruct.AsMap())
+			if err != nil {
+				log.Printf("[ERROR] JSON dönüştürme hatası: %v", err)
+				return nil, fmt.Errorf("JSON dönüştürme hatası: %v", err)
+			}
+
+			response.AnalysisResults = resultBytes
+			log.Printf("[DEBUG] Best Practices Analysis sonucu alındı (Struct->JSON, %d bytes)", len(response.AnalysisResults))
+		}
+
+		return response, nil
+
+	case <-ctx.Done():
+		// Context iptal edildi veya zaman aşımına uğradı
+		log.Printf("[ERROR] Best Practices Analysis sonucu beklerken timeout/iptal: %v", ctx.Err())
+		return nil, ctx.Err()
+	}
+}

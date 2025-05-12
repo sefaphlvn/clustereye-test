@@ -4919,6 +4919,136 @@ func (x *ExplainQueryResponse) GetErrorMessage() string {
 	return ""
 }
 
+// BestPracticesAnalysisRequest SQL Server best practices analizi için istek
+type BestPracticesAnalysisRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	ServerName    string                 `protobuf:"bytes,2,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`       // İsteğe bağlı SQL Server adı
+	DatabaseName  string                 `protobuf:"bytes,3,opt,name=database_name,json=databaseName,proto3" json:"database_name,omitempty"` // İsteğe bağlı veritabanı adı
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BestPracticesAnalysisRequest) Reset() {
+	*x = BestPracticesAnalysisRequest{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[67]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BestPracticesAnalysisRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BestPracticesAnalysisRequest) ProtoMessage() {}
+
+func (x *BestPracticesAnalysisRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[67]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BestPracticesAnalysisRequest.ProtoReflect.Descriptor instead.
+func (*BestPracticesAnalysisRequest) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{67}
+}
+
+func (x *BestPracticesAnalysisRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *BestPracticesAnalysisRequest) GetServerName() string {
+	if x != nil {
+		return x.ServerName
+	}
+	return ""
+}
+
+func (x *BestPracticesAnalysisRequest) GetDatabaseName() string {
+	if x != nil {
+		return x.DatabaseName
+	}
+	return ""
+}
+
+// BestPracticesAnalysisResponse SQL Server best practices analizi yanıtı
+type BestPracticesAnalysisResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Status            string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	AnalysisId        string                 `protobuf:"bytes,2,opt,name=analysis_id,json=analysisId,proto3" json:"analysis_id,omitempty"`
+	AnalysisTimestamp string                 `protobuf:"bytes,3,opt,name=analysis_timestamp,json=analysisTimestamp,proto3" json:"analysis_timestamp,omitempty"`
+	AnalysisResults   []byte                 `protobuf:"bytes,4,opt,name=analysis_results,json=analysisResults,proto3" json:"analysis_results,omitempty"` // JSON formatında analiz sonuçları
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *BestPracticesAnalysisResponse) Reset() {
+	*x = BestPracticesAnalysisResponse{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[68]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BestPracticesAnalysisResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BestPracticesAnalysisResponse) ProtoMessage() {}
+
+func (x *BestPracticesAnalysisResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[68]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BestPracticesAnalysisResponse.ProtoReflect.Descriptor instead.
+func (*BestPracticesAnalysisResponse) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{68}
+}
+
+func (x *BestPracticesAnalysisResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *BestPracticesAnalysisResponse) GetAnalysisId() string {
+	if x != nil {
+		return x.AnalysisId
+	}
+	return ""
+}
+
+func (x *BestPracticesAnalysisResponse) GetAnalysisTimestamp() string {
+	if x != nil {
+		return x.AnalysisTimestamp
+	}
+	return ""
+}
+
+func (x *BestPracticesAnalysisResponse) GetAnalysisResults() []byte {
+	if x != nil {
+		return x.AnalysisResults
+	}
+	return nil
+}
+
 var File_pkg_agent_agent_proto protoreflect.FileDescriptor
 
 const file_pkg_agent_agent_proto_rawDesc = "" +
@@ -5328,7 +5458,18 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x14ExplainQueryResponse\x12\x12\n" +
 	"\x04plan\x18\x01 \x01(\tR\x04plan\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12#\n" +
-	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage*\x9e\x01\n" +
+	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\"\x7f\n" +
+	"\x1cBestPracticesAnalysisRequest\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x1f\n" +
+	"\vserver_name\x18\x02 \x01(\tR\n" +
+	"serverName\x12#\n" +
+	"\rdatabase_name\x18\x03 \x01(\tR\fdatabaseName\"\xb2\x01\n" +
+	"\x1dBestPracticesAnalysisResponse\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12\x1f\n" +
+	"\vanalysis_id\x18\x02 \x01(\tR\n" +
+	"analysisId\x12-\n" +
+	"\x12analysis_timestamp\x18\x03 \x01(\tR\x11analysisTimestamp\x12)\n" +
+	"\x10analysis_results\x18\x04 \x01(\fR\x0fanalysisResults*\x9e\x01\n" +
 	"\tJobStatus\x12\x16\n" +
 	"\x12JOB_STATUS_UNKNOWN\x10\x00\x12\x16\n" +
 	"\x12JOB_STATUS_PENDING\x10\x01\x12\x16\n" +
@@ -5340,7 +5481,7 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x10JOB_TYPE_UNKNOWN\x10\x00\x12\"\n" +
 	"\x1eJOB_TYPE_MONGO_PROMOTE_PRIMARY\x10\x01\x12$\n" +
 	" JOB_TYPE_POSTGRES_PROMOTE_MASTER\x10\x02\x12#\n" +
-	"\x1fJOB_TYPE_MONGO_FREEZE_SECONDARY\x10\x032\xc9\x0e\n" +
+	"\x1fJOB_TYPE_MONGO_FREEZE_SECONDARY\x10\x032\xb2\x0f\n" +
 	"\fAgentService\x128\n" +
 	"\aConnect\x12\x13.agent.AgentMessage\x1a\x14.agent.ServerMessage(\x010\x01\x12;\n" +
 	"\bRegister\x12\x16.agent.RegisterRequest\x1a\x17.agent.RegisterResponse\x129\n" +
@@ -5365,7 +5506,8 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x06GetJob\x12\x14.agent.GetJobRequest\x1a\x15.agent.GetJobResponse\x12;\n" +
 	"\bListJobs\x12\x16.agent.ListJobsRequest\x1a\x17.agent.ListJobsResponse\x12G\n" +
 	"\fExplainQuery\x12\x1a.agent.ExplainQueryRequest\x1a\x1b.agent.ExplainQueryResponse\x12B\n" +
-	"\rSendMSSQLInfo\x12\x17.agent.MSSQLInfoRequest\x1a\x18.agent.MSSQLInfoResponseB0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
+	"\rSendMSSQLInfo\x12\x17.agent.MSSQLInfoRequest\x1a\x18.agent.MSSQLInfoResponse\x12g\n" +
+	"\x18GetBestPracticesAnalysis\x12#.agent.BestPracticesAnalysisRequest\x1a$.agent.BestPracticesAnalysisResponse\"\x00B0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
 
 var (
 	file_pkg_agent_agent_proto_rawDescOnce sync.Once
@@ -5380,7 +5522,7 @@ func file_pkg_agent_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_pkg_agent_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 68)
+var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 70)
 var file_pkg_agent_agent_proto_goTypes = []any{
 	(JobStatus)(0),                        // 0: agent.JobStatus
 	(JobType)(0),                          // 1: agent.JobType
@@ -5451,16 +5593,18 @@ var file_pkg_agent_agent_proto_goTypes = []any{
 	(*MongoFreezeSecondaryResponse)(nil),  // 66: agent.MongoFreezeSecondaryResponse
 	(*ExplainQueryRequest)(nil),           // 67: agent.ExplainQueryRequest
 	(*ExplainQueryResponse)(nil),          // 68: agent.ExplainQueryResponse
-	nil,                                   // 69: agent.Job.ParametersEntry
-	(*anypb.Any)(nil),                     // 70: google.protobuf.Any
-	(*structpb.Struct)(nil),               // 71: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),         // 72: google.protobuf.Timestamp
+	(*BestPracticesAnalysisRequest)(nil),  // 69: agent.BestPracticesAnalysisRequest
+	(*BestPracticesAnalysisResponse)(nil), // 70: agent.BestPracticesAnalysisResponse
+	nil,                                   // 71: agent.Job.ParametersEntry
+	(*anypb.Any)(nil),                     // 72: google.protobuf.Any
+	(*structpb.Struct)(nil),               // 73: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),         // 74: google.protobuf.Timestamp
 }
 var file_pkg_agent_agent_proto_depIdxs = []int32{
 	6,  // 0: agent.MongoLogListResponse.log_files:type_name -> agent.MongoLogFile
 	9,  // 1: agent.MongoLogAnalyzeResponse.log_entries:type_name -> agent.MongoLogEntry
 	11, // 2: agent.AlarmConfiguration.condition:type_name -> agent.AlarmCondition
-	70, // 3: agent.QueryResult.result:type_name -> google.protobuf.Any
+	72, // 3: agent.QueryResult.result:type_name -> google.protobuf.Any
 	13, // 4: agent.ReportAlarmRequest.events:type_name -> agent.AlarmEvent
 	2,  // 5: agent.RegisterRequest.agent_info:type_name -> agent.AgentInfo
 	17, // 6: agent.RegisterResponse.registration:type_name -> agent.RegistrationResult
@@ -5480,7 +5624,7 @@ var file_pkg_agent_agent_proto_depIdxs = []int32{
 	4,  // 20: agent.AgentMessage.mongo_info:type_name -> agent.MongoInfo
 	47, // 21: agent.AgentMessage.mssql_info:type_name -> agent.MSSQLInfo
 	47, // 22: agent.MSSQLInfoRequest.mssql_info:type_name -> agent.MSSQLInfo
-	71, // 23: agent.SystemMetricsResponse.data:type_name -> google.protobuf.Struct
+	73, // 23: agent.SystemMetricsResponse.data:type_name -> google.protobuf.Struct
 	33, // 24: agent.SystemMetricsResponse.metrics:type_name -> agent.SystemMetrics
 	12, // 25: agent.AlarmConfigResponse.configurations:type_name -> agent.AlarmConfiguration
 	38, // 26: agent.PostgresLogListResponse.log_files:type_name -> agent.PostgresLogFile
@@ -5490,9 +5634,9 @@ var file_pkg_agent_agent_proto_depIdxs = []int32{
 	53, // 30: agent.ReportVersionRequest.version_info:type_name -> agent.AgentVersionInfo
 	1,  // 31: agent.Job.type:type_name -> agent.JobType
 	0,  // 32: agent.Job.status:type_name -> agent.JobStatus
-	72, // 33: agent.Job.created_at:type_name -> google.protobuf.Timestamp
-	72, // 34: agent.Job.updated_at:type_name -> google.protobuf.Timestamp
-	69, // 35: agent.Job.parameters:type_name -> agent.Job.ParametersEntry
+	74, // 33: agent.Job.created_at:type_name -> google.protobuf.Timestamp
+	74, // 34: agent.Job.updated_at:type_name -> google.protobuf.Timestamp
+	71, // 35: agent.Job.parameters:type_name -> agent.Job.ParametersEntry
 	0,  // 36: agent.MongoPromotePrimaryResponse.status:type_name -> agent.JobStatus
 	0,  // 37: agent.PostgresPromoteMasterResponse.status:type_name -> agent.JobStatus
 	56, // 38: agent.GetJobResponse.job:type_name -> agent.Job
@@ -5524,32 +5668,34 @@ var file_pkg_agent_agent_proto_depIdxs = []int32{
 	63, // 64: agent.AgentService.ListJobs:input_type -> agent.ListJobsRequest
 	67, // 65: agent.AgentService.ExplainQuery:input_type -> agent.ExplainQueryRequest
 	31, // 66: agent.AgentService.SendMSSQLInfo:input_type -> agent.MSSQLInfoRequest
-	29, // 67: agent.AgentService.Connect:output_type -> agent.ServerMessage
-	21, // 68: agent.AgentService.Register:output_type -> agent.RegisterResponse
-	23, // 69: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
-	26, // 70: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
-	23, // 71: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
-	26, // 72: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
-	35, // 73: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
-	37, // 74: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
-	19, // 75: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
-	27, // 76: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
-	7,  // 77: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
-	10, // 78: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
-	40, // 79: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
-	43, // 80: agent.AgentService.AnalyzePostgresLog:output_type -> agent.PostgresLogAnalyzeResponse
-	46, // 81: agent.AgentService.ReadPostgresConfig:output_type -> agent.PostgresConfigResponse
-	52, // 82: agent.AgentService.GetThresholdSettings:output_type -> agent.GetThresholdSettingsResponse
-	55, // 83: agent.AgentService.ReportVersion:output_type -> agent.ReportVersionResponse
-	58, // 84: agent.AgentService.PromoteMongoToPrimary:output_type -> agent.MongoPromotePrimaryResponse
-	66, // 85: agent.AgentService.FreezeMongoSecondary:output_type -> agent.MongoFreezeSecondaryResponse
-	60, // 86: agent.AgentService.PromotePostgresToMaster:output_type -> agent.PostgresPromoteMasterResponse
-	62, // 87: agent.AgentService.GetJob:output_type -> agent.GetJobResponse
-	64, // 88: agent.AgentService.ListJobs:output_type -> agent.ListJobsResponse
-	68, // 89: agent.AgentService.ExplainQuery:output_type -> agent.ExplainQueryResponse
-	32, // 90: agent.AgentService.SendMSSQLInfo:output_type -> agent.MSSQLInfoResponse
-	67, // [67:91] is the sub-list for method output_type
-	43, // [43:67] is the sub-list for method input_type
+	69, // 67: agent.AgentService.GetBestPracticesAnalysis:input_type -> agent.BestPracticesAnalysisRequest
+	29, // 68: agent.AgentService.Connect:output_type -> agent.ServerMessage
+	21, // 69: agent.AgentService.Register:output_type -> agent.RegisterResponse
+	23, // 70: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
+	26, // 71: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
+	23, // 72: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
+	26, // 73: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
+	35, // 74: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
+	37, // 75: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
+	19, // 76: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
+	27, // 77: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
+	7,  // 78: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
+	10, // 79: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
+	40, // 80: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
+	43, // 81: agent.AgentService.AnalyzePostgresLog:output_type -> agent.PostgresLogAnalyzeResponse
+	46, // 82: agent.AgentService.ReadPostgresConfig:output_type -> agent.PostgresConfigResponse
+	52, // 83: agent.AgentService.GetThresholdSettings:output_type -> agent.GetThresholdSettingsResponse
+	55, // 84: agent.AgentService.ReportVersion:output_type -> agent.ReportVersionResponse
+	58, // 85: agent.AgentService.PromoteMongoToPrimary:output_type -> agent.MongoPromotePrimaryResponse
+	66, // 86: agent.AgentService.FreezeMongoSecondary:output_type -> agent.MongoFreezeSecondaryResponse
+	60, // 87: agent.AgentService.PromotePostgresToMaster:output_type -> agent.PostgresPromoteMasterResponse
+	62, // 88: agent.AgentService.GetJob:output_type -> agent.GetJobResponse
+	64, // 89: agent.AgentService.ListJobs:output_type -> agent.ListJobsResponse
+	68, // 90: agent.AgentService.ExplainQuery:output_type -> agent.ExplainQueryResponse
+	32, // 91: agent.AgentService.SendMSSQLInfo:output_type -> agent.MSSQLInfoResponse
+	70, // 92: agent.AgentService.GetBestPracticesAnalysis:output_type -> agent.BestPracticesAnalysisResponse
+	68, // [68:93] is the sub-list for method output_type
+	43, // [43:68] is the sub-list for method input_type
 	43, // [43:43] is the sub-list for extension type_name
 	43, // [43:43] is the sub-list for extension extendee
 	0,  // [0:43] is the sub-list for field type_name
@@ -5580,7 +5726,7 @@ func file_pkg_agent_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_agent_agent_proto_rawDesc), len(file_pkg_agent_agent_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   68,
+			NumMessages:   70,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

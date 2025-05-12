@@ -80,6 +80,9 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 
 		// MSSQL Explain Query endpoint'i - MSSQL sorgu planını XML formatında döndürür
 		agents.POST("/:agent_id/mssql/explain", explainMssqlQuery(server))
+
+		// MSSQL Best Practices analiz endpoint'i
+		agents.GET("/:agent_id/mssql/bestpractices", getMSSQLBestPracticesAnalysis(server))
 	}
 
 	// Status Endpoint'leri
@@ -1739,5 +1742,83 @@ func GetLicences(db *sql.DB) gin.HandlerFunc {
 				"licenses": licenseList,
 			},
 		})
+	}
+}
+
+// getMSSQLBestPracticesAnalysis, MSSQL best practice analizi gerçekleştirir
+func getMSSQLBestPracticesAnalysis(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Param("agent_id")
+		if agentID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "agent_id parametresi gerekli",
+			})
+			return
+		}
+
+		// İsteğe bağlı parametreler
+		database := c.Query("database")
+		serverName := c.Query("server")
+
+		log.Printf("[INFO] MSSQL Best Practices analizi başlatılıyor - Agent ID: %s, Database: %s, Server: %s",
+			agentID, database, serverName)
+
+		// 60 saniyelik bir timeout belirle
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+		defer cancel()
+
+		// İstek oluştur
+		req := &pb.BestPracticesAnalysisRequest{
+			AgentId:      agentID,
+			DatabaseName: database,
+			ServerName:   serverName,
+		}
+
+		// Server metodunu çağır
+		response, err := server.GetBestPracticesAnalysis(ctx, req)
+		if err != nil {
+			log.Printf("[ERROR] MSSQL Best Practices analizi hatası: %v", err)
+
+			// Context timeout ise 504 dön
+			if ctx.Err() == context.DeadlineExceeded {
+				c.JSON(http.StatusGatewayTimeout, gin.H{
+					"status": "error",
+					"error":  "Best practices analizi zaman aşımına uğradı",
+				})
+				return
+			}
+
+			// Diğer hatalar için 500 dön
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  fmt.Sprintf("Best practices analizi hatası: %v", err),
+			})
+			return
+		}
+
+		// Başarılı yanıt
+		log.Printf("[INFO] MSSQL Best Practices analizi tamamlandı - Agent ID: %s, Analysis ID: %s",
+			agentID, response.AnalysisId)
+
+		// Sonuçları JSON olarak parse etmeye çalış
+		var jsonData interface{}
+		if err := json.Unmarshal(response.AnalysisResults, &jsonData); err != nil {
+			// Parse edilemezse doğrudan string olarak gönder
+			c.JSON(http.StatusOK, gin.H{
+				"status":             "success",
+				"analysis_id":        response.AnalysisId,
+				"analysis_timestamp": response.AnalysisTimestamp,
+				"results":            string(response.AnalysisResults),
+			})
+		} else {
+			// JSON olarak başarıyla parse edildiyse
+			c.JSON(http.StatusOK, gin.H{
+				"status":             "success",
+				"analysis_id":        response.AnalysisId,
+				"analysis_timestamp": response.AnalysisTimestamp,
+				"results":            jsonData,
+			})
+		}
 	}
 }
