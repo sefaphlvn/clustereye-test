@@ -18,7 +18,8 @@ func (s *Server) GetThresholdSettings(ctx context.Context, req *pb.GetThresholdS
 	var settings pb.ThresholdSettings
 	err := s.db.QueryRowContext(ctx, `
         SELECT cpu_threshold, memory_threshold, disk_threshold, 
-               slow_query_threshold_ms, connection_threshold, replication_lag_threshold
+               slow_query_threshold_ms, connection_threshold, replication_lag_threshold,
+               blocking_query_threshold_ms
         FROM threshold_settings 
         ORDER BY id DESC LIMIT 1
     `).Scan(
@@ -28,18 +29,20 @@ func (s *Server) GetThresholdSettings(ctx context.Context, req *pb.GetThresholdS
 		&settings.SlowQueryThresholdMs,
 		&settings.ConnectionThreshold,
 		&settings.ReplicationLagThreshold,
+		&settings.BlockingQueryThresholdMs,
 	)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// Eğer ayar bulunamazsa varsayılan değerleri döndür
 			settings = pb.ThresholdSettings{
-				CpuThreshold:            80.0, // %80
-				MemoryThreshold:         80.0, // %80
-				DiskThreshold:           85.0, // %85
-				SlowQueryThresholdMs:    1000, // 1 saniye
-				ConnectionThreshold:     100,  // 100 bağlantı
-				ReplicationLagThreshold: 300,  // 300 saniye
+				CpuThreshold:             80.0, // %80
+				MemoryThreshold:          80.0, // %80
+				DiskThreshold:            85.0, // %85
+				SlowQueryThresholdMs:     1000, // 1 saniye
+				ConnectionThreshold:      100,  // 100 bağlantı
+				ReplicationLagThreshold:  300,  // 300 saniye
+				BlockingQueryThresholdMs: 1000, // 1 saniye
 			}
 			log.Printf("Threshold ayarları bulunamadı, varsayılan değerler kullanılıyor - Agent ID: %s", req.AgentId)
 		} else {
