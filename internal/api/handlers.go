@@ -147,6 +147,13 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		// Job listesini getir
 		jobs.GET("", listJobs(server))
 	}
+
+	// Process Logs Endpoint'leri
+	processLogs := v1.Group("/process-logs")
+	{
+		// İşlem loglarını getir
+		processLogs.GET("", getProcessLogs(server))
+	}
 }
 
 // getAgents, bağlı tüm agent'ları listeler
@@ -1819,5 +1826,72 @@ func getMSSQLBestPracticesAnalysis(server *server.Server) gin.HandlerFunc {
 				"results":            jsonData,
 			})
 		}
+	}
+}
+
+// getProcessLogs, işlem loglarını almak için Gin handler
+func getProcessLogs(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// İstek parametrelerini al
+		processID := c.Query("process_id")
+		agentID := c.Query("agent_id")
+
+		// Process ID kontrol et
+		if processID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "process_id parametresi gereklidir",
+			})
+			return
+		}
+
+		// GetProcessStatus çağrısı yap
+		req := &pb.ProcessStatusRequest{
+			ProcessId: processID,
+			AgentId:   agentID,
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
+
+		resp, err := server.GetProcessStatus(ctx, req)
+		if err != nil {
+			log.Printf("Process log alma hatası: %v", err)
+
+			// gRPC hata kodlarını HTTP hata kodlarına çevir
+			httpStatus := http.StatusInternalServerError
+			errorMessage := fmt.Sprintf("Process logları alınamadı: %v", err)
+
+			if st, ok := grpcstatus.FromError(err); ok {
+				switch st.Code() {
+				case codes.NotFound:
+					httpStatus = http.StatusNotFound
+					errorMessage = fmt.Sprintf("Belirtilen işlem bulunamadı: %s", processID)
+				case codes.DeadlineExceeded:
+					httpStatus = http.StatusGatewayTimeout
+					errorMessage = "İşlem logları alınırken zaman aşımı"
+				}
+			}
+
+			c.JSON(httpStatus, gin.H{
+				"status": "error",
+				"error":  errorMessage,
+			})
+			return
+		}
+
+		// JSON yanıtı döndür
+		c.JSON(http.StatusOK, gin.H{
+			"status":         "success",
+			"process_id":     resp.ProcessId,
+			"agent_id":       agentID,
+			"type":           resp.ProcessType,
+			"process_status": resp.Status,
+			"logs":           resp.LogMessages,
+			"elapsed_s":      resp.ElapsedTimeS,
+			"created_at":     resp.CreatedAt,
+			"updated_at":     resp.UpdatedAt,
+			"metadata":       resp.Metadata,
+		})
 	}
 }

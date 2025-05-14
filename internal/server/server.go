@@ -2743,6 +2743,16 @@ func (s *Server) PromoteMongoToPrimary(ctx context.Context, req *pb.MongoPromote
 
 // PromotePostgresToMaster, PostgreSQL node'unu master'a yükseltir
 func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPromoteMasterRequest) (*pb.PostgresPromoteMasterResponse, error) {
+	log.Printf("PromotePostgresToMaster çağrıldı - Agent ID: %s, Node: %s, Data Directory: %s",
+		req.AgentId, req.NodeHostname, req.DataDirectory)
+
+	// Process log takibi için metadata oluştur
+	metadata := map[string]string{
+		"node_hostname":  req.NodeHostname,
+		"data_directory": req.DataDirectory,
+		"job_id":         req.JobId,
+	}
+
 	// Job oluştur
 	job := &pb.Job{
 		JobId:     req.JobId,
@@ -2754,6 +2764,7 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 		Parameters: map[string]string{
 			"node_hostname":  req.NodeHostname,
 			"data_directory": req.DataDirectory,
+			"process_id":     req.JobId, // Process ID olarak job ID'yi kullan
 		},
 	}
 
@@ -2771,6 +2782,20 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 		job.Status = pb.JobStatus_JOB_STATUS_FAILED
 		job.ErrorMessage = "Agent bulunamadı"
 		job.UpdatedAt = timestamppb.Now()
+
+		// Process log oluştur - hata durumu
+		processLog := &pb.ProcessLogUpdate{
+			AgentId:      req.AgentId,
+			ProcessId:    req.JobId,
+			ProcessType:  "postgresql_promotion",
+			Status:       "failed",
+			LogMessages:  []string{"Agent bulunamadı, işlem başlatılamadı"},
+			ElapsedTimeS: 0,
+			UpdatedAt:    time.Now().Format(time.RFC3339),
+			Metadata:     metadata,
+		}
+		s.saveProcessLogs(ctx, processLog)
+
 		return &pb.PostgresPromoteMasterResponse{
 			JobId:        job.JobId,
 			Status:       job.Status,
@@ -2783,6 +2808,20 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 		job.Status = pb.JobStatus_JOB_STATUS_FAILED
 		job.ErrorMessage = fmt.Sprintf("Job veritabanına kaydedilemedi: %v", err)
 		job.UpdatedAt = timestamppb.Now()
+
+		// Process log oluştur - veritabanı hatası
+		processLog := &pb.ProcessLogUpdate{
+			AgentId:      req.AgentId,
+			ProcessId:    req.JobId,
+			ProcessType:  "postgresql_promotion",
+			Status:       "failed",
+			LogMessages:  []string{fmt.Sprintf("Job veritabanına kaydedilemedi: %v", err)},
+			ElapsedTimeS: 0,
+			UpdatedAt:    time.Now().Format(time.RFC3339),
+			Metadata:     metadata,
+		}
+		s.saveProcessLogs(ctx, processLog)
+
 		return &pb.PostgresPromoteMasterResponse{
 			JobId:        job.JobId,
 			Status:       job.Status,
@@ -2790,18 +2829,35 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 		}, err
 	}
 
+	// Process log başlangıç kaydı oluştur
+	startLog := &pb.ProcessLogUpdate{
+		AgentId:      req.AgentId,
+		ProcessId:    req.JobId,
+		ProcessType:  "postgresql_promotion",
+		Status:       "running",
+		LogMessages:  []string{fmt.Sprintf("PostgreSQL promotion işlemi başlatılıyor - Node: %s", req.NodeHostname)},
+		ElapsedTimeS: 0,
+		UpdatedAt:    time.Now().Format(time.RFC3339),
+		Metadata:     metadata,
+	}
+	s.saveProcessLogs(ctx, startLog)
+
 	// Job'ı çalıştır
 	go func() {
 		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
 		job.UpdatedAt = timestamppb.Now()
 		s.updateJobInDatabase(context.Background(), job)
 
+		// Yeni komut formatı: "postgres_promote|data_dir|process_id"
+		// Agent tarafındaki ProcessLogger'ı etkinleştirmek için process_id gönderiyoruz
+		command := fmt.Sprintf("postgres_promote|%s|%s", req.DataDirectory, req.JobId)
+
 		// Agent'a promote isteği gönder
 		err := agent.Stream.Send(&pb.ServerMessage{
 			Payload: &pb.ServerMessage_Query{
 				Query: &pb.Query{
 					QueryId: job.JobId,
-					Command: fmt.Sprintf("pg_ctl promote -D %s", req.DataDirectory),
+					Command: command,
 				},
 			},
 		})
@@ -2809,13 +2865,31 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 		if err != nil {
 			job.Status = pb.JobStatus_JOB_STATUS_FAILED
 			job.ErrorMessage = fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)
-		} else {
-			job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
-			job.Result = "Master promotion request sent successfully"
-		}
+			job.UpdatedAt = timestamppb.Now()
+			s.updateJobInDatabase(context.Background(), job)
 
-		job.UpdatedAt = timestamppb.Now()
-		s.updateJobInDatabase(context.Background(), job)
+			// Hata durumu process log'u
+			errorLog := &pb.ProcessLogUpdate{
+				AgentId:      req.AgentId,
+				ProcessId:    req.JobId,
+				ProcessType:  "postgresql_promotion",
+				Status:       "failed",
+				LogMessages:  []string{fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)},
+				ElapsedTimeS: 0,
+				UpdatedAt:    time.Now().Format(time.RFC3339),
+				Metadata:     metadata,
+			}
+			s.saveProcessLogs(context.Background(), errorLog)
+		} else {
+			// Başarılı başlatma durumu
+			log.Printf("PostgreSQL promotion işlemi agent'a iletildi - Job ID: %s", job.JobId)
+
+			// Job'ı IN_PROGRESS olarak işaretle
+			// Agent ProcessLogger ile ilerleyişi bildirecek, burada bir şey yapmamıza gerek yok
+
+			// Tamamlandı olarak işaretleme işlemini artık agent tarafından gelen
+			// son log mesajı (completed statüsünde) ile yapacağız.
+		}
 	}()
 
 	return &pb.PostgresPromoteMasterResponse{
@@ -3697,4 +3771,232 @@ func (s *Server) GetBestPracticesAnalysis(ctx context.Context, req *pb.BestPract
 		log.Printf("[ERROR] Best Practices Analysis sonucu beklerken timeout/iptal: %v", ctx.Err())
 		return nil, ctx.Err()
 	}
+}
+
+// ReportProcessLogs, agent'lardan gelen işlem loglarını işler
+func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogRequest) (*pb.ProcessLogResponse, error) {
+	log.Printf("ReportProcessLogs metodu çağrıldı - Agent ID: %s, Process ID: %s, Process Type: %s",
+		req.LogUpdate.AgentId, req.LogUpdate.ProcessId, req.LogUpdate.ProcessType)
+
+	// Gelen log mesajlarını logla
+	for _, msg := range req.LogUpdate.LogMessages {
+		log.Printf("[Process Log] [%s] [%s] %s", req.LogUpdate.ProcessId, req.LogUpdate.Status, msg)
+	}
+
+	// Veritabanına kaydet
+	err := s.saveProcessLogs(ctx, req.LogUpdate)
+	if err != nil {
+		log.Printf("Process logları veritabanına kaydedilemedi: %v", err)
+		return &pb.ProcessLogResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Veritabanı hatası: %v", err),
+		}, nil
+	}
+
+	return &pb.ProcessLogResponse{
+		Status:  "ok",
+		Message: "Process logları başarıyla alındı",
+	}, nil
+}
+
+// saveProcessLogs, işlem loglarını veritabanına kaydeder
+func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUpdate) error {
+	// Veritabanı bağlantısını kontrol et
+	if err := s.checkDatabaseConnection(); err != nil {
+		return fmt.Errorf("veritabanı bağlantı hatası: %v", err)
+	}
+
+	// Metadata'yı JSON formatına dönüştür
+	metadataJSON, err := json.Marshal(logUpdate.Metadata)
+	if err != nil {
+		return fmt.Errorf("metadata JSON dönüştürme hatası: %v", err)
+	}
+
+	// Log mesajlarını JSON formatına dönüştür
+	logMessagesJSON, err := json.Marshal(logUpdate.LogMessages)
+	if err != nil {
+		return fmt.Errorf("log mesajları JSON dönüştürme hatası: %v", err)
+	}
+
+	// İşlemin var olup olmadığını kontrol et
+	var processExists bool
+	err = s.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM process_logs 
+			WHERE process_id = $1 AND agent_id = $2
+		)
+	`, logUpdate.ProcessId, logUpdate.AgentId).Scan(&processExists)
+
+	if err != nil {
+		return fmt.Errorf("işlem kaydı kontrolü sırasında hata: %v", err)
+	}
+
+	if !processExists {
+		// İşlem ilk kez kaydediliyor
+		log.Printf("Yeni işlem kaydı oluşturuluyor: %s", logUpdate.ProcessId)
+
+		insertQuery := `
+			INSERT INTO process_logs (
+				process_id,
+				agent_id,
+				process_type,
+				status,
+				log_messages,
+				elapsed_time_s,
+				metadata,
+				created_at,
+				updated_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+		`
+
+		_, err = s.db.ExecContext(ctx, insertQuery,
+			logUpdate.ProcessId,
+			logUpdate.AgentId,
+			logUpdate.ProcessType,
+			logUpdate.Status,
+			logMessagesJSON,
+			logUpdate.ElapsedTimeS,
+			metadataJSON,
+			time.Now(),
+		)
+
+		if err != nil {
+			return fmt.Errorf("yeni işlem kaydı eklenirken hata: %v", err)
+		}
+	} else {
+		// Mevcut işlem güncelleniyor
+		log.Printf("Mevcut işlem kaydı güncelleniyor: %s", logUpdate.ProcessId)
+
+		// Mevcut log mesajlarını al
+		var existingLogs []byte
+		err = s.db.QueryRowContext(ctx, `
+			SELECT log_messages FROM process_logs 
+			WHERE process_id = $1 AND agent_id = $2
+		`, logUpdate.ProcessId, logUpdate.AgentId).Scan(&existingLogs)
+
+		if err != nil {
+			return fmt.Errorf("mevcut log mesajları alınırken hata: %v", err)
+		}
+
+		// Mevcut log mesajlarını çözümle
+		var existingLogMessages []string
+		if err := json.Unmarshal(existingLogs, &existingLogMessages); err != nil {
+			return fmt.Errorf("mevcut log mesajları ayrıştırılırken hata: %v", err)
+		}
+
+		// Yeni log mesajlarını ekle
+		combinedLogMessages := append(existingLogMessages, logUpdate.LogMessages...)
+
+		// Birleştirilmiş log mesajlarını JSON'a dönüştür
+		combinedLogsJSON, err := json.Marshal(combinedLogMessages)
+		if err != nil {
+			return fmt.Errorf("birleştirilmiş log mesajları JSON dönüştürme hatası: %v", err)
+		}
+
+		// Güncelleme sorgusunu çalıştır
+		updateQuery := `
+			UPDATE process_logs SET 
+				status = $1,
+				log_messages = $2,
+				elapsed_time_s = $3,
+				metadata = $4,
+				updated_at = $5
+			WHERE process_id = $6 AND agent_id = $7
+		`
+
+		_, err = s.db.ExecContext(ctx, updateQuery,
+			logUpdate.Status,
+			combinedLogsJSON,
+			logUpdate.ElapsedTimeS,
+			metadataJSON,
+			time.Now(),
+			logUpdate.ProcessId,
+			logUpdate.AgentId,
+		)
+
+		if err != nil {
+			return fmt.Errorf("işlem kaydı güncellenirken hata: %v", err)
+		}
+	}
+
+	log.Printf("Process logları başarıyla kaydedildi - Process ID: %s", logUpdate.ProcessId)
+	return nil
+}
+
+// GetProcessStatus, belirli bir işlemin durumunu sorgular
+func (s *Server) GetProcessStatus(ctx context.Context, req *pb.ProcessStatusRequest) (*pb.ProcessStatusResponse, error) {
+	log.Printf("GetProcessStatus metodu çağrıldı - Agent ID: %s, Process ID: %s", req.AgentId, req.ProcessId)
+
+	// Veritabanı bağlantısını kontrol et
+	if err := s.checkDatabaseConnection(); err != nil {
+		return nil, fmt.Errorf("veritabanı bağlantı hatası: %v", err)
+	}
+
+	// İşlem bilgilerini veritabanından al
+	query := `
+		SELECT process_id, agent_id, process_type, status, log_messages, elapsed_time_s, metadata, created_at, updated_at
+		FROM process_logs
+		WHERE process_id = $1 AND agent_id = $2
+	`
+
+	var (
+		processID       string
+		agentID         string
+		processType     string
+		status          string
+		logMessagesJSON []byte
+		elapsedTimeS    float32
+		metadataJSON    []byte
+		createdAt       time.Time
+		updatedAt       time.Time
+	)
+
+	err := s.db.QueryRowContext(ctx, query, req.ProcessId, req.AgentId).Scan(
+		&processID,
+		&agentID,
+		&processType,
+		&status,
+		&logMessagesJSON,
+		&elapsedTimeS,
+		&metadataJSON,
+		&createdAt,
+		&updatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("Process bulunamadı: %s", req.ProcessId)
+			return nil, fmt.Errorf("process bulunamadı: %s", req.ProcessId)
+		}
+		log.Printf("Process bilgileri alınırken hata: %v", err)
+		return nil, fmt.Errorf("process bilgileri alınırken hata: %v", err)
+	}
+
+	// Log mesajlarını çözümle
+	var logMessages []string
+	if err := json.Unmarshal(logMessagesJSON, &logMessages); err != nil {
+		log.Printf("Log mesajları ayrıştırılırken hata: %v", err)
+		return nil, fmt.Errorf("log mesajları ayrıştırılırken hata: %v", err)
+	}
+
+	// Metadata'yı çözümle
+	var metadata map[string]string
+	if err := json.Unmarshal(metadataJSON, &metadata); err != nil {
+		log.Printf("Metadata ayrıştırılırken hata: %v", err)
+		return nil, fmt.Errorf("metadata ayrıştırılırken hata: %v", err)
+	}
+
+	log.Printf("Process bilgileri başarıyla alındı - Process ID: %s, Status: %s, Log sayısı: %d",
+		processID, status, len(logMessages))
+
+	return &pb.ProcessStatusResponse{
+		ProcessId:    processID,
+		ProcessType:  processType,
+		Status:       status,
+		ElapsedTimeS: elapsedTimeS,
+		LogMessages:  logMessages,
+		CreatedAt:    createdAt.Format(time.RFC3339),
+		UpdatedAt:    updatedAt.Format(time.RFC3339),
+		Metadata:     metadata,
+	}, nil
 }

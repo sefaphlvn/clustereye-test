@@ -44,6 +44,8 @@ const (
 	AgentService_ExplainQuery_FullMethodName             = "/agent.AgentService/ExplainQuery"
 	AgentService_SendMSSQLInfo_FullMethodName            = "/agent.AgentService/SendMSSQLInfo"
 	AgentService_GetBestPracticesAnalysis_FullMethodName = "/agent.AgentService/GetBestPracticesAnalysis"
+	AgentService_ReportProcessLogs_FullMethodName        = "/agent.AgentService/ReportProcessLogs"
+	AgentService_GetProcessStatus_FullMethodName         = "/agent.AgentService/GetProcessStatus"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -94,6 +96,10 @@ type AgentServiceClient interface {
 	SendMSSQLInfo(ctx context.Context, in *MSSQLInfoRequest, opts ...grpc.CallOption) (*MSSQLInfoResponse, error)
 	// SQL Server Best Practices Analizi
 	GetBestPracticesAnalysis(ctx context.Context, in *BestPracticesAnalysisRequest, opts ...grpc.CallOption) (*BestPracticesAnalysisResponse, error)
+	// İşlem log mesajlarını server'a gönderir
+	ReportProcessLogs(ctx context.Context, in *ProcessLogRequest, opts ...grpc.CallOption) (*ProcessLogResponse, error)
+	// Belirli bir işlemin durumunu sorgular
+	GetProcessStatus(ctx context.Context, in *ProcessStatusRequest, opts ...grpc.CallOption) (*ProcessStatusResponse, error)
 }
 
 type agentServiceClient struct {
@@ -363,6 +369,26 @@ func (c *agentServiceClient) GetBestPracticesAnalysis(ctx context.Context, in *B
 	return out, nil
 }
 
+func (c *agentServiceClient) ReportProcessLogs(ctx context.Context, in *ProcessLogRequest, opts ...grpc.CallOption) (*ProcessLogResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProcessLogResponse)
+	err := c.cc.Invoke(ctx, AgentService_ReportProcessLogs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) GetProcessStatus(ctx context.Context, in *ProcessStatusRequest, opts ...grpc.CallOption) (*ProcessStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProcessStatusResponse)
+	err := c.cc.Invoke(ctx, AgentService_GetProcessStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -411,6 +437,10 @@ type AgentServiceServer interface {
 	SendMSSQLInfo(context.Context, *MSSQLInfoRequest) (*MSSQLInfoResponse, error)
 	// SQL Server Best Practices Analizi
 	GetBestPracticesAnalysis(context.Context, *BestPracticesAnalysisRequest) (*BestPracticesAnalysisResponse, error)
+	// İşlem log mesajlarını server'a gönderir
+	ReportProcessLogs(context.Context, *ProcessLogRequest) (*ProcessLogResponse, error)
+	// Belirli bir işlemin durumunu sorgular
+	GetProcessStatus(context.Context, *ProcessStatusRequest) (*ProcessStatusResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -495,6 +525,12 @@ func (UnimplementedAgentServiceServer) SendMSSQLInfo(context.Context, *MSSQLInfo
 }
 func (UnimplementedAgentServiceServer) GetBestPracticesAnalysis(context.Context, *BestPracticesAnalysisRequest) (*BestPracticesAnalysisResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBestPracticesAnalysis not implemented")
+}
+func (UnimplementedAgentServiceServer) ReportProcessLogs(context.Context, *ProcessLogRequest) (*ProcessLogResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReportProcessLogs not implemented")
+}
+func (UnimplementedAgentServiceServer) GetProcessStatus(context.Context, *ProcessStatusRequest) (*ProcessStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetProcessStatus not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -934,6 +970,42 @@ func _AgentService_GetBestPracticesAnalysis_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_ReportProcessLogs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProcessLogRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ReportProcessLogs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ReportProcessLogs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ReportProcessLogs(ctx, req.(*ProcessLogRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_GetProcessStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProcessStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).GetProcessStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_GetProcessStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).GetProcessStatus(ctx, req.(*ProcessStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1028,6 +1100,14 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetBestPracticesAnalysis",
 			Handler:    _AgentService_GetBestPracticesAnalysis_Handler,
+		},
+		{
+			MethodName: "ReportProcessLogs",
+			Handler:    _AgentService_ReportProcessLogs_Handler,
+		},
+		{
+			MethodName: "GetProcessStatus",
+			Handler:    _AgentService_GetProcessStatus_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

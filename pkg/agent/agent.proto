@@ -38,6 +38,47 @@ message PostgresInfo {
   string data_path = 16;
 }
 
+// ProcessLogUpdate, uzun süren bir işlemin (PostgreSQL promotion, failover vb.) log güncellemeleri için kullanılır
+message ProcessLogUpdate {
+  string agent_id = 1;       // Agent tanımlayıcısı
+  string process_id = 2;     // İşlem ID (UUID)
+  string process_type = 3;   // İşlem türü (postgresql_promotion, postgresql_failover, postgresql_backup vb.)
+  repeated string log_messages = 4;  // Yeni log mesajları
+  string status = 5;         // İşlem durumu (running, completed, failed)
+  float elapsed_time_s = 6;  // İşlemin başlangıcından itibaren geçen süre (saniye)
+  string updated_at = 7;     // Bu güncellemenin zaman damgası
+  map<string, string> metadata = 8;  // İşlem ile ilgili ek bilgiler
+}
+
+// ProcessLogRequest, server'a log güncellemeleri göndermek için kullanılır
+message ProcessLogRequest {
+  ProcessLogUpdate log_update = 1;
+}
+
+// ProcessLogResponse, server'dan gelen yanıt
+message ProcessLogResponse {
+  string status = 1;         // Güncelleme durumu (ok, error)
+  string message = 2;        // Varsa, hata mesajı
+}
+
+// Processor statüsünü almak için kullanılır
+message ProcessStatusRequest {
+  string agent_id = 1;
+  string process_id = 2;
+}
+
+// Processor statüsünü içeren yanıt
+message ProcessStatusResponse {
+  string process_id = 1;
+  string process_type = 2;
+  string status = 3;
+  float elapsed_time_s = 4;
+  repeated string log_messages = 5;  // Tüm log mesajları
+  string created_at = 6;
+  string updated_at = 7;
+  map<string, string> metadata = 8;
+}
+
 // MongoDB bilgileri için mesaj tanımı
 message MongoInfo {
   string cluster_name = 1;
@@ -627,4 +668,10 @@ service AgentService {
   
   // SQL Server Best Practices Analizi
   rpc GetBestPracticesAnalysis(BestPracticesAnalysisRequest) returns (BestPracticesAnalysisResponse) {}
+
+  // İşlem log mesajlarını server'a gönderir
+  rpc ReportProcessLogs(ProcessLogRequest) returns (ProcessLogResponse);
+  
+  // Belirli bir işlemin durumunu sorgular
+  rpc GetProcessStatus(ProcessStatusRequest) returns (ProcessStatusResponse);
 }
