@@ -1137,12 +1137,17 @@ func getJob(server *server.Server) gin.HandlerFunc {
 // listJobs, job listesini getirir
 func listJobs(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		log.Printf("[DEBUG] listJobs API handler çağrıldı - URL: %s", c.Request.URL.String())
+
 		// Query parametrelerini al
 		agentID := c.Query("agent_id")
 		status := c.Query("status")
 		jobType := c.Query("type")
 		limit := c.DefaultQuery("limit", "10")
 		offset := c.DefaultQuery("offset", "0")
+
+		log.Printf("[DEBUG] Query parametreleri: agent_id=%s, status=%s, type=%s, limit=%s, offset=%s",
+			agentID, status, jobType, limit, offset)
 
 		// Limit ve offset'i parse et
 		limitInt, _ := strconv.ParseInt(limit, 10, 32)
@@ -1159,6 +1164,8 @@ func listJobs(server *server.Server) gin.HandlerFunc {
 		if status != "" {
 			if val, ok := pb.JobStatus_value[status]; ok {
 				req.Status = pb.JobStatus(val)
+			} else {
+				log.Printf("[DEBUG] Geçersiz status değeri: %s", status)
 			}
 		}
 
@@ -1166,19 +1173,33 @@ func listJobs(server *server.Server) gin.HandlerFunc {
 		if jobType != "" {
 			if val, ok := pb.JobType_value[jobType]; ok {
 				req.Type = pb.JobType(val)
+			} else {
+				log.Printf("[DEBUG] Geçersiz type değeri: %s", jobType)
 			}
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
 
+		log.Printf("[DEBUG] ListJobs RPC çağrısı yapılıyor...")
 		response, err := server.ListJobs(ctx, req)
+
 		if err != nil {
+			log.Printf("[ERROR] Job listesi alınamadı: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status": "error",
 				"error":  "Job listesi alınamadı: " + err.Error(),
 			})
 			return
+		}
+
+		log.Printf("[DEBUG] ListJobs RPC çağrısı başarılı - Dönen job sayısı: %d, Toplam: %d",
+			len(response.Jobs), response.Total)
+
+		// Dönen her job'ı logla
+		for i, job := range response.Jobs {
+			log.Printf("[DEBUG] Job[%d]: ID=%s, Agent=%s, Status=%s, Type=%s",
+				i, job.JobId, job.AgentId, job.Status, job.Type)
 		}
 
 		c.JSON(http.StatusOK, gin.H{

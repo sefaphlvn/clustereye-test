@@ -2915,11 +2915,17 @@ func (s *Server) GetJob(ctx context.Context, req *pb.GetJobRequest) (*pb.GetJobR
 
 // ListJobs, job listesini getirir
 func (s *Server) ListJobs(ctx context.Context, req *pb.ListJobsRequest) (*pb.ListJobsResponse, error) {
+	log.Printf("[DEBUG] ListJobs çağrıldı - Parametreler: agent_id=%s, status=%v, type=%v, limit=%d, offset=%d",
+		req.AgentId, req.Status, req.Type, req.Limit, req.Offset)
+
 	s.jobMu.RLock()
 	defer s.jobMu.RUnlock()
 
+	// Jobs map'inin boyutunu logla
+	log.Printf("[DEBUG] Toplam job sayısı: %d", len(s.jobs))
+
 	var filteredJobs []*pb.Job
-	for _, job := range s.jobs {
+	for jobID, job := range s.jobs {
 		// Agent ID filtresi
 		if req.AgentId != "" && job.AgentId != req.AgentId {
 			continue
@@ -2932,8 +2938,13 @@ func (s *Server) ListJobs(ctx context.Context, req *pb.ListJobsRequest) (*pb.Lis
 		if req.Type != pb.JobType_JOB_TYPE_UNKNOWN && job.Type != req.Type {
 			continue
 		}
+		log.Printf("[DEBUG] Job eşleşti: id=%s, agent=%s, status=%s, type=%s",
+			jobID, job.AgentId, job.Status, job.Type)
 		filteredJobs = append(filteredJobs, job)
 	}
+
+	// Filtrelenmiş job sayısını logla
+	log.Printf("[DEBUG] Filtrelenmiş job sayısı: %d", len(filteredJobs))
 
 	// Pagination
 	total := len(filteredJobs)
@@ -2945,6 +2956,9 @@ func (s *Server) ListJobs(ctx context.Context, req *pb.ListJobsRequest) (*pb.Lis
 	if start > total {
 		start = total
 	}
+
+	// Pagination sonrası dönecek job sayısını logla
+	log.Printf("[DEBUG] Pagination sonrası dönecek job sayısı: %d (start=%d, end=%d)", end-start, start, end)
 
 	return &pb.ListJobsResponse{
 		Jobs:  filteredJobs[start:end],
