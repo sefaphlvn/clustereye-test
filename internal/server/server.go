@@ -3919,6 +3919,41 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 		}
 	}
 
+	// Eğer işlem tamamlandıysa veya başarısız olduysa, job durumunu da güncelle
+	if logUpdate.Status == "completed" || logUpdate.Status == "failed" {
+		log.Printf("Process %s tamamlandı, job durumu güncelleniyor. Status: %s", logUpdate.ProcessId, logUpdate.Status)
+
+		// Process ID ile job'ı bul (job_id olarak process_id kullanılıyor)
+		s.jobMu.Lock()
+		job, exists := s.jobs[logUpdate.ProcessId]
+
+		if exists {
+			// Job durumunu güncelle
+			if logUpdate.Status == "completed" {
+				job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
+				job.Result = "Job completed successfully by agent process logger"
+			} else {
+				job.Status = pb.JobStatus_JOB_STATUS_FAILED
+				job.ErrorMessage = "Job failed as reported by agent process logger"
+			}
+
+			job.UpdatedAt = timestamppb.Now()
+			s.jobs[logUpdate.ProcessId] = job
+			s.jobMu.Unlock()
+
+			// Veritabanında da job durumunu güncelle
+			err = s.updateJobInDatabase(context.Background(), job)
+			if err != nil {
+				log.Printf("Job durumu veritabanında güncellenirken hata: %v", err)
+			} else {
+				log.Printf("Job durumu başarıyla güncellendi: %s -> %s", logUpdate.ProcessId, job.Status.String())
+			}
+		} else {
+			s.jobMu.Unlock()
+			log.Printf("Process ID'ye karşılık gelen job bulunamadı: %s", logUpdate.ProcessId)
+		}
+	}
+
 	log.Printf("Process logları başarıyla kaydedildi - Process ID: %s", logUpdate.ProcessId)
 	return nil
 }
