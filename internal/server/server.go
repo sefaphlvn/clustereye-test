@@ -2913,56 +2913,182 @@ func (s *Server) GetJob(ctx context.Context, req *pb.GetJobRequest) (*pb.GetJobR
 	}, nil
 }
 
-// ListJobs, job listesini getirir
+// ListJobs, job listesini veritabanından doğrudan sorgular ve getirir
 func (s *Server) ListJobs(ctx context.Context, req *pb.ListJobsRequest) (*pb.ListJobsResponse, error) {
 	log.Printf("[DEBUG] ListJobs çağrıldı - Parametreler: agent_id=%s, status=%v, type=%v, limit=%d, offset=%d",
 		req.AgentId, req.Status, req.Type, req.Limit, req.Offset)
 
-	s.jobMu.RLock()
-	defer s.jobMu.RUnlock()
-
-	// Jobs map'inin boyutunu logla
-	log.Printf("[DEBUG] Toplam job sayısı: %d", len(s.jobs))
-
-	var filteredJobs []*pb.Job
-	for jobID, job := range s.jobs {
-		// Agent ID filtresi
-		if req.AgentId != "" && job.AgentId != req.AgentId {
-			continue
-		}
-		// Status filtresi
-		if req.Status != pb.JobStatus_JOB_STATUS_UNKNOWN && job.Status != req.Status {
-			continue
-		}
-		// Type filtresi
-		if req.Type != pb.JobType_JOB_TYPE_UNKNOWN && job.Type != req.Type {
-			continue
-		}
-		log.Printf("[DEBUG] Job eşleşti: id=%s, agent=%s, status=%s, type=%s",
-			jobID, job.AgentId, job.Status, job.Type)
-		filteredJobs = append(filteredJobs, job)
+	// Veritabanı bağlantısını kontrol et
+	if err := s.checkDatabaseConnection(); err != nil {
+		return nil, fmt.Errorf("veritabanı bağlantı hatası: %v", err)
 	}
 
-	// Filtrelenmiş job sayısını logla
-	log.Printf("[DEBUG] Filtrelenmiş job sayısı: %d", len(filteredJobs))
+	// Sorgu için parametreleri hazırla
+	var queryParams []interface{}
+	var conditions []string
 
-	// Pagination
-	total := len(filteredJobs)
-	start := int(req.Offset)
-	end := start + int(req.Limit)
-	if end > total {
-		end = total
-	}
-	if start > total {
-		start = total
+	// Temel sorgu oluştur
+	baseQuery := `
+		SELECT 
+			job_id, type, status, agent_id, 
+			created_at, updated_at, error_message, 
+			parameters, result
+		FROM jobs
+	`
+
+	// WHERE koşulları oluştur
+	paramCount := 1 // PostgreSQL parametreleri $1, $2, ... şeklinde başlar
+
+	// Agent ID filtresi ekle
+	if req.AgentId != "" {
+		conditions = append(conditions, fmt.Sprintf("agent_id = $%d", paramCount))
+		queryParams = append(queryParams, req.AgentId)
+		paramCount++
 	}
 
-	// Pagination sonrası dönecek job sayısını logla
-	log.Printf("[DEBUG] Pagination sonrası dönecek job sayısı: %d (start=%d, end=%d)", end-start, start, end)
+	// Status filtresi ekle
+	if req.Status != pb.JobStatus_JOB_STATUS_UNKNOWN {
+		conditions = append(conditions, fmt.Sprintf("status = $%d", paramCount))
+		queryParams = append(queryParams, req.Status.String())
+		paramCount++
+	}
+
+	// Type filtresi ekle
+	if req.Type != pb.JobType_JOB_TYPE_UNKNOWN {
+		conditions = append(conditions, fmt.Sprintf("type = $%d", paramCount))
+		queryParams = append(queryParams, req.Type.String())
+		paramCount++
+	}
+
+	// WHERE koşullarını SQL sorgusuna ekle
+	query := baseQuery
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	// Toplam kayıt sayısını almak için COUNT sorgusu
+	countQuery := "SELECT COUNT(*) FROM jobs"
+	if len(conditions) > 0 {
+		countQuery += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	// Önce toplam kayıt sayısını al
+	var total int32
+	err := s.db.QueryRowContext(ctx, countQuery, queryParams...).Scan(&total)
+	if err != nil {
+		log.Printf("[ERROR] Job sayısı alınamadı: %v", err)
+		return nil, fmt.Errorf("job sayısı alınamadı: %v", err)
+	}
+	log.Printf("[DEBUG] Filtrelere göre toplam job sayısı: %d", total)
+
+	// Sıralama ve limit ekle
+	query += " ORDER BY created_at DESC"
+
+	// Varsayılan değerler
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 10 // Varsayılan limit
+	}
+
+	offset := req.Offset
+	if offset < 0 {
+		offset = 0
+	}
+
+	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", paramCount, paramCount+1)
+	queryParams = append(queryParams, limit, offset)
+
+	log.Printf("[DEBUG] SQL sorgusu: %s", query)
+	log.Printf("[DEBUG] Parametreler: %v", queryParams)
+
+	// Asıl sorguyu çalıştır
+	rows, err := s.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		log.Printf("[ERROR] Job sorgusu çalıştırılamadı: %v", err)
+		return nil, fmt.Errorf("job sorgusu çalıştırılamadı: %v", err)
+	}
+	defer rows.Close()
+
+	// Sonuçları işle
+	var jobs []*pb.Job
+	for rows.Next() {
+		var (
+			jobID        string
+			jobType      string
+			jobStatus    string
+			agentID      string
+			createdAt    time.Time
+			updatedAt    time.Time
+			errorMessage sql.NullString
+			parameters   []byte // JSON formatında
+			result       sql.NullString
+		)
+
+		// Satırı oku
+		if err := rows.Scan(
+			&jobID, &jobType, &jobStatus, &agentID,
+			&createdAt, &updatedAt, &errorMessage,
+			&parameters, &result,
+		); err != nil {
+			log.Printf("[ERROR] Job kaydı okunamadı: %v", err)
+			continue
+		}
+
+		// Parameters JSON'ı çözümle
+		var paramsMap map[string]string
+		if err := json.Unmarshal(parameters, &paramsMap); err != nil {
+			log.Printf("[ERROR] Job parametreleri çözümlenemedi (%s): %v", jobID, err)
+			paramsMap = make(map[string]string) // Boş map kullan
+		}
+
+		// JobType ve JobStatus enum değerlerini çözümle
+		jobTypeEnum, ok := pb.JobType_value[jobType]
+		if !ok {
+			log.Printf("[WARN] Bilinmeyen job tipi: %s, varsayılan olarak JOB_TYPE_UNKNOWN kullanılıyor", jobType)
+			jobTypeEnum = int32(pb.JobType_JOB_TYPE_UNKNOWN)
+		}
+
+		jobStatusEnum, ok := pb.JobStatus_value[jobStatus]
+		if !ok {
+			log.Printf("[WARN] Bilinmeyen job durumu: %s, varsayılan olarak JOB_STATUS_UNKNOWN kullanılıyor", jobStatus)
+			jobStatusEnum = int32(pb.JobStatus_JOB_STATUS_UNKNOWN)
+		}
+
+		// pb.Job nesnesi oluştur
+		job := &pb.Job{
+			JobId:      jobID,
+			Type:       pb.JobType(jobTypeEnum),
+			Status:     pb.JobStatus(jobStatusEnum),
+			AgentId:    agentID,
+			CreatedAt:  timestamppb.New(createdAt),
+			UpdatedAt:  timestamppb.New(updatedAt),
+			Parameters: paramsMap,
+		}
+
+		// Null olabilecek alanları işle
+		if errorMessage.Valid {
+			job.ErrorMessage = errorMessage.String
+		}
+
+		if result.Valid {
+			job.Result = result.String
+		}
+
+		// Job'ı listeye ekle
+		jobs = append(jobs, job)
+	}
+
+	// Rows.Err() kontrolü
+	if err := rows.Err(); err != nil {
+		log.Printf("[ERROR] Job kayıtları okunurken hata: %v", err)
+		return nil, fmt.Errorf("job kayıtları okunurken hata: %v", err)
+	}
+
+	log.Printf("[DEBUG] Veritabanından %d job kaydı döndürülüyor (toplam: %d)", len(jobs), total)
 
 	return &pb.ListJobsResponse{
-		Jobs:  filteredJobs[start:end],
-		Total: int32(total),
+		Jobs:  jobs,
+		Total: total,
 	}, nil
 }
 
