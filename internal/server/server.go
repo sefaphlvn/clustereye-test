@@ -3932,12 +3932,29 @@ func (s *Server) GetProcessStatus(ctx context.Context, req *pb.ProcessStatusRequ
 		return nil, fmt.Errorf("veritabanı bağlantı hatası: %v", err)
 	}
 
-	// İşlem bilgilerini veritabanından al
-	query := `
-		SELECT process_id, agent_id, process_type, status, log_messages, elapsed_time_s, metadata, created_at, updated_at
-		FROM process_logs
-		WHERE process_id = $1 AND agent_id = $2
-	`
+	// SQL sorgusu hazırla
+	var query string
+	var args []interface{}
+
+	if req.AgentId != "" {
+		// Agent ID verilmişse hem process_id hem agent_id ile sorgula
+		query = `
+			SELECT process_id, agent_id, process_type, status, log_messages, elapsed_time_s, metadata, created_at, updated_at
+			FROM process_logs
+			WHERE process_id = $1 AND agent_id = $2
+		`
+		args = []interface{}{req.ProcessId, req.AgentId}
+	} else {
+		// Agent ID verilmemişse sadece process_id ile sorgula
+		query = `
+			SELECT process_id, agent_id, process_type, status, log_messages, elapsed_time_s, metadata, created_at, updated_at
+			FROM process_logs
+			WHERE process_id = $1
+		`
+		args = []interface{}{req.ProcessId}
+	}
+
+	log.Printf("Process sorgusu: %s, Parametreler: %v", query, args)
 
 	var (
 		processID       string
@@ -3951,7 +3968,8 @@ func (s *Server) GetProcessStatus(ctx context.Context, req *pb.ProcessStatusRequ
 		updatedAt       time.Time
 	)
 
-	err := s.db.QueryRowContext(ctx, query, req.ProcessId, req.AgentId).Scan(
+	// Sorguyu çalıştır
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(
 		&processID,
 		&agentID,
 		&processType,
