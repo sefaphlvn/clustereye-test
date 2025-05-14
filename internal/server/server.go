@@ -250,6 +250,7 @@ func (s *Server) SendPostgresInfo(ctx context.Context, req *pb.PostgresInfoReque
 	log.Printf("PGBouncer Durumu: %s, PG Servis Durumu: %s", pgInfo.PgBouncerStatus, pgInfo.PgServiceStatus)
 	log.Printf("Replikasyon Gecikmesi: %d saniye, Boş Disk: %s, FD Yüzdesi: %d%%",
 		pgInfo.ReplicationLagSec, pgInfo.FreeDisk, pgInfo.FdPercent)
+	log.Printf("Config Yolu: %s, Data Yolu: %s", pgInfo.ConfigPath, pgInfo.DataPath)
 
 	// Veritabanına kaydetme işlemi
 	// Bu kısmı ihtiyacınıza göre geliştirebilirsiniz
@@ -298,6 +299,7 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 		"TotalVCPU":         pgInfo.TotalVcpu,
 		"TotalMemory":       pgInfo.TotalMemory,
 		"ConfigPath":        pgInfo.ConfigPath,
+		"DataPath":          pgInfo.DataPath,
 	}
 
 	var jsonData []byte

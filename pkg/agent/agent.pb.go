@@ -259,6 +259,7 @@ type PostgresInfo struct {
 	TotalVcpu         int32                  `protobuf:"varint,13,opt,name=total_vcpu,json=totalVcpu,proto3" json:"total_vcpu,omitempty"`
 	TotalMemory       int64                  `protobuf:"varint,14,opt,name=total_memory,json=totalMemory,proto3" json:"total_memory,omitempty"`
 	ConfigPath        string                 `protobuf:"bytes,15,opt,name=config_path,json=configPath,proto3" json:"config_path,omitempty"`
+	DataPath          string                 `protobuf:"bytes,16,opt,name=data_path,json=dataPath,proto3" json:"data_path,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -387,6 +388,13 @@ func (x *PostgresInfo) GetTotalMemory() int64 {
 func (x *PostgresInfo) GetConfigPath() string {
 	if x != nil {
 		return x.ConfigPath
+	}
+	return ""
+}
+
+func (x *PostgresInfo) GetDataPath() string {
+	if x != nil {
+		return x.DataPath
 	}
 	return ""
 }
@@ -5063,7 +5071,7 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x04auth\x18\x06 \x01(\bR\x04auth\x12\x12\n" +
 	"\x04test\x18\a \x01(\tR\x04test\x12#\n" +
 	"\rpostgres_user\x18\b \x01(\tR\fpostgresUser\x12#\n" +
-	"\rpostgres_pass\x18\t \x01(\tR\fpostgresPass\"\xe0\x03\n" +
+	"\rpostgres_pass\x18\t \x01(\tR\fpostgresPass\"\xfd\x03\n" +
 	"\fPostgresInfo\x12!\n" +
 	"\fcluster_name\x18\x01 \x01(\tR\vclusterName\x12\x0e\n" +
 	"\x02ip\x18\x02 \x01(\tR\x02ip\x12\x1a\n" +
@@ -5084,7 +5092,8 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"total_vcpu\x18\r \x01(\x05R\ttotalVcpu\x12!\n" +
 	"\ftotal_memory\x18\x0e \x01(\x03R\vtotalMemory\x12\x1f\n" +
 	"\vconfig_path\x18\x0f \x01(\tR\n" +
-	"configPath\"\xec\x03\n" +
+	"configPath\x12\x1b\n" +
+	"\tdata_path\x18\x10 \x01(\tR\bdataPath\"\xec\x03\n" +
 	"\tMongoInfo\x12!\n" +
 	"\fcluster_name\x18\x01 \x01(\tR\vclusterName\x12\x0e\n" +
 	"\x02ip\x18\x02 \x01(\tR\x02ip\x12\x1a\n" +
