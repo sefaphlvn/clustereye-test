@@ -46,7 +46,6 @@ const (
 	AgentService_GetBestPracticesAnalysis_FullMethodName = "/agent.AgentService/GetBestPracticesAnalysis"
 	AgentService_ReportProcessLogs_FullMethodName        = "/agent.AgentService/ReportProcessLogs"
 	AgentService_GetProcessStatus_FullMethodName         = "/agent.AgentService/GetProcessStatus"
-	AgentService_RunMSSQLHealthCheck_FullMethodName      = "/agent.AgentService/RunMSSQLHealthCheck"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -101,7 +100,6 @@ type AgentServiceClient interface {
 	ReportProcessLogs(ctx context.Context, in *ProcessLogRequest, opts ...grpc.CallOption) (*ProcessLogResponse, error)
 	// Belirli bir işlemin durumunu sorgular
 	GetProcessStatus(ctx context.Context, in *ProcessStatusRequest, opts ...grpc.CallOption) (*ProcessStatusResponse, error)
-	RunMSSQLHealthCheck(ctx context.Context, in *MSSQLHealthCheckRequest, opts ...grpc.CallOption) (*MSSQLHealthCheckResponse, error)
 }
 
 type agentServiceClient struct {
@@ -391,16 +389,6 @@ func (c *agentServiceClient) GetProcessStatus(ctx context.Context, in *ProcessSt
 	return out, nil
 }
 
-func (c *agentServiceClient) RunMSSQLHealthCheck(ctx context.Context, in *MSSQLHealthCheckRequest, opts ...grpc.CallOption) (*MSSQLHealthCheckResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(MSSQLHealthCheckResponse)
-	err := c.cc.Invoke(ctx, AgentService_RunMSSQLHealthCheck_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -453,7 +441,6 @@ type AgentServiceServer interface {
 	ReportProcessLogs(context.Context, *ProcessLogRequest) (*ProcessLogResponse, error)
 	// Belirli bir işlemin durumunu sorgular
 	GetProcessStatus(context.Context, *ProcessStatusRequest) (*ProcessStatusResponse, error)
-	RunMSSQLHealthCheck(context.Context, *MSSQLHealthCheckRequest) (*MSSQLHealthCheckResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -544,9 +531,6 @@ func (UnimplementedAgentServiceServer) ReportProcessLogs(context.Context, *Proce
 }
 func (UnimplementedAgentServiceServer) GetProcessStatus(context.Context, *ProcessStatusRequest) (*ProcessStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProcessStatus not implemented")
-}
-func (UnimplementedAgentServiceServer) RunMSSQLHealthCheck(context.Context, *MSSQLHealthCheckRequest) (*MSSQLHealthCheckResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RunMSSQLHealthCheck not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -1022,24 +1006,6 @@ func _AgentService_GetProcessStatus_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
-func _AgentService_RunMSSQLHealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MSSQLHealthCheckRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AgentServiceServer).RunMSSQLHealthCheck(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AgentService_RunMSSQLHealthCheck_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AgentServiceServer).RunMSSQLHealthCheck(ctx, req.(*MSSQLHealthCheckRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1142,10 +1108,6 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetProcessStatus",
 			Handler:    _AgentService_GetProcessStatus_Handler,
-		},
-		{
-			MethodName: "RunMSSQLHealthCheck",
-			Handler:    _AgentService_RunMSSQLHealthCheck_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
