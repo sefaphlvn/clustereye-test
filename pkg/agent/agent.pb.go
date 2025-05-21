@@ -90,6 +90,7 @@ const (
 	JobType_JOB_TYPE_MONGO_PROMOTE_PRIMARY   JobType = 1
 	JobType_JOB_TYPE_POSTGRES_PROMOTE_MASTER JobType = 2
 	JobType_JOB_TYPE_MONGO_FREEZE_SECONDARY  JobType = 3
+	JobType_JOB_TYPE_MSSQL_HEALTH_CHECK      JobType = 4
 )
 
 // Enum value maps for JobType.
@@ -99,12 +100,14 @@ var (
 		1: "JOB_TYPE_MONGO_PROMOTE_PRIMARY",
 		2: "JOB_TYPE_POSTGRES_PROMOTE_MASTER",
 		3: "JOB_TYPE_MONGO_FREEZE_SECONDARY",
+		4: "JOB_TYPE_MSSQL_HEALTH_CHECK",
 	}
 	JobType_value = map[string]int32{
 		"JOB_TYPE_UNKNOWN":                 0,
 		"JOB_TYPE_MONGO_PROMOTE_PRIMARY":   1,
 		"JOB_TYPE_POSTGRES_PROMOTE_MASTER": 2,
 		"JOB_TYPE_MONGO_FREEZE_SECONDARY":  3,
+		"JOB_TYPE_MSSQL_HEALTH_CHECK":      4,
 	}
 )
 
@@ -6068,12 +6071,13 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x12JOB_STATUS_RUNNING\x10\x02\x12\x18\n" +
 	"\x14JOB_STATUS_COMPLETED\x10\x03\x12\x15\n" +
 	"\x11JOB_STATUS_FAILED\x10\x04\x12\x18\n" +
-	"\x14JOB_STATUS_CANCELLED\x10\x05*\x8e\x01\n" +
+	"\x14JOB_STATUS_CANCELLED\x10\x05*\xaf\x01\n" +
 	"\aJobType\x12\x14\n" +
 	"\x10JOB_TYPE_UNKNOWN\x10\x00\x12\"\n" +
 	"\x1eJOB_TYPE_MONGO_PROMOTE_PRIMARY\x10\x01\x12$\n" +
 	" JOB_TYPE_POSTGRES_PROMOTE_MASTER\x10\x02\x12#\n" +
-	"\x1fJOB_TYPE_MONGO_FREEZE_SECONDARY\x10\x032\xa3\x11\n" +
+	"\x1fJOB_TYPE_MONGO_FREEZE_SECONDARY\x10\x03\x12\x1f\n" +
+	"\x1bJOB_TYPE_MSSQL_HEALTH_CHECK\x10\x042\xa3\x11\n" +
 	"\fAgentService\x128\n" +
 	"\aConnect\x12\x13.agent.AgentMessage\x1a\x14.agent.ServerMessage(\x010\x01\x12;\n" +
 	"\bRegister\x12\x16.agent.RegisterRequest\x1a\x17.agent.RegisterResponse\x129\n" +

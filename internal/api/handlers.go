@@ -84,8 +84,8 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		// MSSQL Best Practices analiz endpoint'i
 		agents.GET("/:agent_id/mssql/bestpractices", getMSSQLBestPracticesAnalysis(server))
 
-		// MSSQL Health Check analiz endpoint'i
-		agents.GET("/:agent_id/mssql/healthcheck", getMSSQLHealthCheck(server))
+		// MSSQL Health Check asenkron analiz endpoint'i
+		agents.POST("/:agent_id/mssql/healthcheck", createMSSQLHealthCheck(server))
 	}
 
 	// Status Endpoint'leri
@@ -1853,121 +1853,6 @@ func getMSSQLBestPracticesAnalysis(server *server.Server) gin.HandlerFunc {
 	}
 }
 
-// getMSSQLHealthCheck, MSSQL health check analizi gerçekleştirir
-func getMSSQLHealthCheck(server *server.Server) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		agentID := c.Param("agent_id")
-		if agentID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"status": "error",
-				"error":  "agent_id parametresi gerekli",
-			})
-			return
-		}
-
-		// İsteğe bağlı parametreler
-		database := c.Query("database")
-		serverName := c.Query("server")
-
-		// Health check özel parametreleri
-		includePerformance := c.DefaultQuery("performance", "true") == "true"
-		includeConfiguration := c.DefaultQuery("configuration", "true") == "true"
-		includeBackups := c.DefaultQuery("backups", "true") == "true"
-		includeLogs := c.DefaultQuery("logs", "true") == "true"
-		includeIndexes := c.DefaultQuery("indexes", "true") == "true"
-
-		log.Printf("[INFO] MSSQL Health Check analizi başlatılıyor - Agent ID: %s, Database: %s, Server: %s, Options=[Perf:%v,Config:%v,Backups:%v,Logs:%v,Indexes:%v]",
-			agentID, database, serverName, includePerformance, includeConfiguration, includeBackups, includeLogs, includeIndexes)
-
-		// Context oluştur ve zaman aşımı ayarla
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
-		defer cancel()
-
-		// Unique bir sorgu ID'si oluştur
-		queryID := fmt.Sprintf("health_check_%s_%d", agentID, time.Now().UnixNano())
-
-		// MSSQL_HEALTH_CHECK formatında komut oluştur
-		options := fmt.Sprintf("options=perf:%d,config:%d,backups:%d,logs:%d,indexes:%d",
-			boolToInt(includePerformance),
-			boolToInt(includeConfiguration),
-			boolToInt(includeBackups),
-			boolToInt(includeLogs),
-			boolToInt(includeIndexes))
-
-		command := fmt.Sprintf("MSSQL_HEALTH_CHECK|%s|%s|%s", database, serverName, options)
-
-		// Sorguyu agent'a gönder
-		result, err := server.SendQuery(ctx, agentID, queryID, command, "")
-		if err != nil {
-			log.Printf("[ERROR] MSSQL Health Check analizi hatası: %v", err)
-
-			// Context timeout ise 504 dön
-			if ctx.Err() == context.DeadlineExceeded {
-				c.JSON(http.StatusGatewayTimeout, gin.H{
-					"status": "error",
-					"error":  "Health Check analizi zaman aşımına uğradı",
-				})
-				return
-			}
-
-			// Diğer hatalar için 500 dön
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status": "error",
-				"error":  fmt.Sprintf("Health Check analizi hatası: %v", err),
-			})
-			return
-		}
-
-		if result.Result == nil {
-			log.Printf("[ERROR] MSSQL Health Check sonucu boş döndü")
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status": "error",
-				"error":  "Health Check sonucu boş döndü",
-			})
-			return
-		}
-
-		log.Printf("[INFO] MSSQL Health Check analizi tamamlandı - Agent ID: %s, Query ID: %s", agentID, queryID)
-
-		// Any tipinden Struct tipine dönüştür
-		var resultStruct structpb.Struct
-		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
-			log.Printf("[ERROR] MSSQL Health Check sonucu dönüştürme hatası: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status": "error",
-				"error":  fmt.Sprintf("Health Check sonucu dönüştürme hatası: %v", err),
-			})
-			return
-		}
-
-		// Struct'ı Go map'ine dönüştür
-		resultMap := resultStruct.AsMap()
-
-		// Başarılı yanıt
-		c.JSON(http.StatusOK, gin.H{
-			"status":             "success",
-			"query_id":           queryID,
-			"analysis_timestamp": time.Now().Format(time.RFC3339),
-			"check_options": gin.H{
-				"performance":   includePerformance,
-				"configuration": includeConfiguration,
-				"backups":       includeBackups,
-				"logs":          includeLogs,
-				"indexes":       includeIndexes,
-			},
-			"results": resultMap,
-		})
-	}
-}
-
-// boolToInt, boolean değeri 0 veya 1 olarak döndürür
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 // getProcessLogs, işlem loglarını almak için Gin handler
 func getProcessLogs(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -2031,6 +1916,84 @@ func getProcessLogs(server *server.Server) gin.HandlerFunc {
 			"created_at":     resp.CreatedAt,
 			"updated_at":     resp.UpdatedAt,
 			"metadata":       resp.Metadata,
+		})
+	}
+}
+
+// createMSSQLHealthCheck, MSSQL için asenkron health check analizi başlatır
+func createMSSQLHealthCheck(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Param("agent_id")
+		if agentID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "agent_id parametresi gerekli",
+			})
+			return
+		}
+
+		var req struct {
+			Database   string `json:"database"`
+			ServerName string `json:"server_name"`
+			Detailed   bool   `json:"detailed"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz istek formatı: " + err.Error(),
+			})
+			return
+		}
+
+		// Job ID oluştur
+		jobID := uuid.New().String()
+
+		log.Printf("[INFO] MSSQL Health Check analizi başlatılıyor - Job ID: %s, Agent ID: %s, Database: %s",
+			jobID, agentID, req.Database)
+
+		// Parameters oluştur
+		parameters := map[string]string{
+			"database":    req.Database,
+			"server_name": req.ServerName,
+			"detailed":    strconv.FormatBool(req.Detailed),
+		}
+
+		// Context oluştur
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		// Job oluştur
+		job := &pb.Job{
+			JobId:      jobID,
+			Type:       pb.JobType_JOB_TYPE_MSSQL_HEALTH_CHECK,
+			Status:     pb.JobStatus_JOB_STATUS_PENDING,
+			AgentId:    agentID,
+			CreatedAt:  timestamppb.Now(),
+			UpdatedAt:  timestamppb.Now(),
+			Parameters: parameters,
+		}
+
+		// Job'ı server'a gönder
+		if err := server.CreateJob(ctx, job); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Health check job'ı oluşturulamadı: " + err.Error(),
+			})
+			return
+		}
+
+		// Başarılı yanıt
+		c.JSON(http.StatusAccepted, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"job_id":      jobID,
+				"agent_id":    agentID,
+				"database":    req.Database,
+				"server_name": req.ServerName,
+				"status":      "PENDING",
+				"message":     "MSSQL Health Check analizi başlatıldı. İşlem durumunu kontrol etmek için job_id ile işlem durumunu sorgulayabilirsiniz.",
+			},
 		})
 	}
 }
