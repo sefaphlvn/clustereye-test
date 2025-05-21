@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -4211,5 +4212,167 @@ func (s *Server) GetProcessStatus(ctx context.Context, req *pb.ProcessStatusRequ
 		CreatedAt:    createdAt.Format(time.RFC3339),
 		UpdatedAt:    updatedAt.Format(time.RFC3339),
 		Metadata:     metadata,
+	}, nil
+}
+
+// RunMSSQLHealthCheck, MSSQL Health Check işlemini başlatır
+func (s *Server) RunMSSQLHealthCheck(ctx context.Context, req *pb.MSSQLHealthCheckRequest) (*pb.MSSQLHealthCheckResponse, error) {
+	log.Printf("RunMSSQLHealthCheck çağrıldı - Agent ID: %s, JobID: %s, Database: %s",
+		req.AgentId, req.JobId, req.DatabaseName)
+
+	// Process log takibi için metadata oluştur
+	metadata := map[string]string{
+		"job_id":   req.JobId,
+		"agent_id": req.AgentId,
+		"hostname": req.NodeHostname,
+		"database": req.DatabaseName,
+	}
+
+	// Job oluştur
+	job := &pb.Job{
+		JobId:     req.JobId,
+		Type:      pb.JobType_JOB_TYPE_MSSQL_HEALTH_CHECK,
+		Status:    pb.JobStatus_JOB_STATUS_PENDING,
+		AgentId:   req.AgentId,
+		CreatedAt: timestamppb.Now(),
+		UpdatedAt: timestamppb.Now(),
+		Parameters: map[string]string{
+			"database":              req.DatabaseName,
+			"server_name":           req.NodeHostname,
+			"include_performance":   strconv.FormatBool(req.IncludePerformance),
+			"include_configuration": strconv.FormatBool(req.IncludeConfiguration),
+			"include_backups":       strconv.FormatBool(req.IncludeBackups),
+			"include_logs":          strconv.FormatBool(req.IncludeLogs),
+			"include_indexes":       strconv.FormatBool(req.IncludeIndexes),
+			"process_id":            req.JobId, // Process ID olarak job ID'yi kullan
+		},
+	}
+
+	// Job'ı kaydet
+	s.jobMu.Lock()
+	s.jobs[job.JobId] = job
+	s.jobMu.Unlock()
+
+	// İlgili agent'ı bul
+	s.mu.RLock()
+	agent, exists := s.agents[req.AgentId]
+	s.mu.RUnlock()
+
+	if !exists {
+		job.Status = pb.JobStatus_JOB_STATUS_FAILED
+		job.ErrorMessage = "Agent bulunamadı"
+		job.UpdatedAt = timestamppb.Now()
+
+		// Process log oluştur - hata durumu
+		processLog := &pb.ProcessLogUpdate{
+			AgentId:      req.AgentId,
+			ProcessId:    req.JobId,
+			ProcessType:  "mssql_health_check",
+			Status:       "failed",
+			LogMessages:  []string{"Agent bulunamadı, işlem başlatılamadı"},
+			ElapsedTimeS: 0,
+			UpdatedAt:    time.Now().Format(time.RFC3339),
+			Metadata:     metadata,
+		}
+		s.saveProcessLogs(ctx, processLog)
+
+		return &pb.MSSQLHealthCheckResponse{
+			JobId:        job.JobId,
+			Status:       job.Status,
+			ErrorMessage: job.ErrorMessage,
+		}, fmt.Errorf("agent bulunamadı: %s", req.AgentId)
+	}
+
+	// Job'ı veritabanına kaydet
+	if err := s.saveJobToDatabase(ctx, job); err != nil {
+		job.Status = pb.JobStatus_JOB_STATUS_FAILED
+		job.ErrorMessage = fmt.Sprintf("Job veritabanına kaydedilemedi: %v", err)
+		job.UpdatedAt = timestamppb.Now()
+
+		// Process log oluştur - veritabanı hatası
+		processLog := &pb.ProcessLogUpdate{
+			AgentId:      req.AgentId,
+			ProcessId:    req.JobId,
+			ProcessType:  "mssql_health_check",
+			Status:       "failed",
+			LogMessages:  []string{fmt.Sprintf("Job veritabanına kaydedilemedi: %v", err)},
+			ElapsedTimeS: 0,
+			UpdatedAt:    time.Now().Format(time.RFC3339),
+			Metadata:     metadata,
+		}
+		s.saveProcessLogs(ctx, processLog)
+
+		return &pb.MSSQLHealthCheckResponse{
+			JobId:        job.JobId,
+			Status:       job.Status,
+			ErrorMessage: job.ErrorMessage,
+		}, err
+	}
+
+	// Process log başlangıç kaydı oluştur
+	startLog := &pb.ProcessLogUpdate{
+		AgentId:      req.AgentId,
+		ProcessId:    req.JobId,
+		ProcessType:  "mssql_health_check",
+		Status:       "running",
+		LogMessages:  []string{fmt.Sprintf("MSSQL Health Check analizi başlatılıyor - Database: %s, Server: %s", req.DatabaseName, req.NodeHostname)},
+		ElapsedTimeS: 0,
+		UpdatedAt:    time.Now().Format(time.RFC3339),
+		Metadata:     metadata,
+	}
+	s.saveProcessLogs(ctx, startLog)
+
+	// Job'ı çalıştır
+	go func() {
+		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
+		job.UpdatedAt = timestamppb.Now()
+		s.updateJobInDatabase(context.Background(), job)
+
+		// Agent'ın beklediği komut formatını oluştur
+		// mssql_health_check|job_id|database|server_name|include_performance|include_configuration|include_backups|include_logs|include_indexes
+		command := fmt.Sprintf("mssql_health_check|%s|%s|%s|%t|%t|%t|%t|%t",
+			req.JobId, req.DatabaseName, req.NodeHostname,
+			req.IncludePerformance, req.IncludeConfiguration,
+			req.IncludeBackups, req.IncludeLogs, req.IncludeIndexes)
+
+		// Agent'a health check isteği gönder
+		err := agent.Stream.Send(&pb.ServerMessage{
+			Payload: &pb.ServerMessage_Query{
+				Query: &pb.Query{
+					QueryId: job.JobId,
+					Command: command,
+				},
+			},
+		})
+
+		if err != nil {
+			job.Status = pb.JobStatus_JOB_STATUS_FAILED
+			job.ErrorMessage = fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)
+			job.UpdatedAt = timestamppb.Now()
+			s.updateJobInDatabase(context.Background(), job)
+
+			// Hata durumu process log'u
+			errorLog := &pb.ProcessLogUpdate{
+				AgentId:      req.AgentId,
+				ProcessId:    req.JobId,
+				ProcessType:  "mssql_health_check",
+				Status:       "failed",
+				LogMessages:  []string{fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)},
+				ElapsedTimeS: 0,
+				UpdatedAt:    time.Now().Format(time.RFC3339),
+				Metadata:     metadata,
+			}
+			s.saveProcessLogs(context.Background(), errorLog)
+		} else {
+			// Başarılı başlatma durumu
+			log.Printf("MSSQL health check işlemi agent'a iletildi - Job ID: %s", job.JobId)
+
+			// Agent ProcessLogger ile ilerleyişi bildirecek, burada bir şey yapmamıza gerek yok
+		}
+	}()
+
+	return &pb.MSSQLHealthCheckResponse{
+		JobId:  job.JobId,
+		Status: pb.JobStatus_JOB_STATUS_PENDING,
 	}, nil
 }

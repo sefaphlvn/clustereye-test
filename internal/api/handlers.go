@@ -1952,34 +1952,29 @@ func createMSSQLHealthCheck(server *server.Server) gin.HandlerFunc {
 		log.Printf("[INFO] MSSQL Health Check analizi başlatılıyor - Job ID: %s, Agent ID: %s, Database: %s",
 			jobID, agentID, req.Database)
 
-		// Parameters oluştur
-		parameters := map[string]string{
-			"database":    req.Database,
-			"server_name": req.ServerName,
-			"detailed":    strconv.FormatBool(req.Detailed),
-			"process_id":  jobID, // Job ID'yi process_id olarak da ekle
+		// gRPC isteği oluştur
+		grpcReq := &pb.MSSQLHealthCheckRequest{
+			JobId:                jobID,
+			AgentId:              agentID,
+			NodeHostname:         req.ServerName,
+			DatabaseName:         req.Database,
+			IncludePerformance:   req.Detailed,
+			IncludeConfiguration: true,         // Her zaman yapılandırma kontrolü yap
+			IncludeBackups:       true,         // Her zaman yedekleme kontrolü yap
+			IncludeLogs:          true,         // Her zaman log kontrolü yap
+			IncludeIndexes:       req.Detailed, // Detaylı analiz istenirse indexleri de kontrol et
 		}
 
 		// Context oluştur
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
 
-		// Job oluştur
-		job := &pb.Job{
-			JobId:      jobID,
-			Type:       pb.JobType_JOB_TYPE_MSSQL_HEALTH_CHECK,
-			Status:     pb.JobStatus_JOB_STATUS_PENDING,
-			AgentId:    agentID,
-			CreatedAt:  timestamppb.Now(),
-			UpdatedAt:  timestamppb.Now(),
-			Parameters: parameters,
-		}
-
-		// Job'ı server'a gönder
-		if err := server.CreateJob(ctx, job); err != nil {
+		// MSSQL health check işlemini başlat
+		response, err := server.RunMSSQLHealthCheck(ctx, grpcReq)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status": "error",
-				"error":  "Health check job'ı oluşturulamadı: " + err.Error(),
+				"error":  "Health check başlatılamadı: " + err.Error(),
 			})
 			return
 		}
@@ -1992,7 +1987,7 @@ func createMSSQLHealthCheck(server *server.Server) gin.HandlerFunc {
 				"agent_id":    agentID,
 				"database":    req.Database,
 				"server_name": req.ServerName,
-				"status":      "PENDING",
+				"status":      response.Status.String(),
 				"message":     "MSSQL Health Check analizi başlatıldı. İşlem durumunu kontrol etmek için job_id ile işlem durumunu sorgulayabilirsiniz.",
 			},
 		})
