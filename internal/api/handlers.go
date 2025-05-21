@@ -1858,22 +1858,15 @@ func getProcessLogs(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// İstek parametrelerini al
 		processID := c.Query("process_id")
-		jobID := c.Query("job_id") // Job ID parametresi ekle
 		agentID := c.Query("agent_id")
 
-		// Process ID veya Job ID kontrolü
-		if processID == "" && jobID == "" {
+		// Process ID kontrol et
+		if processID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"status": "error",
-				"error":  "process_id veya job_id parametresi gereklidir",
+				"error":  "process_id parametresi gereklidir",
 			})
 			return
-		}
-
-		// Eğer job_id verilmişse ve process_id verilmemişse, job_id'yi process_id olarak kullan
-		if processID == "" && jobID != "" {
-			processID = jobID
-			log.Printf("Job ID (%s) process ID olarak kullanılıyor", jobID)
 		}
 
 		// GetProcessStatus çağrısı yap
