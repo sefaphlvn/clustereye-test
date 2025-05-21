@@ -4322,8 +4322,28 @@ func (s *Server) RunMSSQLHealthCheck(ctx context.Context, req *pb.MSSQLHealthChe
 	}
 	s.saveProcessLogs(ctx, startLog)
 
+	// SonucKanal'ı oluştur - işlem sonucunu almak için kullanılacak
+	resultChan := make(chan *pb.MSSQLHealthCheckResponse, 1)
+
+	// QueryResult kanalı oluştur
+	queryResultChan := make(chan *pb.QueryResult, 1)
+	s.queryMu.Lock()
+	s.queryResult[job.JobId] = &QueryResponse{
+		ResultChan: queryResultChan,
+	}
+	s.queryMu.Unlock()
+
 	// Job'ı çalıştır
 	go func() {
+		defer func() {
+			// İşlem bitince kanalları kapat ve temizle
+			s.queryMu.Lock()
+			delete(s.queryResult, job.JobId)
+			s.queryMu.Unlock()
+			close(queryResultChan)
+			close(resultChan)
+		}()
+
 		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
 		job.UpdatedAt = timestamppb.Now()
 		s.updateJobInDatabase(context.Background(), job)
@@ -4363,16 +4383,171 @@ func (s *Server) RunMSSQLHealthCheck(ctx context.Context, req *pb.MSSQLHealthChe
 				Metadata:     metadata,
 			}
 			s.saveProcessLogs(context.Background(), errorLog)
+
+			// Hata yanıtını kanaldan gönder
+			resultChan <- &pb.MSSQLHealthCheckResponse{
+				JobId:        job.JobId,
+				Status:       job.Status,
+				ErrorMessage: job.ErrorMessage,
+			}
+			return
 		} else {
 			// Başarılı başlatma durumu
 			log.Printf("MSSQL health check işlemi agent'a iletildi - Job ID: %s", job.JobId)
 
-			// Agent ProcessLogger ile ilerleyişi bildirecek, burada bir şey yapmamıza gerek yok
+			// Agent'dan yanıt bekle
+			select {
+			case result := <-queryResultChan:
+				// Agent'dan sonuç geldi
+				log.Printf("MSSQL health check sonucu alındı - Job ID: %s", job.JobId)
+
+				// Result içeriğini işle
+				var resultStr string
+				if result.Result != nil {
+					if result.Result.TypeUrl == "type.googleapis.com/google.protobuf.Value" {
+						resultStr = string(result.Result.Value)
+					} else {
+						// Diğer tiplerden dönüştürme dene
+						var resultStruct structpb.Struct
+						if err := result.Result.UnmarshalTo(&resultStruct); err == nil {
+							resultBytes, err := json.Marshal(resultStruct.AsMap())
+							if err == nil {
+								resultStr = string(resultBytes)
+							}
+						}
+					}
+				}
+
+				if resultStr != "" {
+					// Job'ı güncelle
+					job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
+					job.Result = resultStr // Sonuç bilgisini Job.Result'a kaydet
+					job.UpdatedAt = timestamppb.Now()
+					s.updateJobInDatabase(context.Background(), job)
+
+					// Health check raporunu mssql_health_reports tablosuna kaydet
+					s.saveMSSQLHealthReport(context.Background(), job.JobId, resultStr)
+
+					// Başarı log'u oluştur
+					completeLog := &pb.ProcessLogUpdate{
+						AgentId:      req.AgentId,
+						ProcessId:    req.JobId,
+						ProcessType:  "mssql_health_check",
+						Status:       "completed",
+						LogMessages:  []string{"MSSQL health check başarıyla tamamlandı"},
+						ElapsedTimeS: 0, // Agent tarafından güncelleniyor
+						UpdatedAt:    time.Now().Format(time.RFC3339),
+						Metadata:     metadata,
+					}
+					s.saveProcessLogs(context.Background(), completeLog)
+
+					// Başarı yanıtını kanaldan gönder
+					resultChan <- &pb.MSSQLHealthCheckResponse{
+						JobId:  job.JobId,
+						Status: job.Status,
+						Result: resultStr,
+					}
+				} else {
+					// Sonuç boş
+					job.Status = pb.JobStatus_JOB_STATUS_FAILED
+					job.ErrorMessage = "Agent'dan geçerli bir sonuç alınamadı"
+					job.UpdatedAt = timestamppb.Now()
+					s.updateJobInDatabase(context.Background(), job)
+
+					// Hata log'u oluştur
+					errorLog := &pb.ProcessLogUpdate{
+						AgentId:      req.AgentId,
+						ProcessId:    req.JobId,
+						ProcessType:  "mssql_health_check",
+						Status:       "failed",
+						LogMessages:  []string{"Agent'dan geçerli bir sonuç alınamadı"},
+						ElapsedTimeS: 0,
+						UpdatedAt:    time.Now().Format(time.RFC3339),
+						Metadata:     metadata,
+					}
+					s.saveProcessLogs(context.Background(), errorLog)
+
+					// Hata yanıtını kanaldan gönder
+					resultChan <- &pb.MSSQLHealthCheckResponse{
+						JobId:        job.JobId,
+						Status:       job.Status,
+						ErrorMessage: job.ErrorMessage,
+					}
+				}
+
+			case <-time.After(5 * time.Minute): // 5 dakikalık timeout
+				// Timeout durumu
+				job.Status = pb.JobStatus_JOB_STATUS_FAILED
+				job.ErrorMessage = "Agent'dan yanıt bekleme süresi doldu"
+				job.UpdatedAt = timestamppb.Now()
+				s.updateJobInDatabase(context.Background(), job)
+
+				// Timeout log'u oluştur
+				timeoutLog := &pb.ProcessLogUpdate{
+					AgentId:      req.AgentId,
+					ProcessId:    req.JobId,
+					ProcessType:  "mssql_health_check",
+					Status:       "failed",
+					LogMessages:  []string{"Agent'dan yanıt bekleme süresi doldu (5 dakika)"},
+					ElapsedTimeS: 300, // 5 dakika
+					UpdatedAt:    time.Now().Format(time.RFC3339),
+					Metadata:     metadata,
+				}
+				s.saveProcessLogs(context.Background(), timeoutLog)
+
+				// Timeout yanıtını kanaldan gönder
+				resultChan <- &pb.MSSQLHealthCheckResponse{
+					JobId:        job.JobId,
+					Status:       job.Status,
+					ErrorMessage: job.ErrorMessage,
+				}
+			}
 		}
 	}()
+
+	// Sonuç kanalından hemen yanıt alma dene, ama beklemeden
+	select {
+	case resp := <-resultChan:
+		return resp, nil
+	default:
+		// Hemen sonuç gelmedi, beklemeden devam et
+	}
 
 	return &pb.MSSQLHealthCheckResponse{
 		JobId:  job.JobId,
 		Status: pb.JobStatus_JOB_STATUS_PENDING,
 	}, nil
+}
+
+// saveMSSQLHealthReport, MSSQL health check sonuçlarını veritabanına kaydeder
+func (s *Server) saveMSSQLHealthReport(ctx context.Context, jobID string, reportJSON string) error {
+	// Önce JSON formatını doğrula
+	var jsonData interface{}
+	if err := json.Unmarshal([]byte(reportJSON), &jsonData); err != nil {
+		log.Printf("[ERROR] Rapor JSON formatında değil: %v", err)
+		return err
+	}
+
+	// Raporun validasyonu başarılı, veritabanına kaydet
+	query := `
+		INSERT INTO mssql_health_reports (
+			job_id,
+			report_data,
+			created_at
+		) VALUES (?, ?, NOW())
+	`
+
+	// PostgreSQL kullanıyorsak parametreleri güncelleyelim
+	query = strings.Replace(query, "?", "$1", 1)
+	query = strings.Replace(query, "?", "$2", 1)
+	query = strings.Replace(query, "?", "CURRENT_TIMESTAMP", 1)
+
+	_, err := s.db.ExecContext(ctx, query, jobID, reportJSON)
+	if err != nil {
+		log.Printf("[ERROR] MSSQL health report kaydedilemedi: %v", err)
+		return err
+	}
+
+	log.Printf("[INFO] MSSQL health report başarıyla kaydedildi - Job ID: %s", jobID)
+	return nil
 }
