@@ -4109,9 +4109,20 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 	if logUpdate.Status == "completed" || logUpdate.Status == "failed" {
 		log.Printf("Process %s tamamlandı, job durumu güncelleniyor. Status: %s", logUpdate.ProcessId, logUpdate.Status)
 
-		// Process ID ile job'ı bul (job_id olarak process_id kullanılıyor)
+		// Önce process ID ile job'ı bul
 		s.jobMu.Lock()
 		job, exists := s.jobs[logUpdate.ProcessId]
+
+		// Eğer process ID ile job bulunamazsa, metadata içindeki job_id ile aramayı dene
+		if !exists && logUpdate.Metadata != nil {
+			if jobID, hasJobID := logUpdate.Metadata["job_id"]; hasJobID && jobID != "" {
+				log.Printf("Process ID ile job bulunamadı, metadata job_id ile arama yapılıyor: %s", jobID)
+				job, exists = s.jobs[jobID]
+				if exists {
+					log.Printf("Job metadata job_id ile bulundu: %s", jobID)
+				}
+			}
+		}
 
 		if exists {
 			// Job durumunu güncelle
@@ -4124,7 +4135,7 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 			}
 
 			job.UpdatedAt = timestamppb.Now()
-			s.jobs[logUpdate.ProcessId] = job
+			s.jobs[job.JobId] = job
 			s.jobMu.Unlock()
 
 			// Veritabanında da job durumunu güncelle
@@ -4132,11 +4143,11 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 			if err != nil {
 				log.Printf("Job durumu veritabanında güncellenirken hata: %v", err)
 			} else {
-				log.Printf("Job durumu başarıyla güncellendi: %s -> %s", logUpdate.ProcessId, job.Status.String())
+				log.Printf("Job durumu başarıyla güncellendi: %s -> %s", job.JobId, job.Status.String())
 			}
 		} else {
 			s.jobMu.Unlock()
-			log.Printf("Process ID'ye karşılık gelen job bulunamadı: %s", logUpdate.ProcessId)
+			log.Printf("Process ID veya metadata job_id'ye karşılık gelen job bulunamadı: %s", logUpdate.ProcessId)
 		}
 	}
 
