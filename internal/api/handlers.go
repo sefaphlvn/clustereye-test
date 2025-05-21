@@ -83,9 +83,6 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 
 		// MSSQL Best Practices analiz endpoint'i
 		agents.GET("/:agent_id/mssql/bestpractices", getMSSQLBestPracticesAnalysis(server))
-
-		// MSSQL Health Check asenkron analiz endpoint'i
-		agents.POST("/:agent_id/mssql/healthcheck", createMSSQLHealthCheck(server))
 	}
 
 	// Status Endpoint'leri
@@ -1916,80 +1913,6 @@ func getProcessLogs(server *server.Server) gin.HandlerFunc {
 			"created_at":     resp.CreatedAt,
 			"updated_at":     resp.UpdatedAt,
 			"metadata":       resp.Metadata,
-		})
-	}
-}
-
-// createMSSQLHealthCheck, MSSQL için asenkron health check analizi başlatır
-func createMSSQLHealthCheck(server *server.Server) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		agentID := c.Param("agent_id")
-		if agentID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"status": "error",
-				"error":  "agent_id parametresi gerekli",
-			})
-			return
-		}
-
-		var req struct {
-			Database   string `json:"database"`
-			ServerName string `json:"server_name"`
-			Detailed   bool   `json:"detailed"`
-		}
-
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"status": "error",
-				"error":  "Geçersiz istek formatı: " + err.Error(),
-			})
-			return
-		}
-
-		// Job ID oluştur
-		jobID := uuid.New().String()
-
-		log.Printf("[INFO] MSSQL Health Check analizi başlatılıyor - Job ID: %s, Agent ID: %s, Database: %s",
-			jobID, agentID, req.Database)
-
-		// gRPC isteği oluştur
-		grpcReq := &pb.MSSQLHealthCheckRequest{
-			JobId:                jobID,
-			AgentId:              agentID,
-			NodeHostname:         req.ServerName,
-			DatabaseName:         req.Database,
-			IncludePerformance:   req.Detailed,
-			IncludeConfiguration: true,         // Her zaman yapılandırma kontrolü yap
-			IncludeBackups:       true,         // Her zaman yedekleme kontrolü yap
-			IncludeLogs:          true,         // Her zaman log kontrolü yap
-			IncludeIndexes:       req.Detailed, // Detaylı analiz istenirse indexleri de kontrol et
-		}
-
-		// Context oluştur
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
-		defer cancel()
-
-		// MSSQL health check işlemini başlat
-		response, err := server.RunMSSQLHealthCheck(ctx, grpcReq)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status": "error",
-				"error":  "Health check başlatılamadı: " + err.Error(),
-			})
-			return
-		}
-
-		// Başarılı yanıt
-		c.JSON(http.StatusAccepted, gin.H{
-			"status": "success",
-			"data": gin.H{
-				"job_id":      jobID,
-				"agent_id":    agentID,
-				"database":    req.Database,
-				"server_name": req.ServerName,
-				"status":      response.Status.String(),
-				"message":     "MSSQL Health Check analizi başlatıldı. İşlem durumunu kontrol etmek için job_id ile işlem durumunu sorgulayabilirsiniz.",
-			},
 		})
 	}
 }

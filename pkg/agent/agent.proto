@@ -79,25 +79,6 @@ message ProcessStatusResponse {
   map<string, string> metadata = 8;
 }
 
-message MSSQLHealthCheckRequest {
-  string job_id = 1;
-  string agent_id = 2;
-  string node_hostname = 3;
-  string database_name = 4;
-  bool include_performance = 5;
-  bool include_configuration = 6;
-  bool include_backups = 7;
-  bool include_logs = 8;
-  bool include_indexes = 9;
-}
-
-message MSSQLHealthCheckResponse {
-  string job_id = 1;
-  JobStatus status = 2;
-  string result = 3;
-  string error_message = 4;
-}
-
 // MongoDB bilgileri için mesaj tanımı
 message MongoInfo {
   string cluster_name = 1;
@@ -510,7 +491,6 @@ enum JobType {
   JOB_TYPE_MONGO_PROMOTE_PRIMARY = 1;
   JOB_TYPE_POSTGRES_PROMOTE_MASTER = 2;
   JOB_TYPE_MONGO_FREEZE_SECONDARY = 3;
-  JOB_TYPE_MSSQL_HEALTH_CHECK = 4;
 }
 
 message Job {
@@ -694,7 +674,5 @@ service AgentService {
   
   // Belirli bir işlemin durumunu sorgular
   rpc GetProcessStatus(ProcessStatusRequest) returns (ProcessStatusResponse);
-
-  rpc RunMSSQLHealthCheck(MSSQLHealthCheckRequest) returns (MSSQLHealthCheckResponse);
 
 }
