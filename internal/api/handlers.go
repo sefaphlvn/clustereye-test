@@ -1957,6 +1957,7 @@ func createMSSQLHealthCheck(server *server.Server) gin.HandlerFunc {
 			"database":    req.Database,
 			"server_name": req.ServerName,
 			"detailed":    strconv.FormatBool(req.Detailed),
+			"process_id":  jobID, // Job ID'yi process_id olarak da ekle
 		}
 
 		// Context oluştur
