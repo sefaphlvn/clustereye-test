@@ -3222,6 +3222,11 @@ func (s *Server) CreateJob(ctx context.Context, job *pb.Job) error {
 			database := job.Parameters["database"]
 			serverName := job.Parameters["server_name"]
 			detailed := job.Parameters["detailed"]
+			includePerformance := job.Parameters["include_performance"]
+			includeConfiguration := job.Parameters["include_configuration"]
+			includeBackups := job.Parameters["include_backups"]
+			includeLogs := job.Parameters["include_logs"]
+			includeIndexes := job.Parameters["include_indexes"]
 
 			// Database kontrolü
 			if database == "" {
@@ -3230,10 +3235,30 @@ func (s *Server) CreateJob(ctx context.Context, job *pb.Job) error {
 				break
 			}
 
+			// Parametre değerlerini belirle (eksik olanlar için varsayılanları kullan)
+			if includePerformance == "" {
+				includePerformance = detailed // Detailed seçildiyse performance analizi de yapılır
+			}
+			if includeConfiguration == "" {
+				includeConfiguration = "true" // Varsayılan olarak yapılandırma analizi yapılır
+			}
+			if includeBackups == "" {
+				includeBackups = "true" // Varsayılan olarak yedekleme analizi yapılır
+			}
+			if includeLogs == "" {
+				includeLogs = "true" // Varsayılan olarak log analizi yapılır
+			}
+			if includeIndexes == "" {
+				includeIndexes = detailed // Detailed seçildiyse index analizi de yapılır
+			}
+
 			// Agent'ın beklediği komut formatını oluştur
-			// mssql_health_check|job_id|database|server_name|detailed
-			command = fmt.Sprintf("mssql_health_check|%s|%s|%s|%s",
-				job.JobId, database, serverName, detailed)
+			// mssql_health_check|job_id|database|server_name|include_performance|include_configuration|include_backups|include_logs|include_indexes|process_id
+			command = fmt.Sprintf("mssql_health_check|%s|%s|%s|%s|%s|%s|%s|%s|%s",
+				job.JobId, database, serverName,
+				includePerformance, includeConfiguration,
+				includeBackups, includeLogs, includeIndexes,
+				job.JobId) // Process ID olarak job ID'yi ekle
 
 			log.Printf("[INFO] MSSQL Health Check komutu oluşturuldu: %s", command)
 
@@ -4119,39 +4144,8 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 	return nil
 }
 
-// GetProcessStatus, belirli bir işlemin durumunu sorgular
-func (s *Server) GetProcessStatus(ctx context.Context, req *pb.ProcessStatusRequest) (*pb.ProcessStatusResponse, error) {
-	log.Printf("GetProcessStatus metodu çağrıldı - Agent ID: %s, Process ID: %s", req.AgentId, req.ProcessId)
-
-	// Veritabanı bağlantısını kontrol et
-	if err := s.checkDatabaseConnection(); err != nil {
-		return nil, fmt.Errorf("veritabanı bağlantı hatası: %v", err)
-	}
-
-	// SQL sorgusu hazırla
-	var query string
-	var args []interface{}
-
-	if req.AgentId != "" {
-		// Agent ID verilmişse hem process_id hem agent_id ile sorgula
-		query = `
-			SELECT process_id, agent_id, process_type, status, log_messages, elapsed_time_s, metadata, created_at, updated_at
-			FROM process_logs
-			WHERE process_id = $1 AND agent_id = $2
-		`
-		args = []interface{}{req.ProcessId, req.AgentId}
-	} else {
-		// Agent ID verilmemişse sadece process_id ile sorgula
-		query = `
-			SELECT process_id, agent_id, process_type, status, log_messages, elapsed_time_s, metadata, created_at, updated_at
-			FROM process_logs
-			WHERE process_id = $1
-		`
-		args = []interface{}{req.ProcessId}
-	}
-
-	log.Printf("Process sorgusu: %s, Parametreler: %v", query, args)
-
+// getProcessStatusWithQuery, belirli bir sorgu ile process durumunu alır
+func (s *Server) getProcessStatusWithQuery(ctx context.Context, query string, args []interface{}) (*pb.ProcessStatusResponse, error) {
 	var (
 		processID       string
 		agentID         string
@@ -4179,24 +4173,20 @@ func (s *Server) GetProcessStatus(ctx context.Context, req *pb.ProcessStatusRequ
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			log.Printf("Process bulunamadı: %s", req.ProcessId)
-			return nil, fmt.Errorf("process bulunamadı: %s", req.ProcessId)
+			return nil, fmt.Errorf("process bulunamadı: %s", args[0])
 		}
-		log.Printf("Process bilgileri alınırken hata: %v", err)
 		return nil, fmt.Errorf("process bilgileri alınırken hata: %v", err)
 	}
 
 	// Log mesajlarını çözümle
 	var logMessages []string
 	if err := json.Unmarshal(logMessagesJSON, &logMessages); err != nil {
-		log.Printf("Log mesajları ayrıştırılırken hata: %v", err)
 		return nil, fmt.Errorf("log mesajları ayrıştırılırken hata: %v", err)
 	}
 
 	// Metadata'yı çözümle
 	var metadata map[string]string
 	if err := json.Unmarshal(metadataJSON, &metadata); err != nil {
-		log.Printf("Metadata ayrıştırılırken hata: %v", err)
 		return nil, fmt.Errorf("metadata ayrıştırılırken hata: %v", err)
 	}
 
@@ -4213,6 +4203,84 @@ func (s *Server) GetProcessStatus(ctx context.Context, req *pb.ProcessStatusRequ
 		UpdatedAt:    updatedAt.Format(time.RFC3339),
 		Metadata:     metadata,
 	}, nil
+}
+
+// GetProcessStatus, belirli bir işlemin durumunu sorgular
+func (s *Server) GetProcessStatus(ctx context.Context, req *pb.ProcessStatusRequest) (*pb.ProcessStatusResponse, error) {
+	log.Printf("GetProcessStatus metodu çağrıldı - Agent ID: %s, Process ID: %s", req.AgentId, req.ProcessId)
+
+	// Veritabanı bağlantısını kontrol et
+	if err := s.checkDatabaseConnection(); err != nil {
+		return nil, fmt.Errorf("veritabanı bağlantı hatası: %v", err)
+	}
+
+	// SQL sorgusu hazırla
+	var query string
+	var args []interface{}
+	var result *pb.ProcessStatusResponse
+	var err error
+
+	if req.AgentId != "" {
+		// Agent ID verilmişse hem process_id hem agent_id ile sorgula
+		query = `
+			SELECT process_id, agent_id, process_type, status, log_messages, elapsed_time_s, metadata, created_at, updated_at
+			FROM process_logs
+			WHERE process_id = $1 AND agent_id = $2
+		`
+		args = []interface{}{req.ProcessId, req.AgentId}
+	} else {
+		// Agent ID verilmemişse sadece process_id ile sorgula
+		query = `
+			SELECT process_id, agent_id, process_type, status, log_messages, elapsed_time_s, metadata, created_at, updated_at
+			FROM process_logs
+			WHERE process_id = $1
+		`
+		args = []interface{}{req.ProcessId}
+	}
+
+	log.Printf("Process sorgusu: %s, Parametreler: %v", query, args)
+
+	// İlk sorgu (doğrudan process_id ile)
+	result, err = s.getProcessStatusWithQuery(ctx, query, args)
+
+	// Eğer process_id ile bulunamazsa ve bu bir job_id olabilirse metadata'da ara
+	if err != nil && strings.Contains(err.Error(), fmt.Sprintf("process bulunamadı: %s", req.ProcessId)) {
+		log.Printf("Process ID ile bulunamadı, metadata job_id ile arama yapılıyor: %s", req.ProcessId)
+
+		if req.AgentId != "" {
+			// Agent ID verilmişse hem job_id hem agent_id ile sorgula
+			query = `
+				SELECT process_id, agent_id, process_type, status, log_messages, elapsed_time_s, metadata, created_at, updated_at
+				FROM process_logs
+				WHERE agent_id = $1 AND metadata->>'job_id' = $2
+				ORDER BY updated_at DESC
+				LIMIT 1
+			`
+			args = []interface{}{req.AgentId, req.ProcessId}
+		} else {
+			// Sadece job_id ile sorgula
+			query = `
+				SELECT process_id, agent_id, process_type, status, log_messages, elapsed_time_s, metadata, created_at, updated_at
+				FROM process_logs
+				WHERE metadata->>'job_id' = $1
+				ORDER BY updated_at DESC
+				LIMIT 1
+			`
+			args = []interface{}{req.ProcessId}
+		}
+
+		log.Printf("İkinci sorgu (metadata job_id ile): %s, Parametreler: %v", query, args)
+
+		// İkinci sorgu (metadata job_id ile)
+		result, err = s.getProcessStatusWithQuery(ctx, query, args)
+
+		if err == nil {
+			log.Printf("Process metadata job_id ile bulundu: job_id=%s, process_id=%s",
+				req.ProcessId, result.ProcessId)
+		}
+	}
+
+	return result, err
 }
 
 // RunMSSQLHealthCheck, MSSQL Health Check işlemini başlatır
