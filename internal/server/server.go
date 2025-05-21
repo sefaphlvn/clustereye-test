@@ -3216,6 +3216,26 @@ func (s *Server) CreateJob(ctx context.Context, job *pb.Job) error {
 			}
 			command = fmt.Sprintf("pg_ctl promote -D %s", dataDir)
 
+		case pb.JobType_JOB_TYPE_MSSQL_HEALTH_CHECK:
+			// MSSQL health check için özel komut oluştur
+			database := job.Parameters["database"]
+			serverName := job.Parameters["server_name"]
+			detailed := job.Parameters["detailed"]
+
+			// Database kontrolü
+			if database == "" {
+				job.Status = pb.JobStatus_JOB_STATUS_FAILED
+				job.ErrorMessage = "Eksik parametre: database"
+				break
+			}
+
+			// Agent'ın beklediği komut formatını oluştur
+			// mssql_health_check|job_id|database|server_name|detailed
+			command = fmt.Sprintf("mssql_health_check|%s|%s|%s|%s",
+				job.JobId, database, serverName, detailed)
+
+			log.Printf("[INFO] MSSQL Health Check komutu oluşturuldu: %s", command)
+
 		default:
 			job.Status = pb.JobStatus_JOB_STATUS_FAILED
 			job.ErrorMessage = fmt.Sprintf("Desteklenmeyen job tipi: %s", job.Type.String())
