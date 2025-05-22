@@ -3672,6 +3672,7 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 
 		// Node'u bul ve güncelle
 		nodeFound := false
+		nodeChanged := false
 		for i, node := range clusterData {
 			nodeMap, ok := node.(map[string]interface{})
 			if !ok {
@@ -3683,10 +3684,16 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 				// Sadece değişen alanları güncelle
 				nodeFound = true
 
-				// Mevcut değerleri koru, sadece değişenleri güncelle
+				// Değişiklikleri takip et
 				for key, newValue := range mssqlData {
 					if currentValue, exists := nodeMap[key]; !exists || currentValue != newValue {
 						nodeMap[key] = newValue
+						// HARole veya Status gibi önemli bir değişiklik varsa işaretle
+						if key == "HARole" || key == "Status" || key == "NodeStatus" || key == "FreeDisk" {
+							nodeChanged = true
+							log.Printf("MSSQL node'da değişiklik tespit edildi: %s, %s: %v -> %v",
+								mssqlInfo.Hostname, key, currentValue, newValue)
+						}
 					}
 				}
 
@@ -3697,8 +3704,16 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 
 		// Eğer node bulunamadıysa yeni ekle
 		if !nodeFound {
+
 			clusterData = append(clusterData, mssqlData)
+			nodeChanged = true
 			log.Printf("Yeni MSSQL node eklendi: %s", mssqlInfo.Hostname)
+		}
+
+		// Eğer önemli bir değişiklik yoksa veritabanını güncelleme
+		if !nodeChanged {
+			log.Printf("MSSQL node'da önemli bir değişiklik yok, güncelleme yapılmadı: %s", mssqlInfo.Hostname)
+			return nil
 		}
 
 		existingJSON[mssqlInfo.ClusterName] = clusterData
@@ -3723,7 +3738,7 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 			return err
 		}
 
-		log.Printf("MSSQL node bilgileri başarıyla güncellendi")
+		log.Printf("MSSQL node bilgileri başarıyla güncellendi (önemli değişiklik nedeniyle)")
 	} else {
 		// İlk kayıt oluştur
 		outerJSON := map[string][]interface{}{
@@ -3748,7 +3763,7 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 			return err
 		}
 
-		log.Printf("MSSQL node bilgileri başarıyla veritabanına kaydedildi")
+		log.Printf("MSSQL node bilgileri başarıyla veritabanına kaydedildi (ilk kayıt)")
 	}
 
 	return nil
