@@ -271,17 +271,34 @@ func (s *Server) SendPostgresInfo(ctx context.Context, req *pb.PostgresInfoReque
 
 // PostgreSQL bilgilerini veritabanına kaydetmek için yardımcı fonksiyon
 func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.PostgresInfo) error {
-	// Önce mevcut kaydı kontrol et
+	// Önce aynı cluster'a ait herhangi bir kayıt olup olmadığını kontrol et
 	var existingData []byte
 	var id int
+	var exists bool
 
-	checkQuery := `
-		SELECT id, jsondata FROM public.postgres_data 
-		WHERE clustername = $1 
-		ORDER BY id DESC LIMIT 1
+	// Önce bu cluster'ın kaydının olup olmadığını kontrol et
+	existsQuery := `
+		SELECT EXISTS(SELECT 1 FROM public.postgres_data WHERE clustername = $1)
 	`
+	err := s.db.QueryRowContext(ctx, existsQuery, pgInfo.ClusterName).Scan(&exists)
+	if err != nil {
+		log.Printf("Cluster varlığı kontrol edilirken hata: %v", err)
+		return err
+	}
 
-	err := s.db.QueryRowContext(ctx, checkQuery, pgInfo.ClusterName).Scan(&id, &existingData)
+	// Eğer cluster var ise, en son kaydı al
+	if exists {
+		checkQuery := `
+			SELECT id, jsondata FROM public.postgres_data 
+			WHERE clustername = $1 
+			ORDER BY id DESC LIMIT 1
+		`
+		err = s.db.QueryRowContext(ctx, checkQuery, pgInfo.ClusterName).Scan(&id, &existingData)
+		if err != nil {
+			log.Printf("Cluster kaydı alınırken hata: %v", err)
+			return err
+		}
+	}
 
 	// Yeni node verisi
 	pgData := map[string]interface{}{
@@ -304,7 +321,7 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 
 	var jsonData []byte
 
-	if err == nil {
+	if exists {
 		// Mevcut kayıt var, güncelle
 		var existingJSON map[string][]interface{}
 		if err := json.Unmarshal(existingData, &existingJSON); err != nil {
@@ -321,6 +338,7 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 
 		// Node'u bul ve güncelle
 		nodeFound := false
+		nodeChanged := false
 		for i, node := range clusterData {
 			nodeMap, ok := node.(map[string]interface{})
 			if !ok {
@@ -336,6 +354,12 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 				for key, newValue := range pgData {
 					if currentValue, exists := nodeMap[key]; !exists || currentValue != newValue {
 						nodeMap[key] = newValue
+						// Önemli alanlar değiştiyse işaretle
+						if key == "NodeStatus" || key == "PGServiceStatus" || key == "FreeDisk" || key == "ReplicationLagSec" || key == "PGBouncerStatus" {
+							nodeChanged = true
+							log.Printf("PostgreSQL node'da değişiklik: %s, %s: %v -> %v",
+								pgInfo.Hostname, key, currentValue, newValue)
+						}
 					}
 				}
 
@@ -347,7 +371,14 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 		// Eğer node bulunamadıysa yeni ekle
 		if !nodeFound {
 			clusterData = append(clusterData, pgData)
-			log.Printf("Yeni node eklendi: %s", pgInfo.Hostname)
+			nodeChanged = true
+			log.Printf("Yeni PostgreSQL node eklendi: %s", pgInfo.Hostname)
+		}
+
+		// Eğer önemli bir değişiklik yoksa veritabanı güncellemesi yapma
+		if !nodeChanged {
+			log.Printf("PostgreSQL node'da önemli bir değişiklik yok, güncelleme yapılmadı: %s", pgInfo.Hostname)
+			return nil
 		}
 
 		existingJSON[pgInfo.ClusterName] = clusterData
@@ -362,7 +393,7 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 		// Veritabanını güncelle
 		updateQuery := `
 			UPDATE public.postgres_data 
-			SET jsondata = $1 
+			SET jsondata = $1, updated_at = CURRENT_TIMESTAMP
 			WHERE id = $2
 		`
 
@@ -372,7 +403,7 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 			return err
 		}
 
-		log.Printf("PostgreSQL node bilgileri başarıyla güncellendi")
+		log.Printf("PostgreSQL node bilgileri başarıyla güncellendi (önemli değişiklik nedeniyle)")
 	} else {
 		// İlk kayıt oluştur
 		outerJSON := map[string][]interface{}{
@@ -387,8 +418,8 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 
 		insertQuery := `
 			INSERT INTO public.postgres_data (
-				jsondata, clustername
-			) VALUES ($1, $2)
+				jsondata, clustername, created_at, updated_at
+			) VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		`
 
 		_, err = s.db.ExecContext(ctx, insertQuery, jsonData, pgInfo.ClusterName)
@@ -397,7 +428,7 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 			return err
 		}
 
-		log.Printf("PostgreSQL node bilgileri başarıyla veritabanına kaydedildi")
+		log.Printf("PostgreSQL node bilgileri başarıyla veritabanına kaydedildi (ilk kayıt)")
 	}
 
 	return nil
@@ -1288,17 +1319,34 @@ func (s *Server) SendMongoInfo(ctx context.Context, req *pb.MongoInfoRequest) (*
 
 // MongoDB bilgilerini veritabanına kaydetmek için yardımcı fonksiyon
 func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.MongoInfo) error {
-	// Önce mevcut kaydı kontrol et
+	// Önce aynı cluster'a ait herhangi bir kayıt olup olmadığını kontrol et
 	var existingData []byte
 	var id int
+	var exists bool
 
-	checkQuery := `
-		SELECT id, jsondata FROM public.mongo_data 
-		WHERE clustername = $1 
-		ORDER BY id DESC LIMIT 1
+	// Önce bu cluster'ın kaydının olup olmadığını kontrol et
+	existsQuery := `
+		SELECT EXISTS(SELECT 1 FROM public.mongo_data WHERE clustername = $1)
 	`
+	err := s.db.QueryRowContext(ctx, existsQuery, mongoInfo.ClusterName).Scan(&exists)
+	if err != nil {
+		log.Printf("Cluster varlığı kontrol edilirken hata: %v", err)
+		return err
+	}
 
-	err := s.db.QueryRowContext(ctx, checkQuery, mongoInfo.ClusterName).Scan(&id, &existingData)
+	// Eğer cluster var ise, en son kaydı al
+	if exists {
+		checkQuery := `
+			SELECT id, jsondata FROM public.mongo_data 
+			WHERE clustername = $1 
+			ORDER BY id DESC LIMIT 1
+		`
+		err = s.db.QueryRowContext(ctx, checkQuery, mongoInfo.ClusterName).Scan(&id, &existingData)
+		if err != nil {
+			log.Printf("Cluster kaydı alınırken hata: %v", err)
+			return err
+		}
+	}
 
 	// Yeni node verisi
 	mongoData := map[string]interface{}{
@@ -1321,7 +1369,7 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 
 	var jsonData []byte
 
-	if err == nil {
+	if exists {
 		// Mevcut kayıt var, güncelle
 		var existingJSON map[string][]interface{}
 		if err := json.Unmarshal(existingData, &existingJSON); err != nil {
@@ -1338,6 +1386,7 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 
 		// Node'u bul ve güncelle
 		nodeFound := false
+		nodeChanged := false
 		for i, node := range clusterData {
 			nodeMap, ok := node.(map[string]interface{})
 			if !ok {
@@ -1353,6 +1402,12 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 				for key, newValue := range mongoData {
 					if currentValue, exists := nodeMap[key]; !exists || currentValue != newValue {
 						nodeMap[key] = newValue
+						// Önemli alanlar değiştiyse işaretle
+						if key == "NodeStatus" || key == "MongoStatus" || key == "FreeDisk" || key == "ReplicationLagSec" {
+							nodeChanged = true
+							log.Printf("MongoDB node'da değişiklik: %s, %s: %v -> %v",
+								mongoInfo.Hostname, key, currentValue, newValue)
+						}
 					}
 				}
 
@@ -1364,7 +1419,14 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 		// Eğer node bulunamadıysa yeni ekle
 		if !nodeFound {
 			clusterData = append(clusterData, mongoData)
+			nodeChanged = true
 			log.Printf("Yeni MongoDB node eklendi: %s", mongoInfo.Hostname)
+		}
+
+		// Eğer önemli bir değişiklik yoksa veritabanı güncellemesi yapma
+		if !nodeChanged {
+			log.Printf("MongoDB node'da önemli bir değişiklik yok, güncelleme yapılmadı: %s", mongoInfo.Hostname)
+			return nil
 		}
 
 		existingJSON[mongoInfo.ClusterName] = clusterData
@@ -1389,7 +1451,7 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 			return err
 		}
 
-		log.Printf("MongoDB node bilgileri başarıyla güncellendi")
+		log.Printf("MongoDB node bilgileri başarıyla güncellendi (önemli değişiklik nedeniyle)")
 	} else {
 		// İlk kayıt oluştur
 		outerJSON := map[string][]interface{}{
@@ -1414,7 +1476,7 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 			return err
 		}
 
-		log.Printf("MongoDB node bilgileri başarıyla veritabanına kaydedildi")
+		log.Printf("MongoDB node bilgileri başarıyla veritabanına kaydedildi (ilk kayıt)")
 	}
 
 	return nil
