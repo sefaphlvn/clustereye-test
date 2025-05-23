@@ -408,6 +408,8 @@ message MSSQLInfo {
   bool is_ha_enabled = 16;
   string ha_role = 17;
   string edition = 18;
+  AlwaysOnMetrics always_on_metrics = 19; // AlwaysOn metrics bilgileri
+
 }
 
 // SlowQuery yavaş sorgu bilgilerini içerir
@@ -603,6 +605,68 @@ message BestPracticesAnalysisResponse {
   string analysis_id = 2;
   string analysis_timestamp = 3;
   bytes analysis_results = 4;  // JSON formatında analiz sonuçları
+}
+
+// AlwaysOn Availability Group metrics
+message AlwaysOnMetrics {
+  string cluster_name = 1;
+  string health_state = 2;
+  string operational_state = 3;
+  string synchronization_mode = 4;
+  string failover_mode = 5;
+  string primary_replica = 6;
+  string local_role = 7;
+  repeated ReplicaMetrics replicas = 8;
+  repeated DatabaseReplicaStatus databases = 9;
+  repeated ListenerInfo listeners = 10;
+  string last_failover_time = 11;
+  int64 replication_lag_ms = 12;
+  int64 log_send_queue_kb = 13;
+  int64 redo_queue_kb = 14;
+}
+
+// Replica level metrics
+message ReplicaMetrics {
+  string replica_name = 1;
+  string role = 2;
+  string connection_state = 3;
+  string synchronization_mode = 4;
+  string failover_mode = 5;
+  string availability_mode = 6;
+  string join_state = 7;
+  bool connected_state = 8;
+  string suspend_reason = 9;
+}
+
+// Database level replication status
+message DatabaseReplicaStatus {
+  string database_name = 1;
+  string replica_name = 2;
+  string synchronization_state = 3;
+  string suspend_reason = 4;
+  string last_sent_time = 5;
+  string last_received_time = 6;
+  string last_hardened_time = 7;
+  string last_redone_time = 8;
+  int64 log_send_queue_kb = 9;
+  int64 log_send_rate_kb_per_sec = 10;
+  int64 redo_queue_kb = 11;
+  int64 redo_rate_kb_per_sec = 12;
+  string end_of_log_lsn = 13;
+  string recovery_lsn = 14;
+  string truncation_lsn = 15;
+  string last_commit_lsn = 16;
+  string last_commit_time = 17;
+}
+
+// Listener information
+message ListenerInfo {
+  string listener_name = 1;
+  repeated string ip_addresses = 2;
+  int32 port = 3;
+  string subnet_mask = 4;
+  string listener_state = 5;
+  string dns_name = 6;
 }
 
 service AgentService {
