@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -3868,13 +3869,32 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 
 				// Değişiklikleri takip et
 				for key, newValue := range mssqlData {
-					if currentValue, exists := nodeMap[key]; !exists || currentValue != newValue {
+					currentValue, exists := nodeMap[key]
+					var hasChanged bool
+
+					if !exists {
+						// Değer mevcut değil, yeni alan ekleniyor
+						hasChanged = true
+						log.Printf("MSSQL node'da yeni alan eklendi: %s, %s", mssqlInfo.Hostname, key)
+					} else {
+						// Mevcut değer ile yeni değeri karşılaştır
+						// reflect.DeepEqual kullanarak complex types için de güvenli karşılaştırma
+						hasChanged = !reflect.DeepEqual(currentValue, newValue)
+						if hasChanged {
+							if key == "AlwaysOnMetrics" {
+								log.Printf("MSSQL node'da AlwaysOn metrics güncellendi: %s", mssqlInfo.Hostname)
+							} else {
+								log.Printf("MSSQL node'da değişiklik tespit edildi: %s, %s: %v -> %v",
+									mssqlInfo.Hostname, key, currentValue, newValue)
+							}
+						}
+					}
+
+					if hasChanged {
 						nodeMap[key] = newValue
 						// HARole, Status, AlwaysOnMetrics gibi önemli bir değişiklik varsa işaretle
 						if key == "HARole" || key == "Status" || key == "NodeStatus" || key == "FreeDisk" || key == "AlwaysOnMetrics" {
 							nodeChanged = true
-							log.Printf("MSSQL node'da değişiklik tespit edildi: %s, %s: %v -> %v",
-								mssqlInfo.Hostname, key, currentValue, newValue)
 						}
 					}
 				}
@@ -3886,7 +3906,6 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 
 		// Eğer node bulunamadıysa yeni ekle
 		if !nodeFound {
-
 			clusterData = append(clusterData, mssqlData)
 			nodeChanged = true
 			log.Printf("Yeni MSSQL node eklendi: %s", mssqlInfo.Hostname)
