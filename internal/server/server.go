@@ -3662,6 +3662,44 @@ func (s *Server) SendMSSQLInfo(ctx context.Context, req *pb.MSSQLInfoRequest) (*
 	log.Printf("Node Durumu: %s, MSSQL Sürümü: %s, Konum: %s", mssqlInfo.NodeStatus, mssqlInfo.Version, mssqlInfo.Location)
 	log.Printf("MSSQL Servis Durumu: %s, Instance: %s", mssqlInfo.Status, mssqlInfo.Instance)
 	log.Printf("Boş Disk: %s, FD Yüzdesi: %d%%", mssqlInfo.FreeDisk, mssqlInfo.FdPercent)
+	log.Printf("HA Enabled: %t, HA Role: %s, Edition: %s", mssqlInfo.IsHaEnabled, mssqlInfo.HaRole, mssqlInfo.Edition)
+
+	// AlwaysOn bilgilerini logla
+	if mssqlInfo.IsHaEnabled && mssqlInfo.AlwaysOnMetrics != nil {
+		alwaysOn := mssqlInfo.AlwaysOnMetrics
+		log.Printf("AlwaysOn Cluster: %s, Health: %s, Operational: %s",
+			alwaysOn.ClusterName, alwaysOn.HealthState, alwaysOn.OperationalState)
+		log.Printf("Primary Replica: %s, Local Role: %s, Sync Mode: %s",
+			alwaysOn.PrimaryReplica, alwaysOn.LocalRole, alwaysOn.SynchronizationMode)
+		log.Printf("Replication Lag: %d ms, Log Send Queue: %d KB, Redo Queue: %d KB",
+			alwaysOn.ReplicationLagMs, alwaysOn.LogSendQueueKb, alwaysOn.RedoQueueKb)
+
+		if len(alwaysOn.Replicas) > 0 {
+			log.Printf("AlwaysOn Replicas count: %d", len(alwaysOn.Replicas))
+			for i, replica := range alwaysOn.Replicas {
+				log.Printf("Replica %d: %s (Role: %s, Connection: %s)",
+					i+1, replica.ReplicaName, replica.Role, replica.ConnectionState)
+			}
+		}
+
+		if len(alwaysOn.Databases) > 0 {
+			log.Printf("AlwaysOn Databases count: %d", len(alwaysOn.Databases))
+			for i, db := range alwaysOn.Databases {
+				log.Printf("Database %d: %s (Sync State: %s, Replica: %s)",
+					i+1, db.DatabaseName, db.SynchronizationState, db.ReplicaName)
+			}
+		}
+
+		if len(alwaysOn.Listeners) > 0 {
+			log.Printf("AlwaysOn Listeners count: %d", len(alwaysOn.Listeners))
+			for i, listener := range alwaysOn.Listeners {
+				log.Printf("Listener %d: %s (Port: %d, State: %s)",
+					i+1, listener.ListenerName, listener.Port, listener.ListenerState)
+			}
+		}
+	} else if mssqlInfo.IsHaEnabled {
+		log.Printf("HA enabled but AlwaysOn metrics not available")
+	}
 
 	// Veritabanına kaydetme işlemi
 	err := s.saveMSSQLInfoToDatabase(ctx, mssqlInfo)
@@ -3715,6 +3753,88 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 		"Edition":     mssqlInfo.Edition,
 	}
 
+	// AlwaysOn bilgilerini ekle (eğer mevcutsa)
+	if mssqlInfo.IsHaEnabled && mssqlInfo.AlwaysOnMetrics != nil {
+		alwaysOnData := map[string]interface{}{
+			"ClusterName":         mssqlInfo.AlwaysOnMetrics.ClusterName,
+			"HealthState":         mssqlInfo.AlwaysOnMetrics.HealthState,
+			"OperationalState":    mssqlInfo.AlwaysOnMetrics.OperationalState,
+			"SynchronizationMode": mssqlInfo.AlwaysOnMetrics.SynchronizationMode,
+			"FailoverMode":        mssqlInfo.AlwaysOnMetrics.FailoverMode,
+			"PrimaryReplica":      mssqlInfo.AlwaysOnMetrics.PrimaryReplica,
+			"LocalRole":           mssqlInfo.AlwaysOnMetrics.LocalRole,
+			"LastFailoverTime":    mssqlInfo.AlwaysOnMetrics.LastFailoverTime,
+			"ReplicationLagMs":    mssqlInfo.AlwaysOnMetrics.ReplicationLagMs,
+			"LogSendQueueKb":      mssqlInfo.AlwaysOnMetrics.LogSendQueueKb,
+			"RedoQueueKb":         mssqlInfo.AlwaysOnMetrics.RedoQueueKb,
+		}
+
+		// Replica bilgilerini ekle
+		if len(mssqlInfo.AlwaysOnMetrics.Replicas) > 0 {
+			replicas := make([]map[string]interface{}, len(mssqlInfo.AlwaysOnMetrics.Replicas))
+			for i, replica := range mssqlInfo.AlwaysOnMetrics.Replicas {
+				replicas[i] = map[string]interface{}{
+					"ReplicaName":         replica.ReplicaName,
+					"Role":                replica.Role,
+					"ConnectionState":     replica.ConnectionState,
+					"SynchronizationMode": replica.SynchronizationMode,
+					"FailoverMode":        replica.FailoverMode,
+					"AvailabilityMode":    replica.AvailabilityMode,
+					"JoinState":           replica.JoinState,
+					"ConnectedState":      replica.ConnectedState,
+					"SuspendReason":       replica.SuspendReason,
+				}
+			}
+			alwaysOnData["Replicas"] = replicas
+		}
+
+		// Database bilgilerini ekle
+		if len(mssqlInfo.AlwaysOnMetrics.Databases) > 0 {
+			databases := make([]map[string]interface{}, len(mssqlInfo.AlwaysOnMetrics.Databases))
+			for i, db := range mssqlInfo.AlwaysOnMetrics.Databases {
+				databases[i] = map[string]interface{}{
+					"DatabaseName":         db.DatabaseName,
+					"ReplicaName":          db.ReplicaName,
+					"SynchronizationState": db.SynchronizationState,
+					"SuspendReason":        db.SuspendReason,
+					"LastSentTime":         db.LastSentTime,
+					"LastReceivedTime":     db.LastReceivedTime,
+					"LastHardenedTime":     db.LastHardenedTime,
+					"LastRedoneTime":       db.LastRedoneTime,
+					"LogSendQueueKb":       db.LogSendQueueKb,
+					"LogSendRateKbPerSec":  db.LogSendRateKbPerSec,
+					"RedoQueueKb":          db.RedoQueueKb,
+					"RedoRateKbPerSec":     db.RedoRateKbPerSec,
+					"EndOfLogLsn":          db.EndOfLogLsn,
+					"RecoveryLsn":          db.RecoveryLsn,
+					"TruncationLsn":        db.TruncationLsn,
+					"LastCommitLsn":        db.LastCommitLsn,
+					"LastCommitTime":       db.LastCommitTime,
+				}
+			}
+			alwaysOnData["Databases"] = databases
+		}
+
+		// Listener bilgilerini ekle
+		if len(mssqlInfo.AlwaysOnMetrics.Listeners) > 0 {
+			listeners := make([]map[string]interface{}, len(mssqlInfo.AlwaysOnMetrics.Listeners))
+			for i, listener := range mssqlInfo.AlwaysOnMetrics.Listeners {
+				listeners[i] = map[string]interface{}{
+					"ListenerName":  listener.ListenerName,
+					"IpAddresses":   listener.IpAddresses,
+					"Port":          listener.Port,
+					"SubnetMask":    listener.SubnetMask,
+					"ListenerState": listener.ListenerState,
+					"DnsName":       listener.DnsName,
+				}
+			}
+			alwaysOnData["Listeners"] = listeners
+		}
+
+		mssqlData["AlwaysOnMetrics"] = alwaysOnData
+		log.Printf("AlwaysOn metrics veritabanına kaydedildi: %s", mssqlInfo.Hostname)
+	}
+
 	var jsonData []byte
 
 	if err == nil {
@@ -3750,8 +3870,8 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 				for key, newValue := range mssqlData {
 					if currentValue, exists := nodeMap[key]; !exists || currentValue != newValue {
 						nodeMap[key] = newValue
-						// HARole veya Status gibi önemli bir değişiklik varsa işaretle
-						if key == "HARole" || key == "Status" || key == "NodeStatus" || key == "FreeDisk" {
+						// HARole, Status, AlwaysOnMetrics gibi önemli bir değişiklik varsa işaretle
+						if key == "HARole" || key == "Status" || key == "NodeStatus" || key == "FreeDisk" || key == "AlwaysOnMetrics" {
 							nodeChanged = true
 							log.Printf("MSSQL node'da değişiklik tespit edildi: %s, %s: %v -> %v",
 								mssqlInfo.Hostname, key, currentValue, newValue)
