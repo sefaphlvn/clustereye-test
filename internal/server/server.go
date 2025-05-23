@@ -272,34 +272,17 @@ func (s *Server) SendPostgresInfo(ctx context.Context, req *pb.PostgresInfoReque
 
 // PostgreSQL bilgilerini veritabanına kaydetmek için yardımcı fonksiyon
 func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.PostgresInfo) error {
-	// Önce aynı cluster'a ait herhangi bir kayıt olup olmadığını kontrol et
+	// Önce mevcut kaydı kontrol et
 	var existingData []byte
 	var id int
-	var exists bool
 
-	// Önce bu cluster'ın kaydının olup olmadığını kontrol et
-	existsQuery := `
-		SELECT EXISTS(SELECT 1 FROM public.postgres_data WHERE clustername = $1)
+	checkQuery := `
+		SELECT id, jsondata FROM public.postgres_data 
+		WHERE clustername = $1 
+		ORDER BY id DESC LIMIT 1
 	`
-	err := s.db.QueryRowContext(ctx, existsQuery, pgInfo.ClusterName).Scan(&exists)
-	if err != nil {
-		log.Printf("Cluster varlığı kontrol edilirken hata: %v", err)
-		return err
-	}
 
-	// Eğer cluster var ise, en son kaydı al
-	if exists {
-		checkQuery := `
-			SELECT id, jsondata FROM public.postgres_data 
-			WHERE clustername = $1 
-			ORDER BY id DESC LIMIT 1
-		`
-		err = s.db.QueryRowContext(ctx, checkQuery, pgInfo.ClusterName).Scan(&id, &existingData)
-		if err != nil {
-			log.Printf("Cluster kaydı alınırken hata: %v", err)
-			return err
-		}
-	}
+	err := s.db.QueryRowContext(ctx, checkQuery, pgInfo.ClusterName).Scan(&id, &existingData)
 
 	// Yeni node verisi
 	pgData := map[string]interface{}{
@@ -322,8 +305,11 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 
 	var jsonData []byte
 
-	if exists {
+	// Hata kontrolünü düzgün yap
+	if err == nil {
 		// Mevcut kayıt var, güncelle
+		log.Printf("PostgreSQL cluster için mevcut kayıt bulundu, güncelleniyor: %s (ID: %d)", pgInfo.ClusterName, id)
+
 		var existingJSON map[string][]interface{}
 		if err := json.Unmarshal(existingData, &existingJSON); err != nil {
 			log.Printf("Mevcut JSON ayrıştırma hatası: %v", err)
@@ -351,15 +337,30 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 				// Sadece değişen alanları güncelle
 				nodeFound = true
 
-				// Mevcut değerleri koru, sadece değişenleri güncelle
+				// Değişiklikleri takip et
 				for key, newValue := range pgData {
-					if currentValue, exists := nodeMap[key]; !exists || currentValue != newValue {
+					currentValue, exists := nodeMap[key]
+					var hasChanged bool
+
+					if !exists {
+						// Değer mevcut değil, yeni alan ekleniyor
+						hasChanged = true
+						log.Printf("PostgreSQL node'da yeni alan eklendi: %s, %s", pgInfo.Hostname, key)
+					} else {
+						// Mevcut değer ile yeni değeri karşılaştır
+						// reflect.DeepEqual kullanarak complex types için de güvenli karşılaştırma
+						hasChanged = !reflect.DeepEqual(currentValue, newValue)
+						if hasChanged {
+							log.Printf("PostgreSQL node'da değişiklik tespit edildi: %s, %s: %v -> %v",
+								pgInfo.Hostname, key, currentValue, newValue)
+						}
+					}
+
+					if hasChanged {
 						nodeMap[key] = newValue
-						// Önemli alanlar değiştiyse işaretle
+						// NodeStatus, PGServiceStatus, FreeDisk gibi önemli alanlar değiştiyse işaretle
 						if key == "NodeStatus" || key == "PGServiceStatus" || key == "FreeDisk" || key == "ReplicationLagSec" || key == "PGBouncerStatus" {
 							nodeChanged = true
-							log.Printf("PostgreSQL node'da değişiklik: %s, %s: %v -> %v",
-								pgInfo.Hostname, key, currentValue, newValue)
 						}
 					}
 				}
@@ -376,7 +377,7 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 			log.Printf("Yeni PostgreSQL node eklendi: %s", pgInfo.Hostname)
 		}
 
-		// Eğer önemli bir değişiklik yoksa veritabanı güncellemesi yapma
+		// Eğer önemli bir değişiklik yoksa veritabanını güncelleme
 		if !nodeChanged {
 			log.Printf("PostgreSQL node'da önemli bir değişiklik yok, güncelleme yapılmadı: %s", pgInfo.Hostname)
 			return nil
@@ -405,8 +406,10 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 		}
 
 		log.Printf("PostgreSQL node bilgileri başarıyla güncellendi (önemli değişiklik nedeniyle)")
-	} else {
-		// İlk kayıt oluştur
+	} else if err == sql.ErrNoRows {
+		// Kayıt bulunamadı, yeni kayıt oluştur
+		log.Printf("PostgreSQL cluster için kayıt bulunamadı, yeni kayıt oluşturuluyor: %s", pgInfo.ClusterName)
+
 		outerJSON := map[string][]interface{}{
 			pgInfo.ClusterName: {pgData},
 		}
@@ -421,6 +424,9 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 			INSERT INTO public.postgres_data (
 				jsondata, clustername, created_at, updated_at
 			) VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			ON CONFLICT (clustername) DO UPDATE SET
+				jsondata = EXCLUDED.jsondata,
+				updated_at = CURRENT_TIMESTAMP
 		`
 
 		_, err = s.db.ExecContext(ctx, insertQuery, jsonData, pgInfo.ClusterName)
@@ -429,7 +435,11 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 			return err
 		}
 
-		log.Printf("PostgreSQL node bilgileri başarıyla veritabanına kaydedildi (ilk kayıt)")
+		log.Printf("PostgreSQL node bilgileri başarıyla veritabanına kaydedildi (yeni kayıt)")
+	} else {
+		// Başka bir veritabanı hatası oluştu
+		log.Printf("PostgreSQL cluster kayıt kontrolü sırasında hata: %v", err)
+		return fmt.Errorf("veritabanı kontrol hatası: %v", err)
 	}
 
 	return nil
@@ -1320,34 +1330,17 @@ func (s *Server) SendMongoInfo(ctx context.Context, req *pb.MongoInfoRequest) (*
 
 // MongoDB bilgilerini veritabanına kaydetmek için yardımcı fonksiyon
 func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.MongoInfo) error {
-	// Önce aynı cluster'a ait herhangi bir kayıt olup olmadığını kontrol et
+	// Önce mevcut kaydı kontrol et
 	var existingData []byte
 	var id int
-	var exists bool
 
-	// Önce bu cluster'ın kaydının olup olmadığını kontrol et
-	existsQuery := `
-		SELECT EXISTS(SELECT 1 FROM public.mongo_data WHERE clustername = $1)
+	checkQuery := `
+		SELECT id, jsondata FROM public.mongo_data 
+		WHERE clustername = $1 
+		ORDER BY id DESC LIMIT 1
 	`
-	err := s.db.QueryRowContext(ctx, existsQuery, mongoInfo.ClusterName).Scan(&exists)
-	if err != nil {
-		log.Printf("Cluster varlığı kontrol edilirken hata: %v", err)
-		return err
-	}
 
-	// Eğer cluster var ise, en son kaydı al
-	if exists {
-		checkQuery := `
-			SELECT id, jsondata FROM public.mongo_data 
-			WHERE clustername = $1 
-			ORDER BY id DESC LIMIT 1
-		`
-		err = s.db.QueryRowContext(ctx, checkQuery, mongoInfo.ClusterName).Scan(&id, &existingData)
-		if err != nil {
-			log.Printf("Cluster kaydı alınırken hata: %v", err)
-			return err
-		}
-	}
+	err := s.db.QueryRowContext(ctx, checkQuery, mongoInfo.ClusterName).Scan(&id, &existingData)
 
 	// Yeni node verisi
 	mongoData := map[string]interface{}{
@@ -1370,8 +1363,11 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 
 	var jsonData []byte
 
-	if exists {
+	// Hata kontrolünü düzgün yap
+	if err == nil {
 		// Mevcut kayıt var, güncelle
+		log.Printf("MongoDB cluster için mevcut kayıt bulundu, güncelleniyor: %s (ID: %d)", mongoInfo.ClusterName, id)
+
 		var existingJSON map[string][]interface{}
 		if err := json.Unmarshal(existingData, &existingJSON); err != nil {
 			log.Printf("Mevcut JSON ayrıştırma hatası: %v", err)
@@ -1399,15 +1395,30 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 				// Sadece değişen alanları güncelle
 				nodeFound = true
 
-				// Mevcut değerleri koru, sadece değişenleri güncelle
+				// Değişiklikleri takip et
 				for key, newValue := range mongoData {
-					if currentValue, exists := nodeMap[key]; !exists || currentValue != newValue {
+					currentValue, exists := nodeMap[key]
+					var hasChanged bool
+
+					if !exists {
+						// Değer mevcut değil, yeni alan ekleniyor
+						hasChanged = true
+						log.Printf("MongoDB node'da yeni alan eklendi: %s, %s", mongoInfo.Hostname, key)
+					} else {
+						// Mevcut değer ile yeni değeri karşılaştır
+						// reflect.DeepEqual kullanarak complex types için de güvenli karşılaştırma
+						hasChanged = !reflect.DeepEqual(currentValue, newValue)
+						if hasChanged {
+							log.Printf("MongoDB node'da değişiklik tespit edildi: %s, %s: %v -> %v",
+								mongoInfo.Hostname, key, currentValue, newValue)
+						}
+					}
+
+					if hasChanged {
 						nodeMap[key] = newValue
-						// Önemli alanlar değiştiyse işaretle
+						// NodeStatus, MongoStatus, FreeDisk gibi önemli alanlar değiştiyse işaretle
 						if key == "NodeStatus" || key == "MongoStatus" || key == "FreeDisk" || key == "ReplicationLagSec" {
 							nodeChanged = true
-							log.Printf("MongoDB node'da değişiklik: %s, %s: %v -> %v",
-								mongoInfo.Hostname, key, currentValue, newValue)
 						}
 					}
 				}
@@ -1424,7 +1435,7 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 			log.Printf("Yeni MongoDB node eklendi: %s", mongoInfo.Hostname)
 		}
 
-		// Eğer önemli bir değişiklik yoksa veritabanı güncellemesi yapma
+		// Eğer önemli bir değişiklik yoksa veritabanını güncelleme
 		if !nodeChanged {
 			log.Printf("MongoDB node'da önemli bir değişiklik yok, güncelleme yapılmadı: %s", mongoInfo.Hostname)
 			return nil
@@ -1453,8 +1464,10 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 		}
 
 		log.Printf("MongoDB node bilgileri başarıyla güncellendi (önemli değişiklik nedeniyle)")
-	} else {
-		// İlk kayıt oluştur
+	} else if err == sql.ErrNoRows {
+		// Kayıt bulunamadı, yeni kayıt oluştur
+		log.Printf("MongoDB cluster için kayıt bulunamadı, yeni kayıt oluşturuluyor: %s", mongoInfo.ClusterName)
+
 		outerJSON := map[string][]interface{}{
 			mongoInfo.ClusterName: {mongoData},
 		}
@@ -1469,6 +1482,9 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 			INSERT INTO public.mongo_data (
 				jsondata, clustername, created_at, updated_at
 			) VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			ON CONFLICT (clustername) DO UPDATE SET
+				jsondata = EXCLUDED.jsondata,
+				updated_at = CURRENT_TIMESTAMP
 		`
 
 		_, err = s.db.ExecContext(ctx, insertQuery, jsonData, mongoInfo.ClusterName)
@@ -1477,7 +1493,11 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 			return err
 		}
 
-		log.Printf("MongoDB node bilgileri başarıyla veritabanına kaydedildi (ilk kayıt)")
+		log.Printf("MongoDB node bilgileri başarıyla veritabanına kaydedildi (yeni kayıt)")
+	} else {
+		// Başka bir veritabanı hatası oluştu
+		log.Printf("MongoDB cluster kayıt kontrolü sırasında hata: %v", err)
+		return fmt.Errorf("veritabanı kontrol hatası: %v", err)
 	}
 
 	return nil
@@ -2250,13 +2270,73 @@ func (s *Server) sendPostgresLogAnalyzeQuery(ctx context.Context, agentID, logFi
 }
 
 // GetAlarms, veritabanından alarm kayıtlarını çeker
-func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool) ([]map[string]interface{}, error) {
+func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool, limit, offset int, severityFilter, metricFilter string, dateFrom, dateTo *time.Time) ([]map[string]interface{}, int64, error) {
 	// Veritabanı bağlantısını kontrol et
 	if err := s.checkDatabaseConnection(); err != nil {
-		return nil, fmt.Errorf("veritabanı bağlantı hatası: %v", err)
+		return nil, 0, fmt.Errorf("veritabanı bağlantı hatası: %v", err)
 	}
 
-	// SQL sorgusu
+	// Varsayılan limit kontrolü
+	if limit <= 0 || limit > 1000 {
+		limit = 50 // Varsayılan 50 kayıt
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	// WHERE koşullarını ve parametreleri hazırla
+	var whereConditions []string
+	var queryParams []interface{}
+	paramIndex := 1
+
+	// Sadece acknowledge edilmemiş alarmları getir
+	if onlyUnacknowledged {
+		whereConditions = append(whereConditions, fmt.Sprintf("acknowledged = $%d", paramIndex))
+		queryParams = append(queryParams, false)
+		paramIndex++
+	}
+
+	// Severity filtresi
+	if severityFilter != "" {
+		whereConditions = append(whereConditions, fmt.Sprintf("severity = $%d", paramIndex))
+		queryParams = append(queryParams, severityFilter)
+		paramIndex++
+	}
+
+	// Metric name filtresi
+	if metricFilter != "" {
+		whereConditions = append(whereConditions, fmt.Sprintf("metric_name = $%d", paramIndex))
+		queryParams = append(queryParams, metricFilter)
+		paramIndex++
+	}
+
+	// Tarih aralığı filtresi
+	if dateFrom != nil {
+		whereConditions = append(whereConditions, fmt.Sprintf("created_at >= $%d", paramIndex))
+		queryParams = append(queryParams, *dateFrom)
+		paramIndex++
+	}
+	if dateTo != nil {
+		whereConditions = append(whereConditions, fmt.Sprintf("created_at <= $%d", paramIndex))
+		queryParams = append(queryParams, *dateTo)
+		paramIndex++
+	}
+
+	// WHERE clause oluştur
+	whereClause := ""
+	if len(whereConditions) > 0 {
+		whereClause = " WHERE " + strings.Join(whereConditions, " AND ")
+	}
+
+	// Önce toplam kayıt sayısını al (count query)
+	countQuery := "SELECT COUNT(*) FROM alarms" + whereClause
+	var totalCount int64
+	err := s.db.QueryRowContext(ctx, countQuery, queryParams...).Scan(&totalCount)
+	if err != nil {
+		return nil, 0, fmt.Errorf("toplam alarm sayısı alınamadı: %v", err)
+	}
+
+	// Ana SQL sorgusu
 	query := `
 		SELECT 
 			alarm_id,
@@ -2270,20 +2350,20 @@ func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool) ([]map[
 			created_at,
 			acknowledged,
 			database
-		FROM alarms
-	`
+		FROM alarms` + whereClause + `
+		ORDER BY created_at DESC
+		LIMIT $` + fmt.Sprintf("%d", paramIndex) + ` OFFSET $` + fmt.Sprintf("%d", paramIndex+1)
 
-	// Sadece acknowledge edilmemiş alarmları getir
-	if onlyUnacknowledged {
-		query += " WHERE acknowledged = false"
-	}
+	// LIMIT ve OFFSET parametrelerini ekle
+	queryParams = append(queryParams, limit, offset)
 
-	query += " ORDER BY created_at DESC"
+	log.Printf("Alarm sorgusu - Limit: %d, Offset: %d, Total: %d, Filters: severity=%s, metric=%s",
+		limit, offset, totalCount, severityFilter, metricFilter)
 
 	// Sorguyu çalıştır
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
-		return nil, fmt.Errorf("alarm verileri çekilemedi: %v", err)
+		return nil, 0, fmt.Errorf("alarm verileri çekilemedi: %v", err)
 	}
 	defer rows.Close()
 
@@ -2319,7 +2399,7 @@ func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool) ([]map[
 			&database,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("satır okuma hatası: %v", err)
+			return nil, 0, fmt.Errorf("satır okuma hatası: %v", err)
 		}
 
 		// Database değerini kontrolle ekle
@@ -2350,16 +2430,16 @@ func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool) ([]map[
 
 	// Satır okuma hatası kontrolü
 	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("satır okuma hatası: %v", err)
+		return nil, 0, fmt.Errorf("satır okuma hatası: %v", err)
 	}
 
-	return alarms, nil
+	return alarms, totalCount, nil
 }
 
 // GetAlarmsStatus, alarm verilerini döndürür
 func (s *Server) GetAlarmsStatus(ctx context.Context, _ *structpb.Struct) (*structpb.Value, error) {
-	// Alarmları getir
-	alarms, err := s.GetAlarms(ctx, false)
+	// Alarmları getir - Son 100 alarmı al
+	alarms, _, err := s.GetAlarms(ctx, false, 100, 0, "", "", nil, nil)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Alarm verileri alınamadı: %v", err)
 	}
@@ -3838,8 +3918,11 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 
 	var jsonData []byte
 
+	// Hata kontrolünü düzgün yap
 	if err == nil {
 		// Mevcut kayıt var, güncelle
+		log.Printf("MSSQL cluster için mevcut kayıt bulundu, güncelleniyor: %s (ID: %d)", mssqlInfo.ClusterName, id)
+
 		var existingJSON map[string][]interface{}
 		if err := json.Unmarshal(existingData, &existingJSON); err != nil {
 			log.Printf("Mevcut JSON ayrıştırma hatası: %v", err)
@@ -3940,8 +4023,10 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 		}
 
 		log.Printf("MSSQL node bilgileri başarıyla güncellendi (önemli değişiklik nedeniyle)")
-	} else {
-		// İlk kayıt oluştur
+	} else if err == sql.ErrNoRows {
+		// Kayıt bulunamadı, yeni kayıt oluştur
+		log.Printf("MSSQL cluster için kayıt bulunamadı, yeni kayıt oluşturuluyor: %s", mssqlInfo.ClusterName)
+
 		outerJSON := map[string][]interface{}{
 			mssqlInfo.ClusterName: {mssqlData},
 		}
@@ -3956,6 +4041,9 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 			INSERT INTO public.mssql_data (
 				jsondata, clustername, created_at, updated_at
 			) VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			ON CONFLICT (clustername) DO UPDATE SET
+				jsondata = EXCLUDED.jsondata,
+				updated_at = CURRENT_TIMESTAMP
 		`
 
 		_, err = s.db.ExecContext(ctx, insertQuery, jsonData, mssqlInfo.ClusterName)
@@ -3964,7 +4052,11 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 			return err
 		}
 
-		log.Printf("MSSQL node bilgileri başarıyla veritabanına kaydedildi (ilk kayıt)")
+		log.Printf("MSSQL node bilgileri başarıyla veritabanına kaydedildi (yeni kayıt)")
+	} else {
+		// Başka bir veritabanı hatası oluştu
+		log.Printf("MSSQL cluster kayıt kontrolü sırasında hata: %v", err)
+		return fmt.Errorf("veritabanı kontrol hatası: %v", err)
 	}
 
 	return nil
@@ -4408,4 +4500,98 @@ func (s *Server) GetProcessStatus(ctx context.Context, req *pb.ProcessStatusRequ
 		UpdatedAt:    updatedAt.Format(time.RFC3339),
 		Metadata:     metadata,
 	}, nil
+}
+
+// GetRecentAlarms, dashboard için optimize edilmiş son alarmları getirir
+func (s *Server) GetRecentAlarms(ctx context.Context, limit int, onlyUnacknowledged bool) ([]map[string]interface{}, error) {
+	// Veritabanı bağlantısını kontrol et
+	if err := s.checkDatabaseConnection(); err != nil {
+		return nil, fmt.Errorf("veritabanı bağlantı hatası: %v", err)
+	}
+
+	// Varsayılan limit kontrolü (dashboard için max 50)
+	if limit <= 0 || limit > 50 {
+		limit = 20 // Dashboard için varsayılan 20 kayıt
+	}
+
+	// Optimize edilmiş sorgu - sadece gerekli alanlar ve index kullanımı
+	query := `
+		SELECT 
+			alarm_id,
+			event_id,
+			agent_id,
+			status,
+			metric_name,
+			severity,
+			created_at,
+			acknowledged
+		FROM alarms`
+
+	var queryParams []interface{}
+	if onlyUnacknowledged {
+		query += ` WHERE acknowledged = false`
+	}
+
+	query += ` ORDER BY created_at DESC LIMIT $1`
+	queryParams = append(queryParams, limit)
+
+	log.Printf("Recent alarms sorgusu - Limit: %d, Unacknowledged: %t", limit, onlyUnacknowledged)
+
+	// Sorguyu çalıştır
+	rows, err := s.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, fmt.Errorf("recent alarm verileri çekilemedi: %v", err)
+	}
+	defer rows.Close()
+
+	// Sonuçları topla (hafif veri yapısı)
+	alarms := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var (
+			alarmID      string
+			eventID      string
+			agentID      string
+			status       string
+			metricName   string
+			severity     string
+			createdAt    time.Time
+			acknowledged bool
+		)
+
+		// Satırı oku
+		err := rows.Scan(
+			&alarmID,
+			&eventID,
+			&agentID,
+			&status,
+			&metricName,
+			&severity,
+			&createdAt,
+			&acknowledged,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("satır okuma hatası: %v", err)
+		}
+
+		// Hafif alarm objesi (dashboard için gerekli minimum alanlar)
+		alarm := map[string]interface{}{
+			"alarm_id":     alarmID,
+			"event_id":     eventID,
+			"agent_id":     agentID,
+			"status":       status,
+			"metric_name":  metricName,
+			"severity":     severity,
+			"created_at":   createdAt.Format(time.RFC3339),
+			"acknowledged": acknowledged,
+		}
+
+		alarms = append(alarms, alarm)
+	}
+
+	// Satır okuma hatası kontrolü
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("satır okuma hatası: %v", err)
+	}
+
+	return alarms, nil
 }

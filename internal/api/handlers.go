@@ -100,6 +100,8 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		status.GET("/nodeshealth", getNodesHealth(server))
 		// Alarm listesini getir
 		status.GET("/alarms", getAlarms(server))
+		// Dashboard için optimize edilmiş recent alarms
+		status.GET("/alarms/recent", getRecentAlarms(server))
 		// Alarm endpoint'leri
 		status.POST("/alarms/:event_id/acknowledge", acknowledgeAlarm(server))
 	}
@@ -764,13 +766,61 @@ func getNodesHealth(server *server.Server) gin.HandlerFunc {
 // getAlarms, alarm listesini getirir
 func getAlarms(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer cancel()
 
-		// Query parameter'dan sadece acknowledge edilmemiş alarmları getirip getirmeyeceğimizi kontrol et
-		onlyUnacknowledged := c.DefaultQuery("unacknowledged", "true") == "false"
+		// Query parametrelerini parse et
+		onlyUnacknowledged := c.DefaultQuery("unacknowledged", "false") == "true"
 
-		alarms, err := server.GetAlarms(ctx, onlyUnacknowledged)
+		// Pagination parametreleri
+		limit := 50 // Varsayılan limit
+		if l := c.Query("limit"); l != "" {
+			if parsedLimit, err := strconv.Atoi(l); err == nil && parsedLimit > 0 && parsedLimit <= 1000 {
+				limit = parsedLimit
+			}
+		}
+
+		offset := 0
+		if o := c.Query("offset"); o != "" {
+			if parsedOffset, err := strconv.Atoi(o); err == nil && parsedOffset >= 0 {
+				offset = parsedOffset
+			}
+		}
+
+		// Sayfa bazlı pagination desteği
+		if page := c.Query("page"); page != "" {
+			if parsedPage, err := strconv.Atoi(page); err == nil && parsedPage > 0 {
+				offset = (parsedPage - 1) * limit
+			}
+		}
+
+		// Filtering parametreleri
+		severityFilter := c.Query("severity") // "critical", "warning", "info"
+		metricFilter := c.Query("metric")     // metric_name filtresi
+
+		// Tarih filtreleri
+		var dateFrom, dateTo *time.Time
+		if from := c.Query("date_from"); from != "" {
+			if parsedFrom, err := time.Parse("2006-01-02", from); err == nil {
+				dateFrom = &parsedFrom
+			} else if parsedFrom, err := time.Parse(time.RFC3339, from); err == nil {
+				dateFrom = &parsedFrom
+			}
+		}
+		if to := c.Query("date_to"); to != "" {
+			if parsedTo, err := time.Parse("2006-01-02", to); err == nil {
+				// Günün sonuna ayarla
+				endOfDay := parsedTo.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+				dateTo = &endOfDay
+			} else if parsedTo, err := time.Parse(time.RFC3339, to); err == nil {
+				dateTo = &parsedTo
+			}
+		}
+
+		log.Printf("Alarm sorgusu parametreleri - Limit: %d, Offset: %d, Unacknowledged: %t, Severity: %s, Metric: %s",
+			limit, offset, onlyUnacknowledged, severityFilter, metricFilter)
+
+		alarms, totalCount, err := server.GetAlarms(ctx, onlyUnacknowledged, limit, offset, severityFilter, metricFilter, dateFrom, dateTo)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status": "error",
@@ -779,10 +829,23 @@ func getAlarms(server *server.Server) gin.HandlerFunc {
 			return
 		}
 
+		// Pagination bilgilerini hesapla
+		totalPages := int((totalCount + int64(limit) - 1) / int64(limit)) // Yukarı yuvarlama
+		currentPage := (offset / limit) + 1
+
 		c.JSON(http.StatusOK, gin.H{
 			"status": "success",
 			"data": gin.H{
 				"alarms": alarms,
+				"pagination": gin.H{
+					"total_count":  totalCount,
+					"current_page": currentPage,
+					"total_pages":  totalPages,
+					"limit":        limit,
+					"offset":       offset,
+					"has_next":     currentPage < totalPages,
+					"has_previous": currentPage > 1,
+				},
 			},
 		})
 	}
@@ -1913,6 +1976,42 @@ func getProcessLogs(server *server.Server) gin.HandlerFunc {
 			"created_at":     resp.CreatedAt,
 			"updated_at":     resp.UpdatedAt,
 			"metadata":       resp.Metadata,
+		})
+	}
+}
+
+// getRecentAlarms, dashboard için optimize edilmiş son alarmları getirir
+func getRecentAlarms(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second) // Kısa timeout
+		defer cancel()
+
+		// Query parametrelerini parse et
+		onlyUnacknowledged := c.DefaultQuery("unacknowledged", "true") == "true"
+
+		// Limit parametresi (dashboard için max 50)
+		limit := 20 // Varsayılan limit
+		if l := c.Query("limit"); l != "" {
+			if parsedLimit, err := strconv.Atoi(l); err == nil && parsedLimit > 0 && parsedLimit <= 50 {
+				limit = parsedLimit
+			}
+		}
+
+		alarms, err := server.GetRecentAlarms(ctx, limit, onlyUnacknowledged)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Recent alarm verileri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"alarms": alarms,
+				"count":  len(alarms),
+			},
 		})
 	}
 }
