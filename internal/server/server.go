@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"reflect"
 	"strings"
@@ -348,8 +349,8 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 						log.Printf("PostgreSQL node'da yeni alan eklendi: %s, %s", pgInfo.Hostname, key)
 					} else {
 						// Mevcut değer ile yeni değeri karşılaştır
-						// reflect.DeepEqual kullanarak complex types için de güvenli karşılaştırma
-						hasChanged = !reflect.DeepEqual(currentValue, newValue)
+						// Numeric değerler için özel karşılaştırma yap
+						hasChanged = !compareValues(currentValue, newValue)
 						if hasChanged {
 							log.Printf("PostgreSQL node'da değişiklik tespit edildi: %s, %s: %v -> %v",
 								pgInfo.Hostname, key, currentValue, newValue)
@@ -1406,8 +1407,8 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 						log.Printf("MongoDB node'da yeni alan eklendi: %s, %s", mongoInfo.Hostname, key)
 					} else {
 						// Mevcut değer ile yeni değeri karşılaştır
-						// reflect.DeepEqual kullanarak complex types için de güvenli karşılaştırma
-						hasChanged = !reflect.DeepEqual(currentValue, newValue)
+						// Numeric değerler için özel karşılaştırma yap
+						hasChanged = !compareValues(currentValue, newValue)
 						if hasChanged {
 							log.Printf("MongoDB node'da değişiklik tespit edildi: %s, %s: %v -> %v",
 								mongoInfo.Hostname, key, currentValue, newValue)
@@ -3961,8 +3962,8 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 						log.Printf("MSSQL node'da yeni alan eklendi: %s, %s", mssqlInfo.Hostname, key)
 					} else {
 						// Mevcut değer ile yeni değeri karşılaştır
-						// reflect.DeepEqual kullanarak complex types için de güvenli karşılaştırma
-						hasChanged = !reflect.DeepEqual(currentValue, newValue)
+						// Numeric değerler için özel karşılaştırma yap
+						hasChanged = !compareValues(currentValue, newValue)
 						if hasChanged {
 							if key == "AlwaysOnMetrics" {
 								log.Printf("MSSQL node'da AlwaysOn metrics güncellendi: %s", mssqlInfo.Hostname)
@@ -4602,4 +4603,66 @@ func (s *Server) GetRecentAlarms(ctx context.Context, limit int, onlyUnacknowled
 	}
 
 	return alarms, nil
+}
+
+func compareValues(a, b interface{}) bool {
+	// Nil kontrolü
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+
+	// Numeric değerler için tip dönüşümü yaparak karşılaştır
+	aFloat, aIsNumeric := convertToFloat64(a)
+	bFloat, bIsNumeric := convertToFloat64(b)
+
+	if aIsNumeric && bIsNumeric {
+		// Float karşılaştırması için tolerans kullan (floating point precision)
+		return math.Abs(aFloat-bFloat) < 1e-9
+	}
+
+	// String karşılaştırması
+	if aStr, ok := a.(string); ok {
+		if bStr, ok := b.(string); ok {
+			return aStr == bStr
+		}
+		return false
+	}
+
+	// Boolean karşılaştırması
+	if aBool, ok := a.(bool); ok {
+		if bBool, ok := b.(bool); ok {
+			return aBool == bBool
+		}
+		return false
+	}
+
+	// Complex types (maps, slices) için reflect.DeepEqual kullan
+	return reflect.DeepEqual(a, b)
+}
+
+// convertToFloat64, farklı numeric tiplerini float64'e dönüştürür
+func convertToFloat64(v interface{}) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case float32:
+		return float64(val), true
+	case int:
+		return float64(val), true
+	case int32:
+		return float64(val), true
+	case int64:
+		return float64(val), true
+	case uint:
+		return float64(val), true
+	case uint32:
+		return float64(val), true
+	case uint64:
+		return float64(val), true
+	default:
+		return 0, false
+	}
 }
