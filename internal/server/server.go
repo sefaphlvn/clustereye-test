@@ -4522,6 +4522,8 @@ func (s *Server) GetRecentAlarms(ctx context.Context, limit int, onlyUnacknowled
 			agent_id,
 			status,
 			metric_name,
+			metric_value,
+			message,
 			severity,
 			created_at,
 			acknowledged
@@ -4553,6 +4555,8 @@ func (s *Server) GetRecentAlarms(ctx context.Context, limit int, onlyUnacknowled
 			agentID      string
 			status       string
 			metricName   string
+			metricValue  string
+			message      string
 			severity     string
 			createdAt    time.Time
 			acknowledged bool
@@ -4565,6 +4569,8 @@ func (s *Server) GetRecentAlarms(ctx context.Context, limit int, onlyUnacknowled
 			&agentID,
 			&status,
 			&metricName,
+			&metricValue,
+			&message,
 			&severity,
 			&createdAt,
 			&acknowledged,
@@ -4580,6 +4586,8 @@ func (s *Server) GetRecentAlarms(ctx context.Context, limit int, onlyUnacknowled
 			"agent_id":     agentID,
 			"status":       status,
 			"metric_name":  metricName,
+			"metric_value": metricValue,
+			"message":      message,
 			"severity":     severity,
 			"created_at":   createdAt.Format(time.RFC3339),
 			"acknowledged": acknowledged,
