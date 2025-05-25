@@ -2087,10 +2087,12 @@ func getCPUMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
 
-		// Flux sorgusu oluştur - tek tırnak kullan
+		// Flux sorgusu oluştur - regex pattern kullan
 		var query string
 		if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "cpu_usage" or r._measurement == "cpu_load") |> filter(fn: (r) => r.agent_id == '%s')`, timeRange, agentID)
+			// Özel karakterleri escape et ve regex pattern kullan
+			escapedID := strings.ReplaceAll(agentID, "-", "\\-")
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "cpu_usage" or r._measurement == "cpu_load") |> filter(fn: (r) => r.agent_id =~ /%s/)`, timeRange, escapedID)
 		} else {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "cpu_usage" or r._measurement == "cpu_load")`, timeRange)
 		}
