@@ -2087,15 +2087,8 @@ func getCPUMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
 
-		// Flux sorgusu oluştur - regex pattern kullan
-		var query string
-		if agentID != "" {
-			// Özel karakterleri escape et ve regex pattern kullan
-			escapedID := strings.ReplaceAll(agentID, "-", "\\-")
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "cpu_usage" or r._measurement == "cpu_load") |> filter(fn: (r) => r.agent_id =~ /%s/)`, timeRange, escapedID)
-		} else {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "cpu_usage" or r._measurement == "cpu_load")`, timeRange)
-		}
+		// Flux sorgusu oluştur - basit yaklaşım
+		query := fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "cpu_usage" or r._measurement == "cpu_load")`, timeRange)
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
@@ -2116,6 +2109,17 @@ func getCPUMetrics(server *server.Server) gin.HandlerFunc {
 				"error":  "CPU metrikleri alınamadı: " + err.Error(),
 			})
 			return
+		}
+
+		// Agent ID filtrelemesi varsa client tarafında filtrele
+		if agentID != "" {
+			filteredResults := make([]map[string]interface{}, 0)
+			for _, item := range results {
+				if itemAgentID, exists := item["agent_id"]; exists && itemAgentID == agentID {
+					filteredResults = append(filteredResults, item)
+				}
+			}
+			results = filteredResults
 		}
 
 		c.JSON(http.StatusOK, gin.H{
