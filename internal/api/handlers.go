@@ -2087,8 +2087,8 @@ func getCPUMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
 
-		// Flux sorgusu oluştur - basit yaklaşım
-		query := fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "cpu_usage" or r._measurement == "cpu_load")`, timeRange)
+		// Flux sorgusu oluştur - regex pattern kullan
+		query := fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /^cpu_/)`, timeRange)
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
