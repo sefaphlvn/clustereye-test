@@ -2092,22 +2092,13 @@ func getCPUMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
 
-		// Flux sorgusu oluştur
+		// Flux sorgusu oluştur - tek satırda
 		var query string
 		if agentID != "" {
 			escapedAgentID := escapeFluxString(agentID)
-			query = fmt.Sprintf(`
-				from(bucket: "clustereye")
-				|> range(start: -%s)
-				|> filter(fn: (r) => r._measurement == "cpu_usage" or r._measurement == "cpu_load")
-				|> filter(fn: (r) => r.agent_id == "%s")
-			`, timeRange, escapedAgentID)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "cpu_usage" or r._measurement == "cpu_load") |> filter(fn: (r) => r.agent_id == "%s")`, timeRange, escapedAgentID)
 		} else {
-			query = fmt.Sprintf(`
-				from(bucket: "clustereye")
-				|> range(start: -%s)
-				|> filter(fn: (r) => r._measurement == "cpu_usage" or r._measurement == "cpu_load")
-			`, timeRange)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "cpu_usage" or r._measurement == "cpu_load")`, timeRange)
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
@@ -2144,21 +2135,13 @@ func getMemoryMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
 
+		// Flux sorgusu oluştur - tek satırda
 		var query string
 		if agentID != "" {
 			escapedAgentID := escapeFluxString(agentID)
-			query = fmt.Sprintf(`
-				from(bucket: "clustereye")
-				|> range(start: -%s)
-				|> filter(fn: (r) => r._measurement == "memory_usage" or r._measurement == "memory_info")
-				|> filter(fn: (r) => r.agent_id == "%s")
-			`, timeRange, escapedAgentID)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "memory_usage" or r._measurement == "memory_info") |> filter(fn: (r) => r.agent_id == "%s")`, timeRange, escapedAgentID)
 		} else {
-			query = fmt.Sprintf(`
-				from(bucket: "clustereye")
-				|> range(start: -%s)
-				|> filter(fn: (r) => r._measurement == "memory_usage" or r._measurement == "memory_info")
-			`, timeRange)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "memory_usage" or r._measurement == "memory_info")`, timeRange)
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
@@ -2195,21 +2178,13 @@ func getDiskMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
 
+		// Flux sorgusu oluştur - tek satırda
 		var query string
 		if agentID != "" {
 			escapedAgentID := escapeFluxString(agentID)
-			query = fmt.Sprintf(`
-				from(bucket: "clustereye")
-				|> range(start: -%s)
-				|> filter(fn: (r) => r._measurement == "disk_usage" or r._measurement == "disk_info")
-				|> filter(fn: (r) => r.agent_id == "%s")
-			`, timeRange, escapedAgentID)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "disk_usage" or r._measurement == "disk_info") |> filter(fn: (r) => r.agent_id == "%s")`, timeRange, escapedAgentID)
 		} else {
-			query = fmt.Sprintf(`
-				from(bucket: "clustereye")
-				|> range(start: -%s)
-				|> filter(fn: (r) => r._measurement == "disk_usage" or r._measurement == "disk_info")
-			`, timeRange)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "disk_usage" or r._measurement == "disk_info")`, timeRange)
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
@@ -2246,21 +2221,13 @@ func getNetworkMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
 
+		// Flux sorgusu oluştur - tek satırda
 		var query string
 		if agentID != "" {
 			escapedAgentID := escapeFluxString(agentID)
-			query = fmt.Sprintf(`
-				from(bucket: "clustereye")
-				|> range(start: -%s)
-				|> filter(fn: (r) => r._measurement == "network_io" or r._measurement == "network_packets")
-				|> filter(fn: (r) => r.agent_id == "%s")
-			`, timeRange, escapedAgentID)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "network_io" or r._measurement == "network_packets") |> filter(fn: (r) => r.agent_id == "%s")`, timeRange, escapedAgentID)
 		} else {
-			query = fmt.Sprintf(`
-				from(bucket: "clustereye")
-				|> range(start: -%s)
-				|> filter(fn: (r) => r._measurement == "network_io" or r._measurement == "network_packets")
-			`, timeRange)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "network_io" or r._measurement == "network_packets")`, timeRange)
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
@@ -2308,18 +2275,9 @@ func getDatabaseMetrics(server *server.Server) gin.HandlerFunc {
 		var query string
 		if agentID != "" {
 			escapedAgentID := escapeFluxString(agentID)
-			query = fmt.Sprintf(`
-				from(bucket: "clustereye")
-				|> range(start: -%s)
-				%s
-				|> filter(fn: (r) => r.agent_id == "%s")
-			`, timeRange, measurementFilter, escapedAgentID)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) %s |> filter(fn: (r) => r.agent_id == "%s")`, timeRange, measurementFilter, escapedAgentID)
 		} else {
-			query = fmt.Sprintf(`
-				from(bucket: "clustereye")
-				|> range(start: -%s)
-				%s
-			`, timeRange, measurementFilter)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) %s`, timeRange, measurementFilter)
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
@@ -2357,27 +2315,9 @@ func getDashboardMetrics(server *server.Server) gin.HandlerFunc {
 
 		// Dashboard için temel metrikler
 		queries := map[string]string{
-			"cpu_usage": fmt.Sprintf(`
-				from(bucket: "clustereye")
-				|> range(start: -%s)
-				|> filter(fn: (r) => r._measurement == "cpu_usage")
-				|> filter(fn: (r) => r._field == "usage_percent")
-				|> aggregateWindow(every: 5m, fn: mean, createEmpty: false)
-			`, timeRange),
-			"memory_usage": fmt.Sprintf(`
-				from(bucket: "clustereye")
-				|> range(start: -%s)
-				|> filter(fn: (r) => r._measurement == "memory_usage")
-				|> filter(fn: (r) => r._field == "usage_percent")
-				|> aggregateWindow(every: 5m, fn: mean, createEmpty: false)
-			`, timeRange),
-			"disk_usage": fmt.Sprintf(`
-				from(bucket: "clustereye")
-				|> range(start: -%s)
-				|> filter(fn: (r) => r._measurement == "disk_usage")
-				|> filter(fn: (r) => r._field == "usage_percent")
-				|> aggregateWindow(every: 5m, fn: mean, createEmpty: false)
-			`, timeRange),
+			"cpu_usage":    fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "cpu_usage") |> filter(fn: (r) => r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
+			"memory_usage": fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "memory_usage") |> filter(fn: (r) => r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
+			"disk_usage":   fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "disk_usage") |> filter(fn: (r) => r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
