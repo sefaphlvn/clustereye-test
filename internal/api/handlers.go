@@ -156,6 +156,25 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		// İşlem loglarını getir
 		processLogs.GET("", getProcessLogs(server))
 	}
+
+	// Metrics Endpoint'leri
+	metrics := v1.Group("/metrics")
+	{
+		// Metrik sorgulama endpoint'i
+		metrics.POST("/query", queryMetrics(server))
+		// CPU metrikleri
+		metrics.GET("/cpu", getCPUMetrics(server))
+		// Memory metrikleri
+		metrics.GET("/memory", getMemoryMetrics(server))
+		// Disk metrikleri
+		metrics.GET("/disk", getDiskMetrics(server))
+		// Network metrikleri
+		metrics.GET("/network", getNetworkMetrics(server))
+		// Database metrikleri
+		metrics.GET("/database", getDatabaseMetrics(server))
+		// Genel dashboard metrikleri
+		metrics.GET("/dashboard", getDashboardMetrics(server))
+	}
 }
 
 // getAgents, bağlı tüm agent'ları listeler
@@ -2012,6 +2031,341 @@ func getRecentAlarms(server *server.Server) gin.HandlerFunc {
 				"alarms": alarms,
 				"count":  len(alarms),
 			},
+		})
+	}
+}
+
+// queryMetrics, InfluxDB'den özel metrik sorguları yapar
+func queryMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Query string `json:"query" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz sorgu formatı: " + err.Error(),
+			})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		// InfluxDB writer'dan sorgu yap
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, req.Query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Metrik sorgusu başarısız: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}
+
+// getCPUMetrics, CPU metriklerini getirir
+func getCPUMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Query parametreleri
+		agentID := c.Query("agent_id")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		// Flux sorgusu oluştur
+		query := fmt.Sprintf(`
+			from(bucket: "clustereye")
+			|> range(start: -%s)
+			|> filter(fn: (r) => r._measurement == "cpu_usage" or r._measurement == "cpu_load")
+		`, timeRange)
+
+		if agentID != "" {
+			query += fmt.Sprintf(`|> filter(fn: (r) => r.agent_id == "%s")`, agentID)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "CPU metrikleri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}
+
+// getMemoryMetrics, Memory metriklerini getirir
+func getMemoryMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		query := fmt.Sprintf(`
+			from(bucket: "clustereye")
+			|> range(start: -%s)
+			|> filter(fn: (r) => r._measurement == "memory_usage" or r._measurement == "memory_info")
+		`, timeRange)
+
+		if agentID != "" {
+			query += fmt.Sprintf(`|> filter(fn: (r) => r.agent_id == "%s")`, agentID)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Memory metrikleri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}
+
+// getDiskMetrics, Disk metriklerini getirir
+func getDiskMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		query := fmt.Sprintf(`
+			from(bucket: "clustereye")
+			|> range(start: -%s)
+			|> filter(fn: (r) => r._measurement == "disk_usage" or r._measurement == "disk_info")
+		`, timeRange)
+
+		if agentID != "" {
+			query += fmt.Sprintf(`|> filter(fn: (r) => r.agent_id == "%s")`, agentID)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Disk metrikleri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}
+
+// getNetworkMetrics, Network metriklerini getirir
+func getNetworkMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		query := fmt.Sprintf(`
+			from(bucket: "clustereye")
+			|> range(start: -%s)
+			|> filter(fn: (r) => r._measurement == "network_io" or r._measurement == "network_packets")
+		`, timeRange)
+
+		if agentID != "" {
+			query += fmt.Sprintf(`|> filter(fn: (r) => r.agent_id == "%s")`, agentID)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Network metrikleri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}
+
+// getDatabaseMetrics, Database metriklerini getirir
+func getDatabaseMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		dbType := c.Query("type") // postgresql, mongodb, mssql
+		timeRange := c.DefaultQuery("range", "1h")
+
+		var measurementFilter string
+		if dbType != "" {
+			measurementFilter = fmt.Sprintf(`|> filter(fn: (r) => r._measurement =~ /^%s_/)`, dbType)
+		} else {
+			measurementFilter = `|> filter(fn: (r) => r._measurement =~ /^(postgresql|mongodb|mssql)_/)`
+		}
+
+		query := fmt.Sprintf(`
+			from(bucket: "clustereye")
+			|> range(start: -%s)
+			%s
+		`, timeRange, measurementFilter)
+
+		if agentID != "" {
+			query += fmt.Sprintf(`|> filter(fn: (r) => r.agent_id == "%s")`, agentID)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Database metrikleri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}
+
+// getDashboardMetrics, dashboard için optimize edilmiş metrikleri getirir
+func getDashboardMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		timeRange := c.DefaultQuery("range", "1h")
+
+		// Dashboard için temel metrikler
+		queries := map[string]string{
+			"cpu_usage": fmt.Sprintf(`
+				from(bucket: "clustereye")
+				|> range(start: -%s)
+				|> filter(fn: (r) => r._measurement == "cpu_usage")
+				|> filter(fn: (r) => r._field == "usage_percent")
+				|> aggregateWindow(every: 5m, fn: mean, createEmpty: false)
+			`, timeRange),
+			"memory_usage": fmt.Sprintf(`
+				from(bucket: "clustereye")
+				|> range(start: -%s)
+				|> filter(fn: (r) => r._measurement == "memory_usage")
+				|> filter(fn: (r) => r._field == "usage_percent")
+				|> aggregateWindow(every: 5m, fn: mean, createEmpty: false)
+			`, timeRange),
+			"disk_usage": fmt.Sprintf(`
+				from(bucket: "clustereye")
+				|> range(start: -%s)
+				|> filter(fn: (r) => r._measurement == "disk_usage")
+				|> filter(fn: (r) => r._field == "usage_percent")
+				|> aggregateWindow(every: 5m, fn: mean, createEmpty: false)
+			`, timeRange),
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results := make(map[string]interface{})
+
+		for metricName, query := range queries {
+			data, err := influxWriter.QueryMetrics(ctx, query)
+			if err != nil {
+				log.Printf("[ERROR] Dashboard metrik sorgusu başarısız (%s): %v", metricName, err)
+				results[metricName] = []interface{}{}
+			} else {
+				results[metricName] = data
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
 		})
 	}
 }

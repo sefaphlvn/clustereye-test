@@ -12,6 +12,7 @@ import (
 	"github.com/sefaphlvn/clustereye-test/internal/api"
 	"github.com/sefaphlvn/clustereye-test/internal/config"
 	"github.com/sefaphlvn/clustereye-test/internal/database"
+	"github.com/sefaphlvn/clustereye-test/internal/metrics"
 	"github.com/sefaphlvn/clustereye-test/internal/server"
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 
@@ -65,6 +66,13 @@ func main() {
 	}
 	defer db.Close()
 
+	// InfluxDB Writer'ı başlat
+	influxWriter, err := metrics.NewInfluxDBWriter(cfg.InfluxDB)
+	if err != nil {
+		log.Fatalf("InfluxDB bağlantısı kurulamadı: %v", err)
+	}
+	defer influxWriter.Close()
+
 	// gRPC Server başlat
 	listener, err := net.Listen("tcp", cfg.GRPC.Address)
 	if err != nil {
@@ -79,7 +87,7 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer(opts...)
-	serverInstance := server.NewServer(db)
+	serverInstance := server.NewServer(db, influxWriter)
 	pb.RegisterAgentServiceServer(grpcServer, serverInstance)
 
 	go func() {

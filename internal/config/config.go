@@ -29,6 +29,9 @@ type ServerConfig struct {
 
 	// Veritabanı ayarları
 	Database database.Config `yaml:"database"`
+
+	// InfluxDB Configuration
+	InfluxDB InfluxDBConfig `yaml:"influxdb"`
 }
 
 // AgentConfig, Agent için konfigürasyon yapısı
@@ -60,6 +63,17 @@ type AgentConfig struct {
 	GRPC struct {
 		ServerAddress string `yaml:"server_address"`
 	} `yaml:"grpc"`
+}
+
+// InfluxDBConfig, InfluxDB bağlantı ayarları
+type InfluxDBConfig struct {
+	URL           string `yaml:"url" env:"INFLUXDB_URL"`
+	Token         string `yaml:"token" env:"INFLUXDB_TOKEN"`
+	Organization  string `yaml:"organization" env:"INFLUXDB_ORG"`
+	Bucket        string `yaml:"bucket" env:"INFLUXDB_BUCKET"`
+	Enabled       bool   `yaml:"enabled" env:"INFLUXDB_ENABLED"`
+	BatchSize     int    `yaml:"batch_size" env:"INFLUXDB_BATCH_SIZE"`
+	FlushInterval int    `yaml:"flush_interval" env:"INFLUXDB_FLUSH_INTERVAL"` // seconds
 }
 
 // LoadServerConfig, sunucu konfigürasyonunu yükler
@@ -132,6 +146,17 @@ func createDefaultServerConfig(configPath string) (*ServerConfig, error) {
 		Password: "postgres",
 		DBName:   "clustereye",
 		SSLMode:  "disable",
+	}
+
+	// InfluxDB varsayılan ayarları
+	config.InfluxDB = InfluxDBConfig{
+		URL:           "http://localhost:8086",
+		Token:         "",
+		Organization:  "clustereye",
+		Bucket:        "clustereye",
+		Enabled:       false, // Varsayılan olarak kapalı
+		BatchSize:     1000,
+		FlushInterval: 10,
 	}
 
 	// Konfigürasyonu YAML olarak dönüştür

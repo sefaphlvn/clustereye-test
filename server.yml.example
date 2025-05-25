@@ -1,0 +1,39 @@
+server:
+  name: ClusterEye
+
+grpc:
+  address: :50051
+
+http:
+  address: :8080
+
+database:
+  host: localhost
+  port: 5432
+  user: postgres
+  password: postgres
+  dbname: clustereye
+  sslmode: disable
+
+# InfluxDB Configuration
+influxdb:
+  # InfluxDB server URL
+  url: http://localhost:8086
+  
+  # InfluxDB access token (create from InfluxDB UI)
+  token: "your-influxdb-token-here"
+  
+  # Organization name
+  organization: "clustereye"
+  
+  # Bucket name for storing metrics
+  bucket: "clustereye"
+  
+  # Enable/disable InfluxDB integration
+  enabled: true
+  
+  # Batch size for writing metrics
+  batch_size: 1000
+  
+  # Flush interval in seconds
+  flush_interval: 10 

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/sefaphlvn/clustereye-test/internal/database"
+	"github.com/sefaphlvn/clustereye-test/internal/metrics"
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 
 	"google.golang.org/grpc/codes"
@@ -60,10 +61,12 @@ type Server struct {
 	// Job yönetimi için yeni alanlar
 	jobMu sync.RWMutex
 	jobs  map[string]*pb.Job
+	// InfluxDB writer
+	influxWriter *metrics.InfluxDBWriter
 }
 
 // NewServer, yeni bir sunucu nesnesi oluşturur
-func NewServer(db *sql.DB) *Server {
+func NewServer(db *sql.DB, influxWriter *metrics.InfluxDBWriter) *Server {
 	return &Server{
 		agents:       make(map[string]*AgentConnection),
 		queryResult:  make(map[string]*QueryResponse),
@@ -71,6 +74,7 @@ func NewServer(db *sql.DB) *Server {
 		companyRepo:  database.NewCompanyRepository(db),
 		lastPingTime: make(map[string]time.Time),
 		jobs:         make(map[string]*pb.Job),
+		influxWriter: influxWriter,
 	}
 }
 
@@ -818,6 +822,20 @@ func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsReq
 			return nil, fmt.Errorf("metrik yapısı çözümlenemedi: %v", err)
 		}
 
+		// InfluxDB'ye metrikleri yaz (eğer etkinse)
+		if s.influxWriter != nil {
+			go func() {
+				writeCtx, writeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer writeCancel()
+
+				if err := s.influxWriter.WriteSystemMetrics(writeCtx, agentID, &metricsStruct); err != nil {
+					log.Printf("[ERROR] InfluxDB'ye metrik yazma hatası: %v", err)
+				} else {
+					log.Printf("[DEBUG] Metrikler InfluxDB'ye başarıyla yazıldı - Agent: %s", agentID)
+				}
+			}()
+		}
+
 		// Yanıtı oluştur ve döndür
 		response := &pb.SystemMetricsResponse{
 			Status: "success",
@@ -836,6 +854,11 @@ func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsReq
 // GetDB, veritabanı bağlantısını döndürür
 func (s *Server) GetDB() *sql.DB {
 	return s.db
+}
+
+// GetInfluxWriter, InfluxDB writer'ını döndürür
+func (s *Server) GetInfluxWriter() *metrics.InfluxDBWriter {
+	return s.influxWriter
 }
 
 // ReportAlarm, agent'lardan gelen alarm bildirimlerini işler
