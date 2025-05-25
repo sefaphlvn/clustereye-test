@@ -2087,8 +2087,8 @@ func getCPUMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
 
-		// Flux sorgusu oluştur - regex pattern kullan
-		query := fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /^cpu_/)`, timeRange)
+		// Flux sorgusu oluştur - en basit format
+		query := fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s)`, timeRange)
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
@@ -2111,16 +2111,32 @@ func getCPUMetrics(server *server.Server) gin.HandlerFunc {
 			return
 		}
 
-		// Agent ID filtrelemesi varsa client tarafında filtrele
-		if agentID != "" {
-			filteredResults := make([]map[string]interface{}, 0)
-			for _, item := range results {
+		// Client tarafında measurement ve agent ID filtrelemesi
+		filteredResults := make([]map[string]interface{}, 0)
+		for _, item := range results {
+			// CPU measurement'larını filtrele
+			if measurement, exists := item["_measurement"]; exists {
+				measurementStr, ok := measurement.(string)
+				if !ok {
+					continue
+				}
+				if measurementStr != "cpu_usage" && measurementStr != "cpu_load" {
+					continue
+				}
+			} else {
+				continue
+			}
+
+			// Agent ID filtrelemesi varsa uygula
+			if agentID != "" {
 				if itemAgentID, exists := item["agent_id"]; exists && itemAgentID == agentID {
 					filteredResults = append(filteredResults, item)
 				}
+			} else {
+				filteredResults = append(filteredResults, item)
 			}
-			results = filteredResults
 		}
+		results = filteredResults
 
 		c.JSON(http.StatusOK, gin.H{
 			"status": "success",
