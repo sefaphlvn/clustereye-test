@@ -23,6 +23,7 @@ type User struct {
 	Email        string    `json:"email"`
 	Status       string    `json:"status"`
 	Admin        string    `json:"admin"`
+	TotpEnabled  bool      `json:"totp_enabled"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
@@ -32,8 +33,9 @@ var jwtSecretKey = []byte("your-secret-key") // Güvenli bir ortamda saklanmalı
 func Login(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var loginRequest struct {
-			Username string `json:"username" binding:"required"`
-			Password string `json:"password" binding:"required"`
+			Username  string `json:"username" binding:"required"`
+			Password  string `json:"password" binding:"required"`
+			TwoFACode string `json:"twofa_code,omitempty"`
 		}
 
 		// Request body'yi logla
@@ -55,9 +57,10 @@ func Login(db *sql.DB) gin.HandlerFunc {
 		var status string
 		var admin string
 		var email string
+		var totpEnabled bool
 
 		// Sorguyu hazırla - Kullanıcı bilgilerini ve durumunu al
-		stmt, err := db.Prepare("SELECT password_hash, email, status, admin FROM users WHERE username = $1")
+		stmt, err := db.Prepare("SELECT password_hash, email, status, admin, COALESCE(totp_enabled, false) FROM users WHERE username = $1")
 		if err != nil {
 			log.Printf("Prepare error: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
@@ -65,7 +68,7 @@ func Login(db *sql.DB) gin.HandlerFunc {
 		}
 		defer stmt.Close()
 
-		err = stmt.QueryRow(loginRequest.Username).Scan(&passwordHash, &email, &status, &admin)
+		err = stmt.QueryRow(loginRequest.Username).Scan(&passwordHash, &email, &status, &admin, &totpEnabled)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				log.Printf("User not found: %s", loginRequest.Username)
@@ -99,6 +102,30 @@ func Login(db *sql.DB) gin.HandlerFunc {
 			log.Printf("Password comparison failed: %v", err)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 			return
+		}
+
+		// 2FA kontrolü
+		if totpEnabled {
+			if loginRequest.TwoFACode == "" {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"error":        "2FA code required",
+					"requires_2fa": true,
+				})
+				return
+			}
+
+			// 2FA kodunu doğrula
+			valid, err := Verify2FA(db, loginRequest.Username, loginRequest.TwoFACode)
+			if err != nil {
+				log.Printf("2FA verification error: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "2FA verification failed"})
+				return
+			}
+
+			if !valid {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid 2FA code"})
+				return
+			}
 		}
 
 		// JWT token oluştur

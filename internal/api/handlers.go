@@ -43,6 +43,21 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 	// Kullanıcıyı sil - Sadece admin erişebilir
 	v1.DELETE("/users/:id", AuthMiddleware(), DeleteUser(server.GetDB()))
 
+	// 2FA Endpoint'leri
+	twofa := v1.Group("/2fa")
+	{
+		// 2FA durumunu getir
+		twofa.GET("/status", AuthMiddleware(), Get2FAStatus(server.GetDB()))
+		// 2FA secret oluştur
+		twofa.POST("/generate", AuthMiddleware(), Generate2FASecret(server.GetDB()))
+		// 2FA'yı aktif et
+		twofa.POST("/enable", AuthMiddleware(), Enable2FA(server.GetDB()))
+		// 2FA'yı deaktif et
+		twofa.POST("/disable", AuthMiddleware(), Disable2FA(server.GetDB()))
+		// Backup kodları yeniden oluştur
+		twofa.POST("/regenerate-backup-codes", AuthMiddleware(), RegenerateBackupCodes(server.GetDB()))
+	}
+
 	// Agent Endpoint'leri
 	agents := v1.Group("/agents")
 	{

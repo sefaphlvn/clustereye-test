@@ -11,6 +11,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/influxdata/influxdb-client-go/v2 v2.12.3
 	github.com/lib/pq v1.10.9
+	github.com/pquerna/otp v1.5.0
 	golang.org/x/crypto v0.37.0
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.6
@@ -18,6 +19,7 @@ require (
 )
 
 require (
+	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/bytedance/sonic v1.13.2 // indirect
 	github.com/bytedance/sonic/loader v0.2.4 // indirect
 	github.com/cloudwego/base64x v0.1.5 // indirect
