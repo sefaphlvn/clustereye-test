@@ -46,6 +46,8 @@ const (
 	AgentService_GetBestPracticesAnalysis_FullMethodName = "/agent.AgentService/GetBestPracticesAnalysis"
 	AgentService_ReportProcessLogs_FullMethodName        = "/agent.AgentService/ReportProcessLogs"
 	AgentService_GetProcessStatus_FullMethodName         = "/agent.AgentService/GetProcessStatus"
+	AgentService_SendMetrics_FullMethodName              = "/agent.AgentService/SendMetrics"
+	AgentService_CollectMetrics_FullMethodName           = "/agent.AgentService/CollectMetrics"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -100,6 +102,10 @@ type AgentServiceClient interface {
 	ReportProcessLogs(ctx context.Context, in *ProcessLogRequest, opts ...grpc.CallOption) (*ProcessLogResponse, error)
 	// Belirli bir işlemin durumunu sorgular
 	GetProcessStatus(ctx context.Context, in *ProcessStatusRequest, opts ...grpc.CallOption) (*ProcessStatusResponse, error)
+	// Agent'dan server'a metric gönderme
+	SendMetrics(ctx context.Context, in *SendMetricsRequest, opts ...grpc.CallOption) (*SendMetricsResponse, error)
+	// Server'dan agent'a metric toplama talebi
+	CollectMetrics(ctx context.Context, in *CollectMetricsRequest, opts ...grpc.CallOption) (*CollectMetricsResponse, error)
 }
 
 type agentServiceClient struct {
@@ -389,6 +395,26 @@ func (c *agentServiceClient) GetProcessStatus(ctx context.Context, in *ProcessSt
 	return out, nil
 }
 
+func (c *agentServiceClient) SendMetrics(ctx context.Context, in *SendMetricsRequest, opts ...grpc.CallOption) (*SendMetricsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SendMetricsResponse)
+	err := c.cc.Invoke(ctx, AgentService_SendMetrics_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) CollectMetrics(ctx context.Context, in *CollectMetricsRequest, opts ...grpc.CallOption) (*CollectMetricsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CollectMetricsResponse)
+	err := c.cc.Invoke(ctx, AgentService_CollectMetrics_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -441,6 +467,10 @@ type AgentServiceServer interface {
 	ReportProcessLogs(context.Context, *ProcessLogRequest) (*ProcessLogResponse, error)
 	// Belirli bir işlemin durumunu sorgular
 	GetProcessStatus(context.Context, *ProcessStatusRequest) (*ProcessStatusResponse, error)
+	// Agent'dan server'a metric gönderme
+	SendMetrics(context.Context, *SendMetricsRequest) (*SendMetricsResponse, error)
+	// Server'dan agent'a metric toplama talebi
+	CollectMetrics(context.Context, *CollectMetricsRequest) (*CollectMetricsResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -531,6 +561,12 @@ func (UnimplementedAgentServiceServer) ReportProcessLogs(context.Context, *Proce
 }
 func (UnimplementedAgentServiceServer) GetProcessStatus(context.Context, *ProcessStatusRequest) (*ProcessStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProcessStatus not implemented")
+}
+func (UnimplementedAgentServiceServer) SendMetrics(context.Context, *SendMetricsRequest) (*SendMetricsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendMetrics not implemented")
+}
+func (UnimplementedAgentServiceServer) CollectMetrics(context.Context, *CollectMetricsRequest) (*CollectMetricsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CollectMetrics not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -1006,6 +1042,42 @@ func _AgentService_GetProcessStatus_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_SendMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SendMetricsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).SendMetrics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_SendMetrics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).SendMetrics(ctx, req.(*SendMetricsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_CollectMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CollectMetricsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).CollectMetrics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_CollectMetrics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).CollectMetrics(ctx, req.(*CollectMetricsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1108,6 +1180,14 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetProcessStatus",
 			Handler:    _AgentService_GetProcessStatus_Handler,
+		},
+		{
+			MethodName: "SendMetrics",
+			Handler:    _AgentService_SendMetrics_Handler,
+		},
+		{
+			MethodName: "CollectMetrics",
+			Handler:    _AgentService_CollectMetrics_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

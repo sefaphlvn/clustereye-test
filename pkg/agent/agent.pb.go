@@ -5934,6 +5934,1168 @@ func (x *ListenerInfo) GetDnsName() string {
 	return ""
 }
 
+// Global Metric System - Genişletilebilir metric yapısı
+type MetricValue struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Value:
+	//
+	//	*MetricValue_DoubleValue
+	//	*MetricValue_IntValue
+	//	*MetricValue_StringValue
+	//	*MetricValue_BoolValue
+	Value         isMetricValue_Value `protobuf_oneof:"value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetricValue) Reset() {
+	*x = MetricValue{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[78]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetricValue) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetricValue) ProtoMessage() {}
+
+func (x *MetricValue) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[78]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetricValue.ProtoReflect.Descriptor instead.
+func (*MetricValue) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{78}
+}
+
+func (x *MetricValue) GetValue() isMetricValue_Value {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+func (x *MetricValue) GetDoubleValue() float64 {
+	if x != nil {
+		if x, ok := x.Value.(*MetricValue_DoubleValue); ok {
+			return x.DoubleValue
+		}
+	}
+	return 0
+}
+
+func (x *MetricValue) GetIntValue() int64 {
+	if x != nil {
+		if x, ok := x.Value.(*MetricValue_IntValue); ok {
+			return x.IntValue
+		}
+	}
+	return 0
+}
+
+func (x *MetricValue) GetStringValue() string {
+	if x != nil {
+		if x, ok := x.Value.(*MetricValue_StringValue); ok {
+			return x.StringValue
+		}
+	}
+	return ""
+}
+
+func (x *MetricValue) GetBoolValue() bool {
+	if x != nil {
+		if x, ok := x.Value.(*MetricValue_BoolValue); ok {
+			return x.BoolValue
+		}
+	}
+	return false
+}
+
+type isMetricValue_Value interface {
+	isMetricValue_Value()
+}
+
+type MetricValue_DoubleValue struct {
+	DoubleValue float64 `protobuf:"fixed64,1,opt,name=double_value,json=doubleValue,proto3,oneof"`
+}
+
+type MetricValue_IntValue struct {
+	IntValue int64 `protobuf:"varint,2,opt,name=int_value,json=intValue,proto3,oneof"`
+}
+
+type MetricValue_StringValue struct {
+	StringValue string `protobuf:"bytes,3,opt,name=string_value,json=stringValue,proto3,oneof"`
+}
+
+type MetricValue_BoolValue struct {
+	BoolValue bool `protobuf:"varint,4,opt,name=bool_value,json=boolValue,proto3,oneof"`
+}
+
+func (*MetricValue_DoubleValue) isMetricValue_Value() {}
+
+func (*MetricValue_IntValue) isMetricValue_Value() {}
+
+func (*MetricValue_StringValue) isMetricValue_Value() {}
+
+func (*MetricValue_BoolValue) isMetricValue_Value() {}
+
+type MetricTag struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetricTag) Reset() {
+	*x = MetricTag{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[79]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetricTag) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetricTag) ProtoMessage() {}
+
+func (x *MetricTag) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[79]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetricTag.ProtoReflect.Descriptor instead.
+func (*MetricTag) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{79}
+}
+
+func (x *MetricTag) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *MetricTag) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+type Metric struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`               // Metric adı (örn: "mongodb.operations.insert")
+	Value         *MetricValue           `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`             // Metric değeri
+	Tags          []*MetricTag           `protobuf:"bytes,3,rep,name=tags,proto3" json:"tags,omitempty"`               // Etiketler (database, collection, vs.)
+	Timestamp     int64                  `protobuf:"varint,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`    // Unix timestamp (nanoseconds)
+	Unit          string                 `protobuf:"bytes,5,opt,name=unit,proto3" json:"unit,omitempty"`               // Birim (ops/sec, bytes, percent, vs.)
+	Description   string                 `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"` // Açıklama
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Metric) Reset() {
+	*x = Metric{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[80]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Metric) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Metric) ProtoMessage() {}
+
+func (x *Metric) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[80]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Metric.ProtoReflect.Descriptor instead.
+func (*Metric) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{80}
+}
+
+func (x *Metric) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Metric) GetValue() *MetricValue {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+func (x *Metric) GetTags() []*MetricTag {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
+func (x *Metric) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
+func (x *Metric) GetUnit() string {
+	if x != nil {
+		return x.Unit
+	}
+	return ""
+}
+
+func (x *Metric) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+type MetricBatch struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	AgentId             string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`                                                              // Agent ID
+	MetricType          string                 `protobuf:"bytes,2,opt,name=metric_type,json=metricType,proto3" json:"metric_type,omitempty"`                                                     // Metric tipi (system, mongodb, postgresql, mssql)
+	Metrics             []*Metric              `protobuf:"bytes,3,rep,name=metrics,proto3" json:"metrics,omitempty"`                                                                             // Metric listesi
+	CollectionTimestamp int64                  `protobuf:"varint,4,opt,name=collection_timestamp,json=collectionTimestamp,proto3" json:"collection_timestamp,omitempty"`                         // Toplama zamanı
+	Metadata            map[string]string      `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Ek metadata
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *MetricBatch) Reset() {
+	*x = MetricBatch{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[81]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetricBatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetricBatch) ProtoMessage() {}
+
+func (x *MetricBatch) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[81]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetricBatch.ProtoReflect.Descriptor instead.
+func (*MetricBatch) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{81}
+}
+
+func (x *MetricBatch) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *MetricBatch) GetMetricType() string {
+	if x != nil {
+		return x.MetricType
+	}
+	return ""
+}
+
+func (x *MetricBatch) GetMetrics() []*Metric {
+	if x != nil {
+		return x.Metrics
+	}
+	return nil
+}
+
+func (x *MetricBatch) GetCollectionTimestamp() int64 {
+	if x != nil {
+		return x.CollectionTimestamp
+	}
+	return 0
+}
+
+func (x *MetricBatch) GetMetadata() map[string]string {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+// Agent'dan server'a metric gönderme
+type SendMetricsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Batch         *MetricBatch           `protobuf:"bytes,1,opt,name=batch,proto3" json:"batch,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendMetricsRequest) Reset() {
+	*x = SendMetricsRequest{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[82]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendMetricsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendMetricsRequest) ProtoMessage() {}
+
+func (x *SendMetricsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[82]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendMetricsRequest.ProtoReflect.Descriptor instead.
+func (*SendMetricsRequest) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{82}
+}
+
+func (x *SendMetricsRequest) GetBatch() *MetricBatch {
+	if x != nil {
+		return x.Batch
+	}
+	return nil
+}
+
+type SendMetricsResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Status         string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	Message        string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	ProcessedCount int32                  `protobuf:"varint,3,opt,name=processed_count,json=processedCount,proto3" json:"processed_count,omitempty"`
+	Errors         []string               `protobuf:"bytes,4,rep,name=errors,proto3" json:"errors,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *SendMetricsResponse) Reset() {
+	*x = SendMetricsResponse{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[83]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendMetricsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendMetricsResponse) ProtoMessage() {}
+
+func (x *SendMetricsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[83]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendMetricsResponse.ProtoReflect.Descriptor instead.
+func (*SendMetricsResponse) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{83}
+}
+
+func (x *SendMetricsResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *SendMetricsResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *SendMetricsResponse) GetProcessedCount() int32 {
+	if x != nil {
+		return x.ProcessedCount
+	}
+	return 0
+}
+
+func (x *SendMetricsResponse) GetErrors() []string {
+	if x != nil {
+		return x.Errors
+	}
+	return nil
+}
+
+// Server'dan agent'a metric toplama talebi
+type CollectMetricsRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	AgentId         string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	MetricTypes     []string               `protobuf:"bytes,2,rep,name=metric_types,json=metricTypes,proto3" json:"metric_types,omitempty"`                                              // Hangi tür metrikler toplanacak
+	IntervalSeconds int32                  `protobuf:"varint,3,opt,name=interval_seconds,json=intervalSeconds,proto3" json:"interval_seconds,omitempty"`                                 // Toplama aralığı
+	Config          map[string]string      `protobuf:"bytes,4,rep,name=config,proto3" json:"config,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Ek konfigürasyon
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *CollectMetricsRequest) Reset() {
+	*x = CollectMetricsRequest{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[84]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CollectMetricsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CollectMetricsRequest) ProtoMessage() {}
+
+func (x *CollectMetricsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[84]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CollectMetricsRequest.ProtoReflect.Descriptor instead.
+func (*CollectMetricsRequest) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{84}
+}
+
+func (x *CollectMetricsRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *CollectMetricsRequest) GetMetricTypes() []string {
+	if x != nil {
+		return x.MetricTypes
+	}
+	return nil
+}
+
+func (x *CollectMetricsRequest) GetIntervalSeconds() int32 {
+	if x != nil {
+		return x.IntervalSeconds
+	}
+	return 0
+}
+
+func (x *CollectMetricsRequest) GetConfig() map[string]string {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+type CollectMetricsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CollectMetricsResponse) Reset() {
+	*x = CollectMetricsResponse{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[85]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CollectMetricsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CollectMetricsResponse) ProtoMessage() {}
+
+func (x *CollectMetricsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[85]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CollectMetricsResponse.ProtoReflect.Descriptor instead.
+func (*CollectMetricsResponse) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{85}
+}
+
+func (x *CollectMetricsResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *CollectMetricsResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+// MongoDB Operations Metrics - Özel metric yapıları
+type MongoOperationMetrics struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Database      string                 `protobuf:"bytes,1,opt,name=database,proto3" json:"database,omitempty"`
+	Collection    string                 `protobuf:"bytes,2,opt,name=collection,proto3" json:"collection,omitempty"`
+	InsertCount   int64                  `protobuf:"varint,3,opt,name=insert_count,json=insertCount,proto3" json:"insert_count,omitempty"`
+	QueryCount    int64                  `protobuf:"varint,4,opt,name=query_count,json=queryCount,proto3" json:"query_count,omitempty"`
+	UpdateCount   int64                  `protobuf:"varint,5,opt,name=update_count,json=updateCount,proto3" json:"update_count,omitempty"`
+	DeleteCount   int64                  `protobuf:"varint,6,opt,name=delete_count,json=deleteCount,proto3" json:"delete_count,omitempty"`
+	GetmoreCount  int64                  `protobuf:"varint,7,opt,name=getmore_count,json=getmoreCount,proto3" json:"getmore_count,omitempty"`
+	CommandCount  int64                  `protobuf:"varint,8,opt,name=command_count,json=commandCount,proto3" json:"command_count,omitempty"`
+	AvgDurationMs float64                `protobuf:"fixed64,9,opt,name=avg_duration_ms,json=avgDurationMs,proto3" json:"avg_duration_ms,omitempty"`
+	Timestamp     int64                  `protobuf:"varint,10,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MongoOperationMetrics) Reset() {
+	*x = MongoOperationMetrics{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[86]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MongoOperationMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MongoOperationMetrics) ProtoMessage() {}
+
+func (x *MongoOperationMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[86]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MongoOperationMetrics.ProtoReflect.Descriptor instead.
+func (*MongoOperationMetrics) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{86}
+}
+
+func (x *MongoOperationMetrics) GetDatabase() string {
+	if x != nil {
+		return x.Database
+	}
+	return ""
+}
+
+func (x *MongoOperationMetrics) GetCollection() string {
+	if x != nil {
+		return x.Collection
+	}
+	return ""
+}
+
+func (x *MongoOperationMetrics) GetInsertCount() int64 {
+	if x != nil {
+		return x.InsertCount
+	}
+	return 0
+}
+
+func (x *MongoOperationMetrics) GetQueryCount() int64 {
+	if x != nil {
+		return x.QueryCount
+	}
+	return 0
+}
+
+func (x *MongoOperationMetrics) GetUpdateCount() int64 {
+	if x != nil {
+		return x.UpdateCount
+	}
+	return 0
+}
+
+func (x *MongoOperationMetrics) GetDeleteCount() int64 {
+	if x != nil {
+		return x.DeleteCount
+	}
+	return 0
+}
+
+func (x *MongoOperationMetrics) GetGetmoreCount() int64 {
+	if x != nil {
+		return x.GetmoreCount
+	}
+	return 0
+}
+
+func (x *MongoOperationMetrics) GetCommandCount() int64 {
+	if x != nil {
+		return x.CommandCount
+	}
+	return 0
+}
+
+func (x *MongoOperationMetrics) GetAvgDurationMs() float64 {
+	if x != nil {
+		return x.AvgDurationMs
+	}
+	return 0
+}
+
+func (x *MongoOperationMetrics) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
+// PostgreSQL Activity Metrics
+type PostgresActivityMetrics struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Database              string                 `protobuf:"bytes,1,opt,name=database,proto3" json:"database,omitempty"`
+	ActiveConnections     int64                  `protobuf:"varint,2,opt,name=active_connections,json=activeConnections,proto3" json:"active_connections,omitempty"`
+	IdleConnections       int64                  `protobuf:"varint,3,opt,name=idle_connections,json=idleConnections,proto3" json:"idle_connections,omitempty"`
+	TotalConnections      int64                  `protobuf:"varint,4,opt,name=total_connections,json=totalConnections,proto3" json:"total_connections,omitempty"`
+	TransactionsPerSecond int64                  `protobuf:"varint,5,opt,name=transactions_per_second,json=transactionsPerSecond,proto3" json:"transactions_per_second,omitempty"`
+	QueriesPerSecond      int64                  `protobuf:"varint,6,opt,name=queries_per_second,json=queriesPerSecond,proto3" json:"queries_per_second,omitempty"`
+	CacheHitRatio         float64                `protobuf:"fixed64,7,opt,name=cache_hit_ratio,json=cacheHitRatio,proto3" json:"cache_hit_ratio,omitempty"`
+	Deadlocks             int64                  `protobuf:"varint,8,opt,name=deadlocks,proto3" json:"deadlocks,omitempty"`
+	TempFiles             int64                  `protobuf:"varint,9,opt,name=temp_files,json=tempFiles,proto3" json:"temp_files,omitempty"`
+	TempBytes             int64                  `protobuf:"varint,10,opt,name=temp_bytes,json=tempBytes,proto3" json:"temp_bytes,omitempty"`
+	Timestamp             int64                  `protobuf:"varint,11,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *PostgresActivityMetrics) Reset() {
+	*x = PostgresActivityMetrics{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[87]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PostgresActivityMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PostgresActivityMetrics) ProtoMessage() {}
+
+func (x *PostgresActivityMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[87]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PostgresActivityMetrics.ProtoReflect.Descriptor instead.
+func (*PostgresActivityMetrics) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{87}
+}
+
+func (x *PostgresActivityMetrics) GetDatabase() string {
+	if x != nil {
+		return x.Database
+	}
+	return ""
+}
+
+func (x *PostgresActivityMetrics) GetActiveConnections() int64 {
+	if x != nil {
+		return x.ActiveConnections
+	}
+	return 0
+}
+
+func (x *PostgresActivityMetrics) GetIdleConnections() int64 {
+	if x != nil {
+		return x.IdleConnections
+	}
+	return 0
+}
+
+func (x *PostgresActivityMetrics) GetTotalConnections() int64 {
+	if x != nil {
+		return x.TotalConnections
+	}
+	return 0
+}
+
+func (x *PostgresActivityMetrics) GetTransactionsPerSecond() int64 {
+	if x != nil {
+		return x.TransactionsPerSecond
+	}
+	return 0
+}
+
+func (x *PostgresActivityMetrics) GetQueriesPerSecond() int64 {
+	if x != nil {
+		return x.QueriesPerSecond
+	}
+	return 0
+}
+
+func (x *PostgresActivityMetrics) GetCacheHitRatio() float64 {
+	if x != nil {
+		return x.CacheHitRatio
+	}
+	return 0
+}
+
+func (x *PostgresActivityMetrics) GetDeadlocks() int64 {
+	if x != nil {
+		return x.Deadlocks
+	}
+	return 0
+}
+
+func (x *PostgresActivityMetrics) GetTempFiles() int64 {
+	if x != nil {
+		return x.TempFiles
+	}
+	return 0
+}
+
+func (x *PostgresActivityMetrics) GetTempBytes() int64 {
+	if x != nil {
+		return x.TempBytes
+	}
+	return 0
+}
+
+func (x *PostgresActivityMetrics) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
+// MSSQL Performance Metrics
+type MSSQLPerformanceMetrics struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Database              string                 `protobuf:"bytes,1,opt,name=database,proto3" json:"database,omitempty"`
+	CpuUsagePercent       float64                `protobuf:"fixed64,2,opt,name=cpu_usage_percent,json=cpuUsagePercent,proto3" json:"cpu_usage_percent,omitempty"`
+	ActiveConnections     int64                  `protobuf:"varint,3,opt,name=active_connections,json=activeConnections,proto3" json:"active_connections,omitempty"`
+	TotalConnections      int64                  `protobuf:"varint,4,opt,name=total_connections,json=totalConnections,proto3" json:"total_connections,omitempty"`
+	BufferCacheHitRatio   float64                `protobuf:"fixed64,5,opt,name=buffer_cache_hit_ratio,json=bufferCacheHitRatio,proto3" json:"buffer_cache_hit_ratio,omitempty"`
+	PageLifeExpectancy    float64                `protobuf:"fixed64,6,opt,name=page_life_expectancy,json=pageLifeExpectancy,proto3" json:"page_life_expectancy,omitempty"`
+	BatchRequestsPerSec   int64                  `protobuf:"varint,7,opt,name=batch_requests_per_sec,json=batchRequestsPerSec,proto3" json:"batch_requests_per_sec,omitempty"`
+	SqlCompilationsPerSec int64                  `protobuf:"varint,8,opt,name=sql_compilations_per_sec,json=sqlCompilationsPerSec,proto3" json:"sql_compilations_per_sec,omitempty"`
+	LockWaitsPerSec       int64                  `protobuf:"varint,9,opt,name=lock_waits_per_sec,json=lockWaitsPerSec,proto3" json:"lock_waits_per_sec,omitempty"`
+	AvgWaitTimeMs         float64                `protobuf:"fixed64,10,opt,name=avg_wait_time_ms,json=avgWaitTimeMs,proto3" json:"avg_wait_time_ms,omitempty"`
+	Timestamp             int64                  `protobuf:"varint,11,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *MSSQLPerformanceMetrics) Reset() {
+	*x = MSSQLPerformanceMetrics{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[88]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MSSQLPerformanceMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MSSQLPerformanceMetrics) ProtoMessage() {}
+
+func (x *MSSQLPerformanceMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[88]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MSSQLPerformanceMetrics.ProtoReflect.Descriptor instead.
+func (*MSSQLPerformanceMetrics) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{88}
+}
+
+func (x *MSSQLPerformanceMetrics) GetDatabase() string {
+	if x != nil {
+		return x.Database
+	}
+	return ""
+}
+
+func (x *MSSQLPerformanceMetrics) GetCpuUsagePercent() float64 {
+	if x != nil {
+		return x.CpuUsagePercent
+	}
+	return 0
+}
+
+func (x *MSSQLPerformanceMetrics) GetActiveConnections() int64 {
+	if x != nil {
+		return x.ActiveConnections
+	}
+	return 0
+}
+
+func (x *MSSQLPerformanceMetrics) GetTotalConnections() int64 {
+	if x != nil {
+		return x.TotalConnections
+	}
+	return 0
+}
+
+func (x *MSSQLPerformanceMetrics) GetBufferCacheHitRatio() float64 {
+	if x != nil {
+		return x.BufferCacheHitRatio
+	}
+	return 0
+}
+
+func (x *MSSQLPerformanceMetrics) GetPageLifeExpectancy() float64 {
+	if x != nil {
+		return x.PageLifeExpectancy
+	}
+	return 0
+}
+
+func (x *MSSQLPerformanceMetrics) GetBatchRequestsPerSec() int64 {
+	if x != nil {
+		return x.BatchRequestsPerSec
+	}
+	return 0
+}
+
+func (x *MSSQLPerformanceMetrics) GetSqlCompilationsPerSec() int64 {
+	if x != nil {
+		return x.SqlCompilationsPerSec
+	}
+	return 0
+}
+
+func (x *MSSQLPerformanceMetrics) GetLockWaitsPerSec() int64 {
+	if x != nil {
+		return x.LockWaitsPerSec
+	}
+	return 0
+}
+
+func (x *MSSQLPerformanceMetrics) GetAvgWaitTimeMs() float64 {
+	if x != nil {
+		return x.AvgWaitTimeMs
+	}
+	return 0
+}
+
+func (x *MSSQLPerformanceMetrics) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
+// Disk I/O Metrics
+type DiskIOMetrics struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Device             string                 `protobuf:"bytes,1,opt,name=device,proto3" json:"device,omitempty"`
+	Mountpoint         string                 `protobuf:"bytes,2,opt,name=mountpoint,proto3" json:"mountpoint,omitempty"`
+	ReadBytesPerSec    int64                  `protobuf:"varint,3,opt,name=read_bytes_per_sec,json=readBytesPerSec,proto3" json:"read_bytes_per_sec,omitempty"`
+	WriteBytesPerSec   int64                  `protobuf:"varint,4,opt,name=write_bytes_per_sec,json=writeBytesPerSec,proto3" json:"write_bytes_per_sec,omitempty"`
+	ReadOpsPerSec      int64                  `protobuf:"varint,5,opt,name=read_ops_per_sec,json=readOpsPerSec,proto3" json:"read_ops_per_sec,omitempty"`
+	WriteOpsPerSec     int64                  `protobuf:"varint,6,opt,name=write_ops_per_sec,json=writeOpsPerSec,proto3" json:"write_ops_per_sec,omitempty"`
+	ReadLatencyMs      float64                `protobuf:"fixed64,7,opt,name=read_latency_ms,json=readLatencyMs,proto3" json:"read_latency_ms,omitempty"`
+	WriteLatencyMs     float64                `protobuf:"fixed64,8,opt,name=write_latency_ms,json=writeLatencyMs,proto3" json:"write_latency_ms,omitempty"`
+	UtilizationPercent float64                `protobuf:"fixed64,9,opt,name=utilization_percent,json=utilizationPercent,proto3" json:"utilization_percent,omitempty"`
+	Timestamp          int64                  `protobuf:"varint,10,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *DiskIOMetrics) Reset() {
+	*x = DiskIOMetrics{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[89]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiskIOMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiskIOMetrics) ProtoMessage() {}
+
+func (x *DiskIOMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[89]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiskIOMetrics.ProtoReflect.Descriptor instead.
+func (*DiskIOMetrics) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{89}
+}
+
+func (x *DiskIOMetrics) GetDevice() string {
+	if x != nil {
+		return x.Device
+	}
+	return ""
+}
+
+func (x *DiskIOMetrics) GetMountpoint() string {
+	if x != nil {
+		return x.Mountpoint
+	}
+	return ""
+}
+
+func (x *DiskIOMetrics) GetReadBytesPerSec() int64 {
+	if x != nil {
+		return x.ReadBytesPerSec
+	}
+	return 0
+}
+
+func (x *DiskIOMetrics) GetWriteBytesPerSec() int64 {
+	if x != nil {
+		return x.WriteBytesPerSec
+	}
+	return 0
+}
+
+func (x *DiskIOMetrics) GetReadOpsPerSec() int64 {
+	if x != nil {
+		return x.ReadOpsPerSec
+	}
+	return 0
+}
+
+func (x *DiskIOMetrics) GetWriteOpsPerSec() int64 {
+	if x != nil {
+		return x.WriteOpsPerSec
+	}
+	return 0
+}
+
+func (x *DiskIOMetrics) GetReadLatencyMs() float64 {
+	if x != nil {
+		return x.ReadLatencyMs
+	}
+	return 0
+}
+
+func (x *DiskIOMetrics) GetWriteLatencyMs() float64 {
+	if x != nil {
+		return x.WriteLatencyMs
+	}
+	return 0
+}
+
+func (x *DiskIOMetrics) GetUtilizationPercent() float64 {
+	if x != nil {
+		return x.UtilizationPercent
+	}
+	return 0
+}
+
+func (x *DiskIOMetrics) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
+// Network Metrics
+type NetworkMetrics struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Interface       string                 `protobuf:"bytes,1,opt,name=interface,proto3" json:"interface,omitempty"`
+	RxBytesPerSec   int64                  `protobuf:"varint,2,opt,name=rx_bytes_per_sec,json=rxBytesPerSec,proto3" json:"rx_bytes_per_sec,omitempty"`
+	TxBytesPerSec   int64                  `protobuf:"varint,3,opt,name=tx_bytes_per_sec,json=txBytesPerSec,proto3" json:"tx_bytes_per_sec,omitempty"`
+	RxPacketsPerSec int64                  `protobuf:"varint,4,opt,name=rx_packets_per_sec,json=rxPacketsPerSec,proto3" json:"rx_packets_per_sec,omitempty"`
+	TxPacketsPerSec int64                  `protobuf:"varint,5,opt,name=tx_packets_per_sec,json=txPacketsPerSec,proto3" json:"tx_packets_per_sec,omitempty"`
+	RxErrors        int64                  `protobuf:"varint,6,opt,name=rx_errors,json=rxErrors,proto3" json:"rx_errors,omitempty"`
+	TxErrors        int64                  `protobuf:"varint,7,opt,name=tx_errors,json=txErrors,proto3" json:"tx_errors,omitempty"`
+	RxDropped       int64                  `protobuf:"varint,8,opt,name=rx_dropped,json=rxDropped,proto3" json:"rx_dropped,omitempty"`
+	TxDropped       int64                  `protobuf:"varint,9,opt,name=tx_dropped,json=txDropped,proto3" json:"tx_dropped,omitempty"`
+	Timestamp       int64                  `protobuf:"varint,10,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *NetworkMetrics) Reset() {
+	*x = NetworkMetrics{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[90]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NetworkMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NetworkMetrics) ProtoMessage() {}
+
+func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[90]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NetworkMetrics.ProtoReflect.Descriptor instead.
+func (*NetworkMetrics) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{90}
+}
+
+func (x *NetworkMetrics) GetInterface() string {
+	if x != nil {
+		return x.Interface
+	}
+	return ""
+}
+
+func (x *NetworkMetrics) GetRxBytesPerSec() int64 {
+	if x != nil {
+		return x.RxBytesPerSec
+	}
+	return 0
+}
+
+func (x *NetworkMetrics) GetTxBytesPerSec() int64 {
+	if x != nil {
+		return x.TxBytesPerSec
+	}
+	return 0
+}
+
+func (x *NetworkMetrics) GetRxPacketsPerSec() int64 {
+	if x != nil {
+		return x.RxPacketsPerSec
+	}
+	return 0
+}
+
+func (x *NetworkMetrics) GetTxPacketsPerSec() int64 {
+	if x != nil {
+		return x.TxPacketsPerSec
+	}
+	return 0
+}
+
+func (x *NetworkMetrics) GetRxErrors() int64 {
+	if x != nil {
+		return x.RxErrors
+	}
+	return 0
+}
+
+func (x *NetworkMetrics) GetTxErrors() int64 {
+	if x != nil {
+		return x.TxErrors
+	}
+	return 0
+}
+
+func (x *NetworkMetrics) GetRxDropped() int64 {
+	if x != nil {
+		return x.RxDropped
+	}
+	return 0
+}
+
+func (x *NetworkMetrics) GetTxDropped() int64 {
+	if x != nil {
+		return x.TxDropped
+	}
+	return 0
+}
+
+func (x *NetworkMetrics) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
 var File_pkg_agent_agent_proto protoreflect.FileDescriptor
 
 const file_pkg_agent_agent_proto_rawDesc = "" +
@@ -6450,7 +7612,123 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\vsubnet_mask\x18\x04 \x01(\tR\n" +
 	"subnetMask\x12%\n" +
 	"\x0elistener_state\x18\x05 \x01(\tR\rlistenerState\x12\x19\n" +
-	"\bdns_name\x18\x06 \x01(\tR\adnsName*\x9e\x01\n" +
+	"\bdns_name\x18\x06 \x01(\tR\adnsName\"\xa0\x01\n" +
+	"\vMetricValue\x12#\n" +
+	"\fdouble_value\x18\x01 \x01(\x01H\x00R\vdoubleValue\x12\x1d\n" +
+	"\tint_value\x18\x02 \x01(\x03H\x00R\bintValue\x12#\n" +
+	"\fstring_value\x18\x03 \x01(\tH\x00R\vstringValue\x12\x1f\n" +
+	"\n" +
+	"bool_value\x18\x04 \x01(\bH\x00R\tboolValueB\a\n" +
+	"\x05value\"3\n" +
+	"\tMetricTag\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"\xc0\x01\n" +
+	"\x06Metric\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12(\n" +
+	"\x05value\x18\x02 \x01(\v2\x12.agent.MetricValueR\x05value\x12$\n" +
+	"\x04tags\x18\x03 \x03(\v2\x10.agent.MetricTagR\x04tags\x12\x1c\n" +
+	"\ttimestamp\x18\x04 \x01(\x03R\ttimestamp\x12\x12\n" +
+	"\x04unit\x18\x05 \x01(\tR\x04unit\x12 \n" +
+	"\vdescription\x18\x06 \x01(\tR\vdescription\"\xa0\x02\n" +
+	"\vMetricBatch\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x1f\n" +
+	"\vmetric_type\x18\x02 \x01(\tR\n" +
+	"metricType\x12'\n" +
+	"\ametrics\x18\x03 \x03(\v2\r.agent.MetricR\ametrics\x121\n" +
+	"\x14collection_timestamp\x18\x04 \x01(\x03R\x13collectionTimestamp\x12<\n" +
+	"\bmetadata\x18\x05 \x03(\v2 .agent.MetricBatch.MetadataEntryR\bmetadata\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\">\n" +
+	"\x12SendMetricsRequest\x12(\n" +
+	"\x05batch\x18\x01 \x01(\v2\x12.agent.MetricBatchR\x05batch\"\x88\x01\n" +
+	"\x13SendMetricsResponse\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12'\n" +
+	"\x0fprocessed_count\x18\x03 \x01(\x05R\x0eprocessedCount\x12\x16\n" +
+	"\x06errors\x18\x04 \x03(\tR\x06errors\"\xfd\x01\n" +
+	"\x15CollectMetricsRequest\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12!\n" +
+	"\fmetric_types\x18\x02 \x03(\tR\vmetricTypes\x12)\n" +
+	"\x10interval_seconds\x18\x03 \x01(\x05R\x0fintervalSeconds\x12@\n" +
+	"\x06config\x18\x04 \x03(\v2(.agent.CollectMetricsRequest.ConfigEntryR\x06config\x1a9\n" +
+	"\vConfigEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"J\n" +
+	"\x16CollectMetricsResponse\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\xed\x02\n" +
+	"\x15MongoOperationMetrics\x12\x1a\n" +
+	"\bdatabase\x18\x01 \x01(\tR\bdatabase\x12\x1e\n" +
+	"\n" +
+	"collection\x18\x02 \x01(\tR\n" +
+	"collection\x12!\n" +
+	"\finsert_count\x18\x03 \x01(\x03R\vinsertCount\x12\x1f\n" +
+	"\vquery_count\x18\x04 \x01(\x03R\n" +
+	"queryCount\x12!\n" +
+	"\fupdate_count\x18\x05 \x01(\x03R\vupdateCount\x12!\n" +
+	"\fdelete_count\x18\x06 \x01(\x03R\vdeleteCount\x12#\n" +
+	"\rgetmore_count\x18\a \x01(\x03R\fgetmoreCount\x12#\n" +
+	"\rcommand_count\x18\b \x01(\x03R\fcommandCount\x12&\n" +
+	"\x0favg_duration_ms\x18\t \x01(\x01R\ravgDurationMs\x12\x1c\n" +
+	"\ttimestamp\x18\n" +
+	" \x01(\x03R\ttimestamp\"\xc4\x03\n" +
+	"\x17PostgresActivityMetrics\x12\x1a\n" +
+	"\bdatabase\x18\x01 \x01(\tR\bdatabase\x12-\n" +
+	"\x12active_connections\x18\x02 \x01(\x03R\x11activeConnections\x12)\n" +
+	"\x10idle_connections\x18\x03 \x01(\x03R\x0fidleConnections\x12+\n" +
+	"\x11total_connections\x18\x04 \x01(\x03R\x10totalConnections\x126\n" +
+	"\x17transactions_per_second\x18\x05 \x01(\x03R\x15transactionsPerSecond\x12,\n" +
+	"\x12queries_per_second\x18\x06 \x01(\x03R\x10queriesPerSecond\x12&\n" +
+	"\x0fcache_hit_ratio\x18\a \x01(\x01R\rcacheHitRatio\x12\x1c\n" +
+	"\tdeadlocks\x18\b \x01(\x03R\tdeadlocks\x12\x1d\n" +
+	"\n" +
+	"temp_files\x18\t \x01(\x03R\ttempFiles\x12\x1d\n" +
+	"\n" +
+	"temp_bytes\x18\n" +
+	" \x01(\x03R\ttempBytes\x12\x1c\n" +
+	"\ttimestamp\x18\v \x01(\x03R\ttimestamp\"\x86\x04\n" +
+	"\x17MSSQLPerformanceMetrics\x12\x1a\n" +
+	"\bdatabase\x18\x01 \x01(\tR\bdatabase\x12*\n" +
+	"\x11cpu_usage_percent\x18\x02 \x01(\x01R\x0fcpuUsagePercent\x12-\n" +
+	"\x12active_connections\x18\x03 \x01(\x03R\x11activeConnections\x12+\n" +
+	"\x11total_connections\x18\x04 \x01(\x03R\x10totalConnections\x123\n" +
+	"\x16buffer_cache_hit_ratio\x18\x05 \x01(\x01R\x13bufferCacheHitRatio\x120\n" +
+	"\x14page_life_expectancy\x18\x06 \x01(\x01R\x12pageLifeExpectancy\x123\n" +
+	"\x16batch_requests_per_sec\x18\a \x01(\x03R\x13batchRequestsPerSec\x127\n" +
+	"\x18sql_compilations_per_sec\x18\b \x01(\x03R\x15sqlCompilationsPerSec\x12+\n" +
+	"\x12lock_waits_per_sec\x18\t \x01(\x03R\x0flockWaitsPerSec\x12'\n" +
+	"\x10avg_wait_time_ms\x18\n" +
+	" \x01(\x01R\ravgWaitTimeMs\x12\x1c\n" +
+	"\ttimestamp\x18\v \x01(\x03R\ttimestamp\"\x98\x03\n" +
+	"\rDiskIOMetrics\x12\x16\n" +
+	"\x06device\x18\x01 \x01(\tR\x06device\x12\x1e\n" +
+	"\n" +
+	"mountpoint\x18\x02 \x01(\tR\n" +
+	"mountpoint\x12+\n" +
+	"\x12read_bytes_per_sec\x18\x03 \x01(\x03R\x0freadBytesPerSec\x12-\n" +
+	"\x13write_bytes_per_sec\x18\x04 \x01(\x03R\x10writeBytesPerSec\x12'\n" +
+	"\x10read_ops_per_sec\x18\x05 \x01(\x03R\rreadOpsPerSec\x12)\n" +
+	"\x11write_ops_per_sec\x18\x06 \x01(\x03R\x0ewriteOpsPerSec\x12&\n" +
+	"\x0fread_latency_ms\x18\a \x01(\x01R\rreadLatencyMs\x12(\n" +
+	"\x10write_latency_ms\x18\b \x01(\x01R\x0ewriteLatencyMs\x12/\n" +
+	"\x13utilization_percent\x18\t \x01(\x01R\x12utilizationPercent\x12\x1c\n" +
+	"\ttimestamp\x18\n" +
+	" \x01(\x03R\ttimestamp\"\xf0\x02\n" +
+	"\x0eNetworkMetrics\x12\x1c\n" +
+	"\tinterface\x18\x01 \x01(\tR\tinterface\x12'\n" +
+	"\x10rx_bytes_per_sec\x18\x02 \x01(\x03R\rrxBytesPerSec\x12'\n" +
+	"\x10tx_bytes_per_sec\x18\x03 \x01(\x03R\rtxBytesPerSec\x12+\n" +
+	"\x12rx_packets_per_sec\x18\x04 \x01(\x03R\x0frxPacketsPerSec\x12+\n" +
+	"\x12tx_packets_per_sec\x18\x05 \x01(\x03R\x0ftxPacketsPerSec\x12\x1b\n" +
+	"\trx_errors\x18\x06 \x01(\x03R\brxErrors\x12\x1b\n" +
+	"\ttx_errors\x18\a \x01(\x03R\btxErrors\x12\x1d\n" +
+	"\n" +
+	"rx_dropped\x18\b \x01(\x03R\trxDropped\x12\x1d\n" +
+	"\n" +
+	"tx_dropped\x18\t \x01(\x03R\ttxDropped\x12\x1c\n" +
+	"\ttimestamp\x18\n" +
+	" \x01(\x03R\ttimestamp*\x9e\x01\n" +
 	"\tJobStatus\x12\x16\n" +
 	"\x12JOB_STATUS_UNKNOWN\x10\x00\x12\x16\n" +
 	"\x12JOB_STATUS_PENDING\x10\x01\x12\x16\n" +
@@ -6462,7 +7740,7 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x10JOB_TYPE_UNKNOWN\x10\x00\x12\"\n" +
 	"\x1eJOB_TYPE_MONGO_PROMOTE_PRIMARY\x10\x01\x12$\n" +
 	" JOB_TYPE_POSTGRES_PROMOTE_MASTER\x10\x02\x12#\n" +
-	"\x1fJOB_TYPE_MONGO_FREEZE_SECONDARY\x10\x032\xcb\x10\n" +
+	"\x1fJOB_TYPE_MONGO_FREEZE_SECONDARY\x10\x032\xe0\x11\n" +
 	"\fAgentService\x128\n" +
 	"\aConnect\x12\x13.agent.AgentMessage\x1a\x14.agent.ServerMessage(\x010\x01\x12;\n" +
 	"\bRegister\x12\x16.agent.RegisterRequest\x1a\x17.agent.RegisterResponse\x129\n" +
@@ -6490,7 +7768,9 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\rSendMSSQLInfo\x12\x17.agent.MSSQLInfoRequest\x1a\x18.agent.MSSQLInfoResponse\x12g\n" +
 	"\x18GetBestPracticesAnalysis\x12#.agent.BestPracticesAnalysisRequest\x1a$.agent.BestPracticesAnalysisResponse\"\x00\x12H\n" +
 	"\x11ReportProcessLogs\x12\x18.agent.ProcessLogRequest\x1a\x19.agent.ProcessLogResponse\x12M\n" +
-	"\x10GetProcessStatus\x12\x1b.agent.ProcessStatusRequest\x1a\x1c.agent.ProcessStatusResponseB0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
+	"\x10GetProcessStatus\x12\x1b.agent.ProcessStatusRequest\x1a\x1c.agent.ProcessStatusResponse\x12D\n" +
+	"\vSendMetrics\x12\x19.agent.SendMetricsRequest\x1a\x1a.agent.SendMetricsResponse\x12M\n" +
+	"\x0eCollectMetrics\x12\x1c.agent.CollectMetricsRequest\x1a\x1d.agent.CollectMetricsResponseB0Z.github.com/sefaphlvn/clustereye-test/pkg/agentb\x06proto3"
 
 var (
 	file_pkg_agent_agent_proto_rawDescOnce sync.Once
@@ -6505,7 +7785,7 @@ func file_pkg_agent_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_pkg_agent_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 81)
+var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 96)
 var file_pkg_agent_agent_proto_goTypes = []any{
 	(JobStatus)(0),                        // 0: agent.JobStatus
 	(JobType)(0),                          // 1: agent.JobType
@@ -6587,123 +7867,148 @@ var file_pkg_agent_agent_proto_goTypes = []any{
 	(*ReplicaMetrics)(nil),                // 77: agent.ReplicaMetrics
 	(*DatabaseReplicaStatus)(nil),         // 78: agent.DatabaseReplicaStatus
 	(*ListenerInfo)(nil),                  // 79: agent.ListenerInfo
-	nil,                                   // 80: agent.ProcessLogUpdate.MetadataEntry
-	nil,                                   // 81: agent.ProcessStatusResponse.MetadataEntry
-	nil,                                   // 82: agent.Job.ParametersEntry
-	(*anypb.Any)(nil),                     // 83: google.protobuf.Any
-	(*structpb.Struct)(nil),               // 84: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),         // 85: google.protobuf.Timestamp
+	(*MetricValue)(nil),                   // 80: agent.MetricValue
+	(*MetricTag)(nil),                     // 81: agent.MetricTag
+	(*Metric)(nil),                        // 82: agent.Metric
+	(*MetricBatch)(nil),                   // 83: agent.MetricBatch
+	(*SendMetricsRequest)(nil),            // 84: agent.SendMetricsRequest
+	(*SendMetricsResponse)(nil),           // 85: agent.SendMetricsResponse
+	(*CollectMetricsRequest)(nil),         // 86: agent.CollectMetricsRequest
+	(*CollectMetricsResponse)(nil),        // 87: agent.CollectMetricsResponse
+	(*MongoOperationMetrics)(nil),         // 88: agent.MongoOperationMetrics
+	(*PostgresActivityMetrics)(nil),       // 89: agent.PostgresActivityMetrics
+	(*MSSQLPerformanceMetrics)(nil),       // 90: agent.MSSQLPerformanceMetrics
+	(*DiskIOMetrics)(nil),                 // 91: agent.DiskIOMetrics
+	(*NetworkMetrics)(nil),                // 92: agent.NetworkMetrics
+	nil,                                   // 93: agent.ProcessLogUpdate.MetadataEntry
+	nil,                                   // 94: agent.ProcessStatusResponse.MetadataEntry
+	nil,                                   // 95: agent.Job.ParametersEntry
+	nil,                                   // 96: agent.MetricBatch.MetadataEntry
+	nil,                                   // 97: agent.CollectMetricsRequest.ConfigEntry
+	(*anypb.Any)(nil),                     // 98: google.protobuf.Any
+	(*structpb.Struct)(nil),               // 99: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),         // 100: google.protobuf.Timestamp
 }
 var file_pkg_agent_agent_proto_depIdxs = []int32{
-	80, // 0: agent.ProcessLogUpdate.metadata:type_name -> agent.ProcessLogUpdate.MetadataEntry
-	4,  // 1: agent.ProcessLogRequest.log_update:type_name -> agent.ProcessLogUpdate
-	81, // 2: agent.ProcessStatusResponse.metadata:type_name -> agent.ProcessStatusResponse.MetadataEntry
-	11, // 3: agent.MongoLogListResponse.log_files:type_name -> agent.MongoLogFile
-	14, // 4: agent.MongoLogAnalyzeResponse.log_entries:type_name -> agent.MongoLogEntry
-	16, // 5: agent.AlarmConfiguration.condition:type_name -> agent.AlarmCondition
-	83, // 6: agent.QueryResult.result:type_name -> google.protobuf.Any
-	18, // 7: agent.ReportAlarmRequest.events:type_name -> agent.AlarmEvent
-	2,  // 8: agent.RegisterRequest.agent_info:type_name -> agent.AgentInfo
-	22, // 9: agent.RegisterResponse.registration:type_name -> agent.RegistrationResult
-	19, // 10: agent.QueryRequest.query:type_name -> agent.Query
-	20, // 11: agent.QueryResponse.result:type_name -> agent.QueryResult
-	3,  // 12: agent.PostgresInfoRequest.postgres_info:type_name -> agent.PostgresInfo
-	9,  // 13: agent.MongoInfoRequest.mongo_info:type_name -> agent.MongoInfo
-	21, // 14: agent.ErrorResponse.error:type_name -> agent.Error
-	19, // 15: agent.ServerMessage.query:type_name -> agent.Query
-	21, // 16: agent.ServerMessage.error:type_name -> agent.Error
-	22, // 17: agent.ServerMessage.registration:type_name -> agent.RegistrationResult
-	39, // 18: agent.ServerMessage.metrics_request:type_name -> agent.SystemMetricsRequest
-	2,  // 19: agent.AgentMessage.agent_info:type_name -> agent.AgentInfo
-	20, // 20: agent.AgentMessage.query_result:type_name -> agent.QueryResult
-	3,  // 21: agent.AgentMessage.postgres_info:type_name -> agent.PostgresInfo
-	38, // 22: agent.AgentMessage.system_metrics:type_name -> agent.SystemMetrics
-	9,  // 23: agent.AgentMessage.mongo_info:type_name -> agent.MongoInfo
-	52, // 24: agent.AgentMessage.mssql_info:type_name -> agent.MSSQLInfo
-	52, // 25: agent.MSSQLInfoRequest.mssql_info:type_name -> agent.MSSQLInfo
-	84, // 26: agent.SystemMetricsResponse.data:type_name -> google.protobuf.Struct
-	38, // 27: agent.SystemMetricsResponse.metrics:type_name -> agent.SystemMetrics
-	17, // 28: agent.AlarmConfigResponse.configurations:type_name -> agent.AlarmConfiguration
-	43, // 29: agent.PostgresLogListResponse.log_files:type_name -> agent.PostgresLogFile
-	47, // 30: agent.PostgresLogAnalyzeResponse.log_entries:type_name -> agent.PostgresLogEntry
-	50, // 31: agent.PostgresConfigResponse.configurations:type_name -> agent.PostgresConfigEntry
-	76, // 32: agent.MSSQLInfo.always_on_metrics:type_name -> agent.AlwaysOnMetrics
-	55, // 33: agent.GetThresholdSettingsResponse.settings:type_name -> agent.ThresholdSettings
-	58, // 34: agent.ReportVersionRequest.version_info:type_name -> agent.AgentVersionInfo
-	1,  // 35: agent.Job.type:type_name -> agent.JobType
-	0,  // 36: agent.Job.status:type_name -> agent.JobStatus
-	85, // 37: agent.Job.created_at:type_name -> google.protobuf.Timestamp
-	85, // 38: agent.Job.updated_at:type_name -> google.protobuf.Timestamp
-	82, // 39: agent.Job.parameters:type_name -> agent.Job.ParametersEntry
-	0,  // 40: agent.MongoPromotePrimaryResponse.status:type_name -> agent.JobStatus
-	0,  // 41: agent.PostgresPromoteMasterResponse.status:type_name -> agent.JobStatus
-	61, // 42: agent.GetJobResponse.job:type_name -> agent.Job
-	0,  // 43: agent.ListJobsRequest.status:type_name -> agent.JobStatus
-	1,  // 44: agent.ListJobsRequest.type:type_name -> agent.JobType
-	61, // 45: agent.ListJobsResponse.jobs:type_name -> agent.Job
-	0,  // 46: agent.MongoFreezeSecondaryResponse.status:type_name -> agent.JobStatus
-	77, // 47: agent.AlwaysOnMetrics.replicas:type_name -> agent.ReplicaMetrics
-	78, // 48: agent.AlwaysOnMetrics.databases:type_name -> agent.DatabaseReplicaStatus
-	79, // 49: agent.AlwaysOnMetrics.listeners:type_name -> agent.ListenerInfo
-	35, // 50: agent.AgentService.Connect:input_type -> agent.AgentMessage
-	25, // 51: agent.AgentService.Register:input_type -> agent.RegisterRequest
-	27, // 52: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
-	29, // 53: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
-	27, // 54: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
-	29, // 55: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
-	39, // 56: agent.AgentService.SendSystemMetrics:input_type -> agent.SystemMetricsRequest
-	41, // 57: agent.AgentService.GetAlarmConfigurations:input_type -> agent.AlarmConfigRequest
-	23, // 58: agent.AgentService.ReportAlarm:input_type -> agent.ReportAlarmRequest
-	30, // 59: agent.AgentService.SendMongoInfo:input_type -> agent.MongoInfoRequest
-	10, // 60: agent.AgentService.ListMongoLogs:input_type -> agent.MongoLogListRequest
-	13, // 61: agent.AgentService.AnalyzeMongoLog:input_type -> agent.MongoLogAnalyzeRequest
-	44, // 62: agent.AgentService.ListPostgresLogs:input_type -> agent.PostgresLogListRequest
-	46, // 63: agent.AgentService.AnalyzePostgresLog:input_type -> agent.PostgresLogAnalyzeRequest
-	49, // 64: agent.AgentService.ReadPostgresConfig:input_type -> agent.PostgresConfigRequest
-	56, // 65: agent.AgentService.GetThresholdSettings:input_type -> agent.GetThresholdSettingsRequest
-	59, // 66: agent.AgentService.ReportVersion:input_type -> agent.ReportVersionRequest
-	62, // 67: agent.AgentService.PromoteMongoToPrimary:input_type -> agent.MongoPromotePrimaryRequest
-	70, // 68: agent.AgentService.FreezeMongoSecondary:input_type -> agent.MongoFreezeSecondaryRequest
-	64, // 69: agent.AgentService.PromotePostgresToMaster:input_type -> agent.PostgresPromoteMasterRequest
-	66, // 70: agent.AgentService.GetJob:input_type -> agent.GetJobRequest
-	68, // 71: agent.AgentService.ListJobs:input_type -> agent.ListJobsRequest
-	72, // 72: agent.AgentService.ExplainQuery:input_type -> agent.ExplainQueryRequest
-	36, // 73: agent.AgentService.SendMSSQLInfo:input_type -> agent.MSSQLInfoRequest
-	74, // 74: agent.AgentService.GetBestPracticesAnalysis:input_type -> agent.BestPracticesAnalysisRequest
-	5,  // 75: agent.AgentService.ReportProcessLogs:input_type -> agent.ProcessLogRequest
-	7,  // 76: agent.AgentService.GetProcessStatus:input_type -> agent.ProcessStatusRequest
-	34, // 77: agent.AgentService.Connect:output_type -> agent.ServerMessage
-	26, // 78: agent.AgentService.Register:output_type -> agent.RegisterResponse
-	28, // 79: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
-	31, // 80: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
-	28, // 81: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
-	31, // 82: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
-	40, // 83: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
-	42, // 84: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
-	24, // 85: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
-	32, // 86: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
-	12, // 87: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
-	15, // 88: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
-	45, // 89: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
-	48, // 90: agent.AgentService.AnalyzePostgresLog:output_type -> agent.PostgresLogAnalyzeResponse
-	51, // 91: agent.AgentService.ReadPostgresConfig:output_type -> agent.PostgresConfigResponse
-	57, // 92: agent.AgentService.GetThresholdSettings:output_type -> agent.GetThresholdSettingsResponse
-	60, // 93: agent.AgentService.ReportVersion:output_type -> agent.ReportVersionResponse
-	63, // 94: agent.AgentService.PromoteMongoToPrimary:output_type -> agent.MongoPromotePrimaryResponse
-	71, // 95: agent.AgentService.FreezeMongoSecondary:output_type -> agent.MongoFreezeSecondaryResponse
-	65, // 96: agent.AgentService.PromotePostgresToMaster:output_type -> agent.PostgresPromoteMasterResponse
-	67, // 97: agent.AgentService.GetJob:output_type -> agent.GetJobResponse
-	69, // 98: agent.AgentService.ListJobs:output_type -> agent.ListJobsResponse
-	73, // 99: agent.AgentService.ExplainQuery:output_type -> agent.ExplainQueryResponse
-	37, // 100: agent.AgentService.SendMSSQLInfo:output_type -> agent.MSSQLInfoResponse
-	75, // 101: agent.AgentService.GetBestPracticesAnalysis:output_type -> agent.BestPracticesAnalysisResponse
-	6,  // 102: agent.AgentService.ReportProcessLogs:output_type -> agent.ProcessLogResponse
-	8,  // 103: agent.AgentService.GetProcessStatus:output_type -> agent.ProcessStatusResponse
-	77, // [77:104] is the sub-list for method output_type
-	50, // [50:77] is the sub-list for method input_type
-	50, // [50:50] is the sub-list for extension type_name
-	50, // [50:50] is the sub-list for extension extendee
-	0,  // [0:50] is the sub-list for field type_name
+	93,  // 0: agent.ProcessLogUpdate.metadata:type_name -> agent.ProcessLogUpdate.MetadataEntry
+	4,   // 1: agent.ProcessLogRequest.log_update:type_name -> agent.ProcessLogUpdate
+	94,  // 2: agent.ProcessStatusResponse.metadata:type_name -> agent.ProcessStatusResponse.MetadataEntry
+	11,  // 3: agent.MongoLogListResponse.log_files:type_name -> agent.MongoLogFile
+	14,  // 4: agent.MongoLogAnalyzeResponse.log_entries:type_name -> agent.MongoLogEntry
+	16,  // 5: agent.AlarmConfiguration.condition:type_name -> agent.AlarmCondition
+	98,  // 6: agent.QueryResult.result:type_name -> google.protobuf.Any
+	18,  // 7: agent.ReportAlarmRequest.events:type_name -> agent.AlarmEvent
+	2,   // 8: agent.RegisterRequest.agent_info:type_name -> agent.AgentInfo
+	22,  // 9: agent.RegisterResponse.registration:type_name -> agent.RegistrationResult
+	19,  // 10: agent.QueryRequest.query:type_name -> agent.Query
+	20,  // 11: agent.QueryResponse.result:type_name -> agent.QueryResult
+	3,   // 12: agent.PostgresInfoRequest.postgres_info:type_name -> agent.PostgresInfo
+	9,   // 13: agent.MongoInfoRequest.mongo_info:type_name -> agent.MongoInfo
+	21,  // 14: agent.ErrorResponse.error:type_name -> agent.Error
+	19,  // 15: agent.ServerMessage.query:type_name -> agent.Query
+	21,  // 16: agent.ServerMessage.error:type_name -> agent.Error
+	22,  // 17: agent.ServerMessage.registration:type_name -> agent.RegistrationResult
+	39,  // 18: agent.ServerMessage.metrics_request:type_name -> agent.SystemMetricsRequest
+	2,   // 19: agent.AgentMessage.agent_info:type_name -> agent.AgentInfo
+	20,  // 20: agent.AgentMessage.query_result:type_name -> agent.QueryResult
+	3,   // 21: agent.AgentMessage.postgres_info:type_name -> agent.PostgresInfo
+	38,  // 22: agent.AgentMessage.system_metrics:type_name -> agent.SystemMetrics
+	9,   // 23: agent.AgentMessage.mongo_info:type_name -> agent.MongoInfo
+	52,  // 24: agent.AgentMessage.mssql_info:type_name -> agent.MSSQLInfo
+	52,  // 25: agent.MSSQLInfoRequest.mssql_info:type_name -> agent.MSSQLInfo
+	99,  // 26: agent.SystemMetricsResponse.data:type_name -> google.protobuf.Struct
+	38,  // 27: agent.SystemMetricsResponse.metrics:type_name -> agent.SystemMetrics
+	17,  // 28: agent.AlarmConfigResponse.configurations:type_name -> agent.AlarmConfiguration
+	43,  // 29: agent.PostgresLogListResponse.log_files:type_name -> agent.PostgresLogFile
+	47,  // 30: agent.PostgresLogAnalyzeResponse.log_entries:type_name -> agent.PostgresLogEntry
+	50,  // 31: agent.PostgresConfigResponse.configurations:type_name -> agent.PostgresConfigEntry
+	76,  // 32: agent.MSSQLInfo.always_on_metrics:type_name -> agent.AlwaysOnMetrics
+	55,  // 33: agent.GetThresholdSettingsResponse.settings:type_name -> agent.ThresholdSettings
+	58,  // 34: agent.ReportVersionRequest.version_info:type_name -> agent.AgentVersionInfo
+	1,   // 35: agent.Job.type:type_name -> agent.JobType
+	0,   // 36: agent.Job.status:type_name -> agent.JobStatus
+	100, // 37: agent.Job.created_at:type_name -> google.protobuf.Timestamp
+	100, // 38: agent.Job.updated_at:type_name -> google.protobuf.Timestamp
+	95,  // 39: agent.Job.parameters:type_name -> agent.Job.ParametersEntry
+	0,   // 40: agent.MongoPromotePrimaryResponse.status:type_name -> agent.JobStatus
+	0,   // 41: agent.PostgresPromoteMasterResponse.status:type_name -> agent.JobStatus
+	61,  // 42: agent.GetJobResponse.job:type_name -> agent.Job
+	0,   // 43: agent.ListJobsRequest.status:type_name -> agent.JobStatus
+	1,   // 44: agent.ListJobsRequest.type:type_name -> agent.JobType
+	61,  // 45: agent.ListJobsResponse.jobs:type_name -> agent.Job
+	0,   // 46: agent.MongoFreezeSecondaryResponse.status:type_name -> agent.JobStatus
+	77,  // 47: agent.AlwaysOnMetrics.replicas:type_name -> agent.ReplicaMetrics
+	78,  // 48: agent.AlwaysOnMetrics.databases:type_name -> agent.DatabaseReplicaStatus
+	79,  // 49: agent.AlwaysOnMetrics.listeners:type_name -> agent.ListenerInfo
+	80,  // 50: agent.Metric.value:type_name -> agent.MetricValue
+	81,  // 51: agent.Metric.tags:type_name -> agent.MetricTag
+	82,  // 52: agent.MetricBatch.metrics:type_name -> agent.Metric
+	96,  // 53: agent.MetricBatch.metadata:type_name -> agent.MetricBatch.MetadataEntry
+	83,  // 54: agent.SendMetricsRequest.batch:type_name -> agent.MetricBatch
+	97,  // 55: agent.CollectMetricsRequest.config:type_name -> agent.CollectMetricsRequest.ConfigEntry
+	35,  // 56: agent.AgentService.Connect:input_type -> agent.AgentMessage
+	25,  // 57: agent.AgentService.Register:input_type -> agent.RegisterRequest
+	27,  // 58: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
+	29,  // 59: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
+	27,  // 60: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
+	29,  // 61: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
+	39,  // 62: agent.AgentService.SendSystemMetrics:input_type -> agent.SystemMetricsRequest
+	41,  // 63: agent.AgentService.GetAlarmConfigurations:input_type -> agent.AlarmConfigRequest
+	23,  // 64: agent.AgentService.ReportAlarm:input_type -> agent.ReportAlarmRequest
+	30,  // 65: agent.AgentService.SendMongoInfo:input_type -> agent.MongoInfoRequest
+	10,  // 66: agent.AgentService.ListMongoLogs:input_type -> agent.MongoLogListRequest
+	13,  // 67: agent.AgentService.AnalyzeMongoLog:input_type -> agent.MongoLogAnalyzeRequest
+	44,  // 68: agent.AgentService.ListPostgresLogs:input_type -> agent.PostgresLogListRequest
+	46,  // 69: agent.AgentService.AnalyzePostgresLog:input_type -> agent.PostgresLogAnalyzeRequest
+	49,  // 70: agent.AgentService.ReadPostgresConfig:input_type -> agent.PostgresConfigRequest
+	56,  // 71: agent.AgentService.GetThresholdSettings:input_type -> agent.GetThresholdSettingsRequest
+	59,  // 72: agent.AgentService.ReportVersion:input_type -> agent.ReportVersionRequest
+	62,  // 73: agent.AgentService.PromoteMongoToPrimary:input_type -> agent.MongoPromotePrimaryRequest
+	70,  // 74: agent.AgentService.FreezeMongoSecondary:input_type -> agent.MongoFreezeSecondaryRequest
+	64,  // 75: agent.AgentService.PromotePostgresToMaster:input_type -> agent.PostgresPromoteMasterRequest
+	66,  // 76: agent.AgentService.GetJob:input_type -> agent.GetJobRequest
+	68,  // 77: agent.AgentService.ListJobs:input_type -> agent.ListJobsRequest
+	72,  // 78: agent.AgentService.ExplainQuery:input_type -> agent.ExplainQueryRequest
+	36,  // 79: agent.AgentService.SendMSSQLInfo:input_type -> agent.MSSQLInfoRequest
+	74,  // 80: agent.AgentService.GetBestPracticesAnalysis:input_type -> agent.BestPracticesAnalysisRequest
+	5,   // 81: agent.AgentService.ReportProcessLogs:input_type -> agent.ProcessLogRequest
+	7,   // 82: agent.AgentService.GetProcessStatus:input_type -> agent.ProcessStatusRequest
+	84,  // 83: agent.AgentService.SendMetrics:input_type -> agent.SendMetricsRequest
+	86,  // 84: agent.AgentService.CollectMetrics:input_type -> agent.CollectMetricsRequest
+	34,  // 85: agent.AgentService.Connect:output_type -> agent.ServerMessage
+	26,  // 86: agent.AgentService.Register:output_type -> agent.RegisterResponse
+	28,  // 87: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
+	31,  // 88: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
+	28,  // 89: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
+	31,  // 90: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
+	40,  // 91: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
+	42,  // 92: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
+	24,  // 93: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
+	32,  // 94: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
+	12,  // 95: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
+	15,  // 96: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
+	45,  // 97: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
+	48,  // 98: agent.AgentService.AnalyzePostgresLog:output_type -> agent.PostgresLogAnalyzeResponse
+	51,  // 99: agent.AgentService.ReadPostgresConfig:output_type -> agent.PostgresConfigResponse
+	57,  // 100: agent.AgentService.GetThresholdSettings:output_type -> agent.GetThresholdSettingsResponse
+	60,  // 101: agent.AgentService.ReportVersion:output_type -> agent.ReportVersionResponse
+	63,  // 102: agent.AgentService.PromoteMongoToPrimary:output_type -> agent.MongoPromotePrimaryResponse
+	71,  // 103: agent.AgentService.FreezeMongoSecondary:output_type -> agent.MongoFreezeSecondaryResponse
+	65,  // 104: agent.AgentService.PromotePostgresToMaster:output_type -> agent.PostgresPromoteMasterResponse
+	67,  // 105: agent.AgentService.GetJob:output_type -> agent.GetJobResponse
+	69,  // 106: agent.AgentService.ListJobs:output_type -> agent.ListJobsResponse
+	73,  // 107: agent.AgentService.ExplainQuery:output_type -> agent.ExplainQueryResponse
+	37,  // 108: agent.AgentService.SendMSSQLInfo:output_type -> agent.MSSQLInfoResponse
+	75,  // 109: agent.AgentService.GetBestPracticesAnalysis:output_type -> agent.BestPracticesAnalysisResponse
+	6,   // 110: agent.AgentService.ReportProcessLogs:output_type -> agent.ProcessLogResponse
+	8,   // 111: agent.AgentService.GetProcessStatus:output_type -> agent.ProcessStatusResponse
+	85,  // 112: agent.AgentService.SendMetrics:output_type -> agent.SendMetricsResponse
+	87,  // 113: agent.AgentService.CollectMetrics:output_type -> agent.CollectMetricsResponse
+	85,  // [85:114] is the sub-list for method output_type
+	56,  // [56:85] is the sub-list for method input_type
+	56,  // [56:56] is the sub-list for extension type_name
+	56,  // [56:56] is the sub-list for extension extendee
+	0,   // [0:56] is the sub-list for field type_name
 }
 
 func init() { file_pkg_agent_agent_proto_init() }
@@ -6725,13 +8030,19 @@ func file_pkg_agent_agent_proto_init() {
 		(*AgentMessage_MongoInfo)(nil),
 		(*AgentMessage_MssqlInfo)(nil),
 	}
+	file_pkg_agent_agent_proto_msgTypes[78].OneofWrappers = []any{
+		(*MetricValue_DoubleValue)(nil),
+		(*MetricValue_IntValue)(nil),
+		(*MetricValue_StringValue)(nil),
+		(*MetricValue_BoolValue)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_agent_agent_proto_rawDesc), len(file_pkg_agent_agent_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   81,
+			NumMessages:   96,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

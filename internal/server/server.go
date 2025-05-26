@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -859,6 +860,164 @@ func (s *Server) GetDB() *sql.DB {
 // GetInfluxWriter, InfluxDB writer'ını döndürür
 func (s *Server) GetInfluxWriter() *metrics.InfluxDBWriter {
 	return s.influxWriter
+}
+
+// SendMetrics, agent'dan gelen metric batch'lerini işler
+func (s *Server) SendMetrics(ctx context.Context, req *pb.SendMetricsRequest) (*pb.SendMetricsResponse, error) {
+	if req.Batch == nil {
+		return &pb.SendMetricsResponse{
+			Status:  "error",
+			Message: "Batch is required",
+		}, nil
+	}
+
+	batch := req.Batch
+	log.Printf("[INFO] Metric batch alındı - Agent: %s, Type: %s, Count: %d",
+		batch.AgentId, batch.MetricType, len(batch.Metrics))
+
+	var errors []string
+	processedCount := int32(0)
+
+	// InfluxDB'ye metrikler yazılacaksa
+	if s.influxWriter != nil {
+		// Her metric'i InfluxDB'ye yaz
+		for _, metric := range batch.Metrics {
+			if err := s.writeMetricToInfluxDB(ctx, batch, metric); err != nil {
+				errorMsg := fmt.Sprintf("Metric yazma hatası (%s): %v", metric.Name, err)
+				errors = append(errors, errorMsg)
+				log.Printf("[ERROR] %s", errorMsg)
+			} else {
+				processedCount++
+			}
+		}
+	} else {
+		// InfluxDB yoksa sadece log'la
+		for _, metric := range batch.Metrics {
+			log.Printf("[DEBUG] Metric alındı: %s = %v (Agent: %s)",
+				metric.Name, s.getMetricValueAsFloat(metric.Value), batch.AgentId)
+			processedCount++
+		}
+	}
+
+	// Yanıt oluştur
+	status := "success"
+	message := fmt.Sprintf("Processed %d metrics", processedCount)
+
+	if len(errors) > 0 {
+		if processedCount == 0 {
+			status = "error"
+			message = "All metrics failed to process"
+		} else {
+			status = "partial_success"
+			message = fmt.Sprintf("Processed %d metrics with %d errors", processedCount, len(errors))
+		}
+	}
+
+	log.Printf("[INFO] Metric batch işlendi - Agent: %s, Processed: %d, Errors: %d",
+		batch.AgentId, processedCount, len(errors))
+
+	return &pb.SendMetricsResponse{
+		Status:         status,
+		Message:        message,
+		ProcessedCount: processedCount,
+		Errors:         errors,
+	}, nil
+}
+
+// writeMetricToInfluxDB tek bir metric'i InfluxDB'ye yazar
+func (s *Server) writeMetricToInfluxDB(ctx context.Context, batch *pb.MetricBatch, metric *pb.Metric) error {
+	// Metric değerini float64'e çevir
+	value := s.getMetricValueAsFloat(metric.Value)
+
+	// Tags'leri map'e çevir
+	tags := make(map[string]string)
+	tags["agent_id"] = batch.AgentId
+	tags["metric_type"] = batch.MetricType
+
+	for _, tag := range metric.Tags {
+		tags[tag.Key] = tag.Value
+	}
+
+	// Fields'leri oluştur
+	fields := map[string]interface{}{
+		"value": value,
+	}
+
+	if metric.Unit != "" {
+		fields["unit"] = metric.Unit
+	}
+	if metric.Description != "" {
+		fields["description"] = metric.Description
+	}
+
+	// Timestamp'i time.Time'a çevir
+	timestamp := time.Unix(0, metric.Timestamp)
+
+	// Measurement adını metric adından çıkar
+	measurement := s.extractMeasurementName(metric.Name)
+
+	// InfluxDB'ye yaz
+	return s.influxWriter.WriteMetric(ctx, measurement, tags, fields, timestamp)
+}
+
+// getMetricValueAsFloat MetricValue'yu float64'e çevirir
+func (s *Server) getMetricValueAsFloat(value *pb.MetricValue) float64 {
+	if value == nil {
+		return 0
+	}
+
+	switch v := value.Value.(type) {
+	case *pb.MetricValue_DoubleValue:
+		return v.DoubleValue
+	case *pb.MetricValue_IntValue:
+		return float64(v.IntValue)
+	case *pb.MetricValue_BoolValue:
+		if v.BoolValue {
+			return 1
+		}
+		return 0
+	case *pb.MetricValue_StringValue:
+		// String değerleri parse etmeye çalış
+		if parsed, err := strconv.ParseFloat(v.StringValue, 64); err == nil {
+			return parsed
+		}
+		return 0
+	default:
+		return 0
+	}
+}
+
+// extractMeasurementName metric adından measurement adını çıkarır
+func (s *Server) extractMeasurementName(metricName string) string {
+	// "mongodb.operations.insert" -> "mongodb_operations"
+	// "postgresql.connections.active" -> "postgresql_connections"
+	// "mssql.performance.cpu" -> "mssql_performance"
+	// "system.cpu.usage" -> "system_cpu"
+
+	parts := strings.Split(metricName, ".")
+	if len(parts) >= 2 {
+		return strings.Join(parts[:2], "_")
+	}
+
+	// Fallback: ilk part'ı kullan
+	if len(parts) > 0 {
+		return parts[0]
+	}
+
+	return "unknown"
+}
+
+// CollectMetrics, agent'a metric toplama talebi gönderir
+func (s *Server) CollectMetrics(ctx context.Context, req *pb.CollectMetricsRequest) (*pb.CollectMetricsResponse, error) {
+	log.Printf("[INFO] Metric toplama talebi - Agent: %s, Types: %v", req.AgentId, req.MetricTypes)
+
+	// Bu metod şu anda sadece acknowledgment döndürüyor
+	// Gelecekte agent'a aktif olarak metric toplama talebi göndermek için kullanılabilir
+
+	return &pb.CollectMetricsResponse{
+		Status:  "success",
+		Message: "Metric collection request acknowledged",
+	}, nil
 }
 
 // ReportAlarm, agent'lardan gelen alarm bildirimlerini işler

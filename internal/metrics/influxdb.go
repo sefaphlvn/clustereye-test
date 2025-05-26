@@ -642,6 +642,37 @@ func (w *InfluxDBWriter) getStringValue(data map[string]interface{}, key, defaul
 	return defaultValue
 }
 
+// WriteMetric, tek bir metric'i InfluxDB'ye yazar
+func (w *InfluxDBWriter) WriteMetric(ctx context.Context, measurement string, tags map[string]string, fields map[string]interface{}, timestamp time.Time) error {
+	if !w.enabled {
+		return nil
+	}
+
+	// Point oluştur
+	point := influxdb2.NewPointWithMeasurement(measurement)
+
+	// Tags ekle
+	for k, v := range tags {
+		point = point.AddTag(k, v)
+	}
+
+	// Fields ekle
+	for k, v := range fields {
+		point = point.AddField(k, v)
+	}
+
+	// Timestamp ayarla
+	point = point.SetTime(timestamp)
+
+	// InfluxDB'ye yaz
+	err := w.writeAPI.WritePoint(ctx, point)
+	if err != nil {
+		return fmt.Errorf("InfluxDB yazma hatası: %v", err)
+	}
+
+	return nil
+}
+
 // QueryMetrics, InfluxDB'den metrikleri sorgular
 func (w *InfluxDBWriter) QueryMetrics(ctx context.Context, query string) ([]map[string]interface{}, error) {
 	if !w.enabled {
