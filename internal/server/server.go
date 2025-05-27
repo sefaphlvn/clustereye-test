@@ -2460,7 +2460,7 @@ func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool, limit, 
 
 	// Varsayılan limit kontrolü
 	if limit <= 0 || limit > 1000 {
-		limit = 50 // Varsayılan 50 kayıt
+		limit = 250 // Varsayılan 250 kayıt
 	}
 	if offset < 0 {
 		offset = 0
