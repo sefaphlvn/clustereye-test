@@ -191,6 +191,21 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		// Genel dashboard metrikleri
 		metrics.GET("/dashboard", getDashboardMetrics(server))
 	}
+
+	// MSSQL özel endpoint'leri
+	mssql := v1.Group("/mssql")
+	{
+		mssql.GET("/cpu", getMSSQLCPUMetrics(server))
+	}
+
+	// Debug Endpoint'leri
+	debug := v1.Group("/debug")
+	{
+		// InfluxDB'de mevcut field'ları listeler (debug amaçlı)
+		debug.GET("/fields", getAvailableFields(server))
+		// InfluxDB'de mevcut measurement'ları listeler (debug amaçlı)
+		debug.GET("/measurements", getAvailableMeasurements(server))
+	}
 }
 
 // getAgents, bağlı tüm agent'ları listeler
@@ -2102,8 +2117,13 @@ func getCPUMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
 
-		// Flux sorgusu oluştur - en basit format
-		query := fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s)`, timeRange)
+		// Yeni field adlandırma sistemi için güncellenmiş sorgu
+		var query string
+		if agentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /cpu_usage|cpu_load|mssql_system/) |> filter(fn: (r) => r._field == "cpu_usage" or r._field == "usage_percent" or r._field == "load_average" or r._field == "cpu_cores") |> filter(fn: (r) => r.agent_id =~ /^%s$/)`, timeRange, regexp.QuoteMeta(agentID))
+		} else {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /cpu_usage|cpu_load|mssql_system/) |> filter(fn: (r) => r._field == "cpu_usage" or r._field == "usage_percent" or r._field == "load_average" or r._field == "cpu_cores")`, timeRange)
+		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
@@ -2126,33 +2146,6 @@ func getCPUMetrics(server *server.Server) gin.HandlerFunc {
 			return
 		}
 
-		// Client tarafında measurement ve agent ID filtrelemesi
-		filteredResults := make([]map[string]interface{}, 0)
-		for _, item := range results {
-			// CPU measurement'larını filtrele
-			if measurement, exists := item["_measurement"]; exists {
-				measurementStr, ok := measurement.(string)
-				if !ok {
-					continue
-				}
-				if measurementStr != "cpu_usage" && measurementStr != "cpu_load" {
-					continue
-				}
-			} else {
-				continue
-			}
-
-			// Agent ID filtrelemesi varsa uygula
-			if agentID != "" {
-				if itemAgentID, exists := item["agent_id"]; exists && itemAgentID == agentID {
-					filteredResults = append(filteredResults, item)
-				}
-			} else {
-				filteredResults = append(filteredResults, item)
-			}
-		}
-		results = filteredResults
-
 		c.JSON(http.StatusOK, gin.H{
 			"status": "success",
 			"data":   results,
@@ -2166,13 +2159,12 @@ func getMemoryMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
 
-		// Flux sorgusu oluştur - tek satırda
+		// Yeni field adlandırma sistemi için güncellenmiş sorgu
 		var query string
 		if agentID != "" {
-			// Agent ID'yi regex pattern olarak kullan
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "memory_usage" or r._measurement == "memory_info") |> filter(fn: (r) => r.agent_id =~ /^%s$/)`, timeRange, regexp.QuoteMeta(agentID))
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /memory_usage|memory_info|mssql_system/) |> filter(fn: (r) => r._field == "memory_usage" or r._field == "usage_percent" or r._field == "total_bytes" or r._field == "used_bytes" or r._field == "available_bytes" or r._field == "total_memory" or r._field == "free_memory") |> filter(fn: (r) => r.agent_id =~ /^%s$/)`, timeRange, regexp.QuoteMeta(agentID))
 		} else {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "memory_usage" or r._measurement == "memory_info")`, timeRange)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /memory_usage|memory_info|mssql_system/) |> filter(fn: (r) => r._field == "memory_usage" or r._field == "usage_percent" or r._field == "total_bytes" or r._field == "used_bytes" or r._field == "available_bytes" or r._field == "total_memory" or r._field == "free_memory")`, timeRange)
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
@@ -2209,13 +2201,12 @@ func getDiskMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
 
-		// Flux sorgusu oluştur - tek satırda
+		// Yeni field adlandırma sistemi için güncellenmiş sorgu
 		var query string
 		if agentID != "" {
-			// Agent ID'yi regex pattern olarak kullan
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "disk_usage" or r._measurement == "disk_info") |> filter(fn: (r) => r.agent_id =~ /^%s$/)`, timeRange, regexp.QuoteMeta(agentID))
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /disk_usage|disk_info|mssql_system/) |> filter(fn: (r) => r._field == "free_disk" or r._field == "total_disk" or r._field == "usage_percent" or r._field == "total_bytes" or r._field == "used_bytes" or r._field == "available_bytes") |> filter(fn: (r) => r.agent_id =~ /^%s$/)`, timeRange, regexp.QuoteMeta(agentID))
 		} else {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "disk_usage" or r._measurement == "disk_info")`, timeRange)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /disk_usage|disk_info|mssql_system/) |> filter(fn: (r) => r._field == "free_disk" or r._field == "total_disk" or r._field == "usage_percent" or r._field == "total_bytes" or r._field == "used_bytes" or r._field == "available_bytes")`, timeRange)
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
@@ -2344,11 +2335,11 @@ func getDashboardMetrics(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		timeRange := c.DefaultQuery("range", "1h")
 
-		// Dashboard için temel metrikler
+		// Dashboard için temel metrikler - yeni field adlandırma sistemi
 		queries := map[string]string{
-			"cpu_usage":    fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "cpu_usage") |> filter(fn: (r) => r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
-			"memory_usage": fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "memory_usage") |> filter(fn: (r) => r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
-			"disk_usage":   fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "disk_usage") |> filter(fn: (r) => r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
+			"cpu_usage":    fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /cpu_usage|mssql_system/) |> filter(fn: (r) => r._field == "cpu_usage" or r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
+			"memory_usage": fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /memory_usage|mssql_system/) |> filter(fn: (r) => r._field == "memory_usage" or r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
+			"disk_usage":   fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /disk_usage|mssql_system/) |> filter(fn: (r) => r._field == "free_disk" or r._field == "total_disk" or r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
@@ -2378,6 +2369,148 @@ func getDashboardMetrics(server *server.Server) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "success",
 			"data":   results,
+		})
+	}
+}
+
+// getAvailableFields, InfluxDB'de mevcut field'ları listeler (debug amaçlı)
+func getAvailableFields(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		measurement := c.Query("measurement")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		var query string
+		if measurement != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "%s") |> distinct(column: "_field")`, timeRange, measurement)
+		} else {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> distinct(column: "_field")`, timeRange)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Field listesi alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}
+
+// getAvailableMeasurements, InfluxDB'de mevcut measurement'ları listeler (debug amaçlı)
+func getAvailableMeasurements(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		timeRange := c.DefaultQuery("range", "1h")
+
+		query := fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> distinct(column: "_measurement")`, timeRange)
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Measurement listesi alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}
+
+// getMSSQLCPUMetrics, MSSQL CPU metriklerini InfluxDB'den alır
+func getMSSQLCPUMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		if agentID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "agent_id parametresi gereklidir",
+			})
+			return
+		}
+
+		// MSSQL CPU metriklerini almak için özel sorgu
+		query := fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_system") |> filter(fn: (r) => r._field == "cpu_usage") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> sort(columns: ["_time"], desc: true)`, timeRange, regexp.QuoteMeta(agentID))
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MSSQL CPU metrikleri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		// En son değeri al
+		var latestCPUUsage float64
+		var latestTimestamp string
+		if len(results) > 0 {
+			if val, ok := results[0]["_value"]; ok {
+				if cpuVal, ok := val.(float64); ok {
+					latestCPUUsage = cpuVal
+				}
+			}
+			if timestamp, ok := results[0]["_time"]; ok {
+				if timeStr, ok := timestamp.(string); ok {
+					latestTimestamp = timeStr
+				}
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"agent_id":         agentID,
+				"latest_cpu_usage": latestCPUUsage,
+				"latest_timestamp": latestTimestamp,
+				"all_data":         results,
+			},
 		})
 	}
 }
