@@ -939,15 +939,17 @@ func (s *Server) writeMetricToInfluxDB(ctx context.Context, batch *pb.MetricBatc
 	}
 
 	// Fields'leri oluştur
+	fieldName := s.extractFieldName(metric.Name)
+
 	fields := map[string]interface{}{
-		"value": value,
+		fieldName: value,
 	}
 
 	if metric.Unit != "" {
-		fields["unit"] = metric.Unit
+		fields[fieldName+"_unit"] = metric.Unit
 	}
 	if metric.Description != "" {
-		fields["description"] = metric.Description
+		fields[fieldName+"_description"] = metric.Description
 	}
 
 	// Timestamp'i time.Time'a çevir
@@ -985,6 +987,18 @@ func (s *Server) getMetricValueAsFloat(value *pb.MetricValue) float64 {
 	default:
 		return 0
 	}
+}
+
+// extractFieldName metric adından field adını çıkarır
+func (s *Server) extractFieldName(metricName string) string {
+	parts := strings.Split(metricName, ".")
+	if len(parts) >= 3 {
+		return parts[2]
+	}
+	if len(parts) >= 2 {
+		return parts[len(parts)-1]
+	}
+	return "value"
 }
 
 // extractMeasurementName metric adından measurement adını çıkarır

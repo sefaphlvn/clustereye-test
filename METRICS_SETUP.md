@@ -128,7 +128,7 @@ Content-Type: application/json
 
 #### CPU Metrikleri
 ```http
-GET /api/v1/metrics/cpu?agent_id=agent_123&range=1h
+GET /api/v1/metrics/cpu?agent_id=agent_test-sql-01&range=1h
 ```
 
 #### Memory Metrikleri
