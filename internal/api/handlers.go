@@ -830,7 +830,7 @@ func getAlarms(server *server.Server) gin.HandlerFunc {
 		onlyUnacknowledged := c.DefaultQuery("unacknowledged", "false") == "true"
 
 		// Pagination parametreleri
-		limit := 50 // Varsayılan limit
+		limit := 250 // Varsayılan limit
 		if l := c.Query("limit"); l != "" {
 			if parsedLimit, err := strconv.Atoi(l); err == nil && parsedLimit > 0 && parsedLimit <= 1000 {
 				limit = parsedLimit
