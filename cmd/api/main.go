@@ -80,7 +80,7 @@ func main() {
 	}
 
 	// gRPC sunucu seçeneklerini ayarla
-	maxMsgSize := 32 * 1024 * 1024 // 32MB
+	maxMsgSize := 128 * 1024 * 1024 // 128MB
 	opts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(maxMsgSize),
 		grpc.MaxSendMsgSize(maxMsgSize),
