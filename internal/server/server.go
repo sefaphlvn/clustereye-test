@@ -822,21 +822,6 @@ func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsReq
 			log.Printf("[ERROR] Metrik yapısı çözümlenemedi: %v", err)
 			return nil, fmt.Errorf("metrik yapısı çözümlenemedi: %v", err)
 		}
-
-		// InfluxDB'ye metrikleri yaz (eğer etkinse)
-		if s.influxWriter != nil {
-			go func() {
-				writeCtx, writeCancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer writeCancel()
-
-				if err := s.influxWriter.WriteSystemMetrics(writeCtx, agentID, &metricsStruct); err != nil {
-					log.Printf("[ERROR] InfluxDB'ye metrik yazma hatası: %v", err)
-				} else {
-					log.Printf("[DEBUG] Metrikler InfluxDB'ye başarıyla yazıldı - Agent: %s", agentID)
-				}
-			}()
-		}
-
 		// Yanıtı oluştur ve döndür
 		response := &pb.SystemMetricsResponse{
 			Status: "success",
