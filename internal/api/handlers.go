@@ -202,6 +202,7 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		mssql.GET("/blocking", getMSSQLBlockingMetrics(server))
 		mssql.GET("/wait", getMSSQLWaitMetrics(server))
 		mssql.GET("/deadlock", getMSSQLDeadlockMetrics(server))
+		mssql.GET("/response-time", getMSSQLResponseTimeMetrics(server))
 		mssql.GET("/all", getMSSQLAllMetrics(server))
 	}
 
@@ -2344,9 +2345,10 @@ func getDashboardMetrics(server *server.Server) gin.HandlerFunc {
 
 		// Dashboard için temel metrikler - yeni field adlandırma sistemi
 		queries := map[string]string{
-			"cpu_usage":    fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /cpu_usage|mssql_system/) |> filter(fn: (r) => r._field == "cpu_usage" or r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
-			"memory_usage": fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /memory_usage|mssql_system/) |> filter(fn: (r) => r._field == "memory_usage" or r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
-			"disk_usage":   fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /disk_usage|mssql_system/) |> filter(fn: (r) => r._field == "free_disk" or r._field == "total_disk" or r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
+			"cpu_usage":     fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /cpu_usage|mssql_system/) |> filter(fn: (r) => r._field == "cpu_usage" or r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
+			"memory_usage":  fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /memory_usage|mssql_system/) |> filter(fn: (r) => r._field == "memory_usage" or r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
+			"disk_usage":    fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /disk_usage|mssql_system/) |> filter(fn: (r) => r._field == "free_disk" or r._field == "total_disk" or r._field == "usage_percent") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
+			"response_time": fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_response_time" or (r._measurement == "mssql_system" and r._field == "response_time_ms")) |> filter(fn: (r) => r._field == "response_time_ms") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange),
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
@@ -2815,6 +2817,110 @@ func getMSSQLAllMetrics(server *server.Server) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "success",
 			"data":   results,
+		})
+	}
+}
+
+// getMSSQLResponseTimeMetrics, MSSQL response time metriklerini getirir
+func getMSSQLResponseTimeMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		var query string
+		if agentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_response_time" or (r._measurement == "mssql_system" and r._field == "response_time_ms")) |> filter(fn: (r) => r._field == "response_time_ms") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> sort(columns: ["_time"], desc: false)`, timeRange, regexp.QuoteMeta(agentID))
+		} else {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_response_time" or (r._measurement == "mssql_system" and r._field == "response_time_ms")) |> filter(fn: (r) => r._field == "response_time_ms") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> sort(columns: ["_time"], desc: false)`, timeRange)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MSSQL response time metriklerini alırken hata: " + err.Error(),
+			})
+			return
+		}
+
+		// Response time istatistikleri hesapla
+		var totalResponseTime, minResponseTime, maxResponseTime, avgResponseTime float64
+		var responseTimeCount int
+
+		if len(results) > 0 {
+			minResponseTime = 99999999 // Büyük bir başlangıç değeri
+			maxResponseTime = 0
+
+			for _, result := range results {
+				if val, ok := result["_value"]; ok {
+					if responseTime, ok := val.(float64); ok && responseTime > 0 {
+						totalResponseTime += responseTime
+						responseTimeCount++
+
+						if responseTime < minResponseTime {
+							minResponseTime = responseTime
+						}
+						if responseTime > maxResponseTime {
+							maxResponseTime = responseTime
+						}
+					}
+				}
+			}
+
+			if responseTimeCount > 0 {
+				avgResponseTime = totalResponseTime / float64(responseTimeCount)
+			}
+
+			// Eğer hiç veri yoksa minimum değeri sıfırlayalım
+			if responseTimeCount == 0 {
+				minResponseTime = 0
+			}
+		}
+
+		// Latest response time'ı al
+		var latestResponseTime float64
+		var latestTimestamp string
+		if len(results) > 0 {
+			// Son kayıttan en güncel değeri al
+			lastResult := results[len(results)-1]
+			if val, ok := lastResult["_value"]; ok {
+				if responseTime, ok := val.(float64); ok {
+					latestResponseTime = responseTime
+				}
+			}
+			if timestamp, ok := lastResult["_time"]; ok {
+				if timeStr, ok := timestamp.(string); ok {
+					latestTimestamp = timeStr
+				}
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"agent_id": agentID,
+				"summary": gin.H{
+					"latest_response_time_ms": latestResponseTime,
+					"latest_timestamp":        latestTimestamp,
+					"avg_response_time_ms":    avgResponseTime,
+					"min_response_time_ms":    minResponseTime,
+					"max_response_time_ms":    maxResponseTime,
+					"total_measurements":      responseTimeCount,
+				},
+				"all_data": results,
+			},
 		})
 	}
 }

@@ -448,6 +448,16 @@ func (w *InfluxDBWriter) createMSSQLPoints(agentID string, mssqlData map[string]
 		points = append(points, point)
 	}
 
+	// SQL Server Response Time (SELECT 1 query response time in milliseconds)
+	if responseTime, ok := w.getFloatValue(mssqlData, "response_time_ms"); ok {
+		point := influxdb2.NewPointWithMeasurement("mssql_response_time").
+			AddTag("agent_id", agentID).
+			AddTag("query_type", "select_1").
+			AddField("response_time_ms", responseTime).
+			SetTime(timestamp)
+		points = append(points, point)
+	}
+
 	return points
 }
 
@@ -579,6 +589,82 @@ func (w *InfluxDBWriter) createFlatFormatPoints(agentID string, metricsMap map[s
 				points = append(points, point)
 			}
 		}
+	}
+
+	// SQL Server Response Time (flat format desteği)
+	if responseTime, ok := w.getFloatValue(metricsMap, "response_time_ms"); ok {
+		point := influxdb2.NewPointWithMeasurement("mssql_response_time").
+			AddTag("agent_id", agentID).
+			AddTag("query_type", "select_1").
+			AddField("response_time_ms", responseTime).
+			SetTime(timestamp)
+		points = append(points, point)
+	}
+
+	// Ayrıca MSSQL sistem metriklerini mssql_system measurement'ında da tut (geriye uyumluluk için)
+	if cpuUsage, ok := w.getFloatValue(metricsMap, "cpu_usage"); ok {
+		point := influxdb2.NewPointWithMeasurement("mssql_system").
+			AddTag("agent_id", agentID).
+			AddField("cpu_usage", cpuUsage).
+			SetTime(timestamp)
+		points = append(points, point)
+	}
+
+	if memUsage, ok := w.getFloatValue(metricsMap, "memory_usage"); ok {
+		point := influxdb2.NewPointWithMeasurement("mssql_system").
+			AddTag("agent_id", agentID).
+			AddField("memory_usage", memUsage).
+			SetTime(timestamp)
+		points = append(points, point)
+	}
+
+	if totalMem, ok := w.getFloatValue(metricsMap, "total_memory"); ok {
+		point := influxdb2.NewPointWithMeasurement("mssql_system").
+			AddTag("agent_id", agentID).
+			AddField("total_memory", totalMem).
+			SetTime(timestamp)
+		points = append(points, point)
+	}
+
+	if freeMem, ok := w.getFloatValue(metricsMap, "free_memory"); ok {
+		point := influxdb2.NewPointWithMeasurement("mssql_system").
+			AddTag("agent_id", agentID).
+			AddField("free_memory", freeMem).
+			SetTime(timestamp)
+		points = append(points, point)
+	}
+
+	if totalDisk, ok := w.getFloatValue(metricsMap, "total_disk"); ok {
+		point := influxdb2.NewPointWithMeasurement("mssql_system").
+			AddTag("agent_id", agentID).
+			AddField("total_disk", totalDisk).
+			SetTime(timestamp)
+		points = append(points, point)
+	}
+
+	if freeDisk, ok := w.getFloatValue(metricsMap, "free_disk"); ok {
+		point := influxdb2.NewPointWithMeasurement("mssql_system").
+			AddTag("agent_id", agentID).
+			AddField("free_disk", freeDisk).
+			SetTime(timestamp)
+		points = append(points, point)
+	}
+
+	if cpuCores, ok := w.getFloatValue(metricsMap, "cpu_cores"); ok {
+		point := influxdb2.NewPointWithMeasurement("mssql_system").
+			AddTag("agent_id", agentID).
+			AddField("cpu_cores", cpuCores).
+			SetTime(timestamp)
+		points = append(points, point)
+	}
+
+	// SQL Server Response Time'ı mssql_system measurement'ında da tut
+	if responseTime, ok := w.getFloatValue(metricsMap, "response_time_ms"); ok {
+		point := influxdb2.NewPointWithMeasurement("mssql_system").
+			AddTag("agent_id", agentID).
+			AddField("response_time_ms", responseTime).
+			SetTime(timestamp)
+		points = append(points, point)
 	}
 
 	// System info metrikleri

@@ -627,21 +627,6 @@ func (s *Server) checkDatabaseConnection() error {
 
 // SendQuery, belirli bir agent'a sorgu gönderir ve cevabı bekler
 func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command, database string) (*pb.QueryResult, error) {
-	// Detaylı loglama ekleyelim
-	log.Printf("[DEBUG] ------ Query Detayları ------")
-	log.Printf("[DEBUG] Agent ID: %s", agentID)
-	log.Printf("[DEBUG] Query ID: %s", queryID)
-	log.Printf("[DEBUG] Database: %s", database)
-	log.Printf("[DEBUG] Komut Türü: %s", strings.Split(command, ":")[0])
-	log.Printf("[DEBUG] Komut Uzunluğu: %d bytes", len(command))
-
-	// Sorguyu da yazdıralım, ama çok uzunsa kısaltarak
-	if len(command) > 1000 {
-		log.Printf("[DEBUG] Komut (ilk 1000 karakter): %s...", command[:1000])
-	} else {
-		log.Printf("[DEBUG] Komut: %s", command)
-	}
-	log.Printf("[DEBUG] -----------------------------")
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
