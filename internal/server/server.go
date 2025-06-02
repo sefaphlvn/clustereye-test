@@ -725,7 +725,7 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command, datab
 	case <-ctx.Done():
 		log.Printf("[ERROR] Context iptal edildi - Query ID: %s, Hata: %v", queryID, ctx.Err())
 		return nil, ctx.Err()
-	case <-time.After(10 * time.Second): // 10 saniye timeout
+	case <-time.After(60 * time.Second): // 60 saniye timeout - uzun süren sorgular için
 		log.Printf("[ERROR] Sorgu zaman aşımına uğradı - Query ID: %s", queryID)
 		return nil, fmt.Errorf("sorgu zaman aşımına uğradı")
 	}

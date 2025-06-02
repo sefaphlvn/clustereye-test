@@ -257,7 +257,7 @@ func sendQueryToAgent(server *server.Server) gin.HandlerFunc {
 		}
 
 		// Context oluştur (request'in iptal edilmesi durumunda kullanılacak)
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
 		// Sorguyu gönder ve cevabı bekle
@@ -1584,7 +1584,7 @@ func explainMongoQuery(server *server.Server) gin.HandlerFunc {
 		log.Printf("[DEBUG] MongoDB explain istek bilgileri: agent_id=%s, database=%s", agentID, req.Database)
 
 		// Context timeout ayarlama
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
 		// Ham JSON sorguyu string olarak kullan
@@ -1691,7 +1691,7 @@ func explainMssqlQuery(server *server.Server) gin.HandlerFunc {
 		log.Printf("[DEBUG] MSSQL explain istek bilgileri: agent_id=%s, database=%s", agentID, req.Database)
 
 		// Context timeout ayarlama
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
 		// Ham JSON sorguyu string olarak kullan
@@ -2473,7 +2473,7 @@ func getMSSQLCPUMetrics(server *server.Server) gin.HandlerFunc {
 		// MSSQL CPU metriklerini almak için özel sorgu
 		query := fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_system") |> filter(fn: (r) => r._field == "cpu_usage") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> sort(columns: ["_time"], desc: true)`, timeRange, regexp.QuoteMeta(agentID))
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
 		influxWriter := server.GetInfluxWriter()
@@ -2535,7 +2535,7 @@ func getMSSQLConnectionsMetrics(server *server.Server) gin.HandlerFunc {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_connections") |> filter(fn: (r) => r._field == "active" or r._field == "idle" or r._field == "total") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
 		influxWriter := server.GetInfluxWriter()
@@ -2576,7 +2576,7 @@ func getMSSQLSystemMetrics(server *server.Server) gin.HandlerFunc {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_system") |> filter(fn: (r) => r._field == "cpu_usage" or r._field == "cpu_cores" or r._field == "memory_usage" or r._field == "free_memory" or r._field == "free_disk" or r._field == "total_disk" or r._field == "total_memory") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
 		influxWriter := server.GetInfluxWriter()
@@ -2620,7 +2620,7 @@ func getMSSQLDatabaseMetrics(server *server.Server) gin.HandlerFunc {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_database") |> filter(fn: (r) => r._field == "data_size" or r._field == "log_size") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
 		influxWriter := server.GetInfluxWriter()
@@ -2661,7 +2661,7 @@ func getMSSQLBlockingMetrics(server *server.Server) gin.HandlerFunc {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_blocking") |> filter(fn: (r) => r._field == "sessions") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
 		influxWriter := server.GetInfluxWriter()
@@ -2705,7 +2705,7 @@ func getMSSQLWaitMetrics(server *server.Server) gin.HandlerFunc {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_waits") |> filter(fn: (r) => r._field == "tasks" or r._field == "time_ms") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
 		influxWriter := server.GetInfluxWriter()
@@ -2746,7 +2746,7 @@ func getMSSQLDeadlockMetrics(server *server.Server) gin.HandlerFunc {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_deadlocks") |> filter(fn: (r) => r._field == "total") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
 		influxWriter := server.GetInfluxWriter()
@@ -2791,7 +2791,7 @@ func getMSSQLAllMetrics(server *server.Server) gin.HandlerFunc {
 		// Tüm MSSQL metriklerini tek sorguda al
 		query := fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement =~ /^mssql_/) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r._field !~ /_description$/ and r._field !~ /_unit$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> group(columns: ["_measurement", "_field"])`, timeRange, regexp.QuoteMeta(agentID))
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
 		influxWriter := server.GetInfluxWriter()
