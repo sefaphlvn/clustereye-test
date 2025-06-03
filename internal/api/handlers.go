@@ -216,6 +216,36 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 				database.GET("/indexes", getPostgreSQLIndexesMetrics(server))
 			}
 		}
+
+		// MongoDB özel metrikleri
+		mongodb := metrics.Group("/mongodb")
+		{
+			// MongoDB sistem metrikleri
+			system := mongodb.Group("/system")
+			{
+				system.GET("/cpu", getMongoDBSystemCPUMetrics(server))
+				system.GET("/memory", getMongoDBSystemMemoryMetrics(server))
+				system.GET("/disk", getMongoDBSystemDiskMetrics(server))
+				system.GET("/response-time", getMongoDBSystemResponseTimeMetrics(server))
+			}
+
+			// MongoDB veritabanı metrikleri
+			database := mongodb.Group("/database")
+			{
+				database.GET("/connections", getMongoDBConnectionsMetrics(server))
+				database.GET("/operations", getMongoDBOperationsMetrics(server))
+				database.GET("/storage", getMongoDBStorageMetrics(server))
+				database.GET("/info", getMongoDBDatabaseInfoMetrics(server))
+			}
+
+			// MongoDB replikasyon metrikleri
+			replication := mongodb.Group("/replication")
+			{
+				replication.GET("/status", getMongoDBReplicationStatusMetrics(server))
+				replication.GET("/lag", getMongoDBReplicationLagMetrics(server))
+				replication.GET("/oplog", getMongoDBOplogMetrics(server))
+			}
+		}
 	}
 
 	// MSSQL özel endpoint'leri
