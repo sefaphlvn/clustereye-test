@@ -190,6 +190,32 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		metrics.GET("/database", getDatabaseMetrics(server))
 		// Genel dashboard metrikleri
 		metrics.GET("/dashboard", getDashboardMetrics(server))
+
+		// PostgreSQL özel metrikleri
+		postgresql := metrics.Group("/postgresql")
+		{
+			// PostgreSQL sistem metrikleri
+			system := postgresql.Group("/system")
+			{
+				system.GET("/cpu", getPostgreSQLSystemCPUMetrics(server))
+				system.GET("/memory", getPostgreSQLSystemMemoryMetrics(server))
+				system.GET("/disk", getPostgreSQLSystemDiskMetrics(server))
+				system.GET("/response-time", getPostgreSQLSystemResponseTimeMetrics(server))
+			}
+
+			// PostgreSQL veritabanı metrikleri
+			database := postgresql.Group("/database")
+			{
+				database.GET("/connections", getPostgreSQLConnectionsMetrics(server))
+				database.GET("/transactions", getPostgreSQLTransactionsMetrics(server))
+				database.GET("/cache", getPostgreSQLCacheMetrics(server))
+				database.GET("/deadlocks", getPostgreSQLDeadlocksMetrics(server))
+				database.GET("/replication", getPostgreSQLReplicationMetrics(server))
+				database.GET("/locks", getPostgreSQLLocksMetrics(server))
+				database.GET("/tables", getPostgreSQLTablesMetrics(server))
+				database.GET("/indexes", getPostgreSQLIndexesMetrics(server))
+			}
+		}
 	}
 
 	// MSSQL özel endpoint'leri
