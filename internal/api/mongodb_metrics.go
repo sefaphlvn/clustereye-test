@@ -507,6 +507,9 @@ func getMongoDBReplicationLagMetrics(server *server.Server) gin.HandlerFunc {
 		// Replication lag istatistikleri hesapla
 		var totalLag, minLag, maxLag, avgLag float64
 		var lagCount int
+		var latestTime time.Time
+		var latestLag float64
+		var latestTimestamp string
 
 		if len(results) > 0 {
 			minLag = 99999999 // Büyük bir başlangıç değeri
@@ -514,15 +517,31 @@ func getMongoDBReplicationLagMetrics(server *server.Server) gin.HandlerFunc {
 
 			for _, result := range results {
 				if val, ok := result["_value"]; ok {
-					if lag, ok := val.(float64); ok && lag >= 0 {
-						totalLag += lag
+					if lagMs, ok := val.(float64); ok && lagMs >= 0 {
+						// Milisaniyeden saniyeye çevir
+						lagSeconds := lagMs / 1000.0
+
+						totalLag += lagSeconds
 						lagCount++
 
-						if lag < minLag {
-							minLag = lag
+						if lagSeconds < minLag {
+							minLag = lagSeconds
 						}
-						if lag > maxLag {
-							maxLag = lag
+						if lagSeconds > maxLag {
+							maxLag = lagSeconds
+						}
+
+						// En son zaman damgasını bul
+						if timestamp, ok := result["_time"]; ok {
+							if timeStr, ok := timestamp.(string); ok {
+								if parsedTime, err := time.Parse(time.RFC3339, timeStr); err == nil {
+									if parsedTime.After(latestTime) {
+										latestTime = parsedTime
+										latestLag = lagSeconds
+										latestTimestamp = timeStr
+									}
+								}
+							}
 						}
 					}
 				}
@@ -535,23 +554,6 @@ func getMongoDBReplicationLagMetrics(server *server.Server) gin.HandlerFunc {
 			// Eğer hiç veri yoksa minimum değeri sıfırlayalım
 			if lagCount == 0 {
 				minLag = 0
-			}
-		}
-
-		// Latest lag'ı al
-		var latestLag float64
-		var latestTimestamp string
-		if len(results) > 0 {
-			lastResult := results[len(results)-1]
-			if val, ok := lastResult["_value"]; ok {
-				if lag, ok := val.(float64); ok {
-					latestLag = lag
-				}
-			}
-			if timestamp, ok := lastResult["_time"]; ok {
-				if timeStr, ok := timestamp.(string); ok {
-					latestTimestamp = timeStr
-				}
 			}
 		}
 
