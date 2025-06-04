@@ -249,9 +249,9 @@ func getMongoDBConnectionsMetrics(server *server.Server) gin.HandlerFunc {
 
 		var query string
 		if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_database") |> filter(fn: (r) => r._field == "current_connections" or r._field == "available_connections" or r._field == "total_created_connections") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_database") |> filter(fn: (r) => r._field == "current" or r._field == "available" or r._field == "total_created_connections") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
 		} else {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_database") |> filter(fn: (r) => r._field == "current_connections" or r._field == "available_connections" or r._field == "total_created_connections") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_database") |> filter(fn: (r) => r._field == "current" or r._field == "available" or r._field == "total_created_connections") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
@@ -290,7 +290,7 @@ func getMongoDBOperationsMetrics(server *server.Server) gin.HandlerFunc {
 		timeRange := c.DefaultQuery("range", "1h")
 
 		var query string
-		operationFields := "r._field == \"insert_operations\" or r._field == \"query_operations\" or r._field == \"update_operations\" or r._field == \"delete_operations\" or r._field == \"getmore_operations\" or r._field == \"command_operations\""
+		operationFields := "r._field == \"insert\" or r._field == \"query\" or r._field == \"update\" or r._field == \"delete\" or r._field == \"getmore\" or r._field == \"command\""
 
 		if agentID != "" && database != "" {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_database") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, operationFields, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
@@ -336,7 +336,7 @@ func getMongoDBStorageMetrics(server *server.Server) gin.HandlerFunc {
 		timeRange := c.DefaultQuery("range", "1h")
 
 		var query string
-		storageFields := "r._field == \"data_size\" or r._field == \"storage_size\" or r._field == \"index_size\" or r._field == \"avg_obj_size\" or r._field == \"file_size\""
+		storageFields := "r._field == \"data_size_mb\" or r._field == \"storage_size_mb\" or r._field == \"index_size_mb\" or r._field == \"avg_obj_size\" or r._field == \"file_size_mb\""
 
 		if agentID != "" && database != "" {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_database") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, storageFields, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
