@@ -234,6 +234,7 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 			{
 				database.GET("/connections", getMongoDBConnectionsMetrics(server))
 				database.GET("/operations", getMongoDBOperationsMetrics(server))
+				database.GET("/operations-rate", getMongoDBOperationsRateMetrics(server))
 				database.GET("/storage", getMongoDBStorageMetrics(server))
 				database.GET("/info", getMongoDBDatabaseInfoMetrics(server))
 			}

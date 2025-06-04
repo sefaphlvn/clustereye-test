@@ -328,6 +328,163 @@ func getMongoDBOperationsMetrics(server *server.Server) gin.HandlerFunc {
 	}
 }
 
+// getMongoDBOperationsRateMetrics, MongoDB operasyon rate metriklerini getirir (ops/sec)
+func getMongoDBOperationsRateMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		database := c.Query("database") // İsteğe bağlı database filtresi
+		timeRange := c.DefaultQuery("range", "1h")
+		windowInterval := c.DefaultQuery("window", "1m") // Rate hesaplama penceresi
+
+		var query string
+		operationFields := "r._field == \"insert\" or r._field == \"query\" or r._field == \"update\" or r._field == \"delete\" or r._field == \"getmore\" or r._field == \"command\""
+
+		if agentID != "" && database != "" {
+			query = fmt.Sprintf(`
+				from(bucket: "clustereye")
+				|> range(start: -%s)
+				|> filter(fn: (r) => r._measurement == "mongodb_operations")
+				|> filter(fn: (r) => %s)
+				|> filter(fn: (r) => r.agent_id =~ /^%s$/)
+				|> filter(fn: (r) => r.database_name =~ /^%s$/)
+				|> sort(columns: ["_time"])
+				|> derivative(unit: 1s, nonNegative: true)
+				|> aggregateWindow(every: %s, fn: mean, createEmpty: false)
+			`, timeRange, operationFields, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database), windowInterval)
+		} else if agentID != "" {
+			query = fmt.Sprintf(`
+				from(bucket: "clustereye")
+				|> range(start: -%s)
+				|> filter(fn: (r) => r._measurement == "mongodb_operations")
+				|> filter(fn: (r) => %s)
+				|> filter(fn: (r) => r.agent_id =~ /^%s$/)
+				|> sort(columns: ["_time"])
+				|> derivative(unit: 1s, nonNegative: true)
+				|> aggregateWindow(every: %s, fn: mean, createEmpty: false)
+			`, timeRange, operationFields, regexp.QuoteMeta(agentID), windowInterval)
+		} else {
+			query = fmt.Sprintf(`
+				from(bucket: "clustereye")
+				|> range(start: -%s)
+				|> filter(fn: (r) => r._measurement == "mongodb_operations")
+				|> filter(fn: (r) => %s)
+				|> sort(columns: ["_time"])
+				|> derivative(unit: 1s, nonNegative: true)
+				|> aggregateWindow(every: %s, fn: mean, createEmpty: false)
+			`, timeRange, operationFields, windowInterval)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MongoDB operasyon rate metrikleri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		// Rate istatistikleri hesapla
+		rateStats := calculateOperationRateStats(results, agentID)
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"agent_id": agentID,
+				"summary":  rateStats,
+				"all_data": results,
+				"note":     "Rates are calculated as operations per second using derivative function",
+			},
+		})
+	}
+}
+
+// calculateOperationRateStats, operasyon rate istatistiklerini hesaplar
+func calculateOperationRateStats(results []map[string]interface{}, agentID string) map[string]interface{} {
+	stats := make(map[string]interface{})
+
+	// Field'lara göre grupla
+	fieldStats := make(map[string][]float64)
+	var latestTime time.Time
+	latestValues := make(map[string]float64)
+	var latestTimestamp string
+
+	for _, result := range results {
+		if field, ok := result["_field"].(string); ok {
+			if val, ok := result["_value"]; ok {
+				if rate, ok := val.(float64); ok && rate >= 0 {
+					fieldStats[field] = append(fieldStats[field], rate)
+
+					// En son değerleri bul
+					if timestamp, ok := result["_time"]; ok {
+						if timeStr, ok := timestamp.(string); ok {
+							if parsedTime, err := time.Parse(time.RFC3339, timeStr); err == nil {
+								if parsedTime.After(latestTime) {
+									latestTime = parsedTime
+									latestValues[field] = rate
+									latestTimestamp = timeStr
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Her field için istatistik hesapla
+	for field, values := range fieldStats {
+		if len(values) > 0 {
+			var sum, min, max float64
+			min = values[0]
+			max = values[0]
+
+			for _, val := range values {
+				sum += val
+				if val < min {
+					min = val
+				}
+				if val > max {
+					max = val
+				}
+			}
+
+			avg := sum / float64(len(values))
+
+			stats[field+"_ops_per_sec"] = map[string]interface{}{
+				"latest":      latestValues[field],
+				"avg":         avg,
+				"min":         min,
+				"max":         max,
+				"data_points": len(values),
+			}
+		}
+	}
+
+	// Toplam operasyon rate'i hesapla
+	var totalLatestRate float64
+	for _, rate := range latestValues {
+		totalLatestRate += rate
+	}
+
+	stats["total_ops_per_sec"] = totalLatestRate
+	stats["latest_timestamp"] = latestTimestamp
+	stats["operations_tracked"] = len(fieldStats)
+
+	return stats
+}
+
 // getMongoDBStorageMetrics, MongoDB storage metriklerini getirir
 func getMongoDBStorageMetrics(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
