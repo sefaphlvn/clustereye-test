@@ -409,12 +409,29 @@ func getPostgreSQLCacheMetrics(server *server.Server) gin.HandlerFunc {
 		for _, result := range results {
 			if timestamp, ok := result["_time"].(string); ok {
 				if field, ok := result["_field"].(string); ok {
-					if value, ok := result["_value"].(float64); ok {
-						if field == "blks_hit" {
-							blksHitData[timestamp] = value
-						} else if field == "blks_read" {
-							blksReadData[timestamp] = value
+					// Değeri float64'e dönüştür (int64, float64, string olabilir)
+					var value float64
+					switch v := result["_value"].(type) {
+					case float64:
+						value = v
+					case int64:
+						value = float64(v)
+					case int:
+						value = float64(v)
+					case string:
+						if parsed, err := strconv.ParseFloat(v, 64); err == nil {
+							value = parsed
+						} else {
+							continue // Bu record'u atla
 						}
+					default:
+						continue // Bu record'u atla
+					}
+
+					if field == "blks_hit" {
+						blksHitData[timestamp] = value
+					} else if field == "blks_read" {
+						blksReadData[timestamp] = value
 					}
 				}
 			}
@@ -446,6 +463,11 @@ func getPostgreSQLCacheMetrics(server *server.Server) gin.HandlerFunc {
 					"latest_cache_hit_ratio_percent": latestCacheHitRatio,
 					"avg_cache_hit_ratio_percent":    avgCacheHitRatio,
 					"total_measurements":             cacheHitRatioCount,
+					"debug_info": gin.H{
+						"blks_hit_records":  len(blksHitData),
+						"blks_read_records": len(blksReadData),
+						"total_raw_records": len(results),
+					},
 				},
 			},
 		})
