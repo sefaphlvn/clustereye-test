@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,15 +15,27 @@ import (
 
 // PostgreSQL System Metrics Handlers
 
+// fixAgentID, agent_id formatını düzeltir (önüne "agent_" ekler)
+func fixAgentID(agentID string) string {
+	if agentID == "" {
+		return ""
+	}
+	if !strings.HasPrefix(agentID, "agent_") {
+		return "agent_" + agentID
+	}
+	return agentID
+}
+
 // getPostgreSQLSystemCPUMetrics, PostgreSQL sistem CPU metriklerini getirir
 func getPostgreSQLSystemCPUMetrics(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
+		fullAgentID := fixAgentID(agentID)
 
 		var query string
-		if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_system") |> filter(fn: (r) => r._field == "cpu_usage" or r._field == "cpu_cores") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_system") |> filter(fn: (r) => r._field == "cpu_usage" or r._field == "cpu_cores") |> filter(fn: (r) => r.agent_id == "%s") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, fullAgentID)
 		} else {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_system") |> filter(fn: (r) => r._field == "cpu_usage" or r._field == "cpu_cores") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
@@ -60,10 +73,11 @@ func getPostgreSQLSystemMemoryMetrics(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
+		fullAgentID := fixAgentID(agentID)
 
 		var query string
-		if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_system") |> filter(fn: (r) => r._field == "free_memory" or r._field == "total_memory") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_system") |> filter(fn: (r) => r._field == "free_memory" or r._field == "total_memory") |> filter(fn: (r) => r.agent_id == "%s") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, fullAgentID)
 		} else {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_system") |> filter(fn: (r) => r._field == "free_memory" or r._field == "total_memory") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
@@ -101,10 +115,11 @@ func getPostgreSQLSystemDiskMetrics(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
+		fullAgentID := fixAgentID(agentID)
 
 		var query string
-		if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_system") |> filter(fn: (r) => r._field == "free_disk" or r._field == "total_disk") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_system") |> filter(fn: (r) => r._field == "free_disk" or r._field == "total_disk") |> filter(fn: (r) => r.agent_id == "%s") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, fullAgentID)
 		} else {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_system") |> filter(fn: (r) => r._field == "free_disk" or r._field == "total_disk") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
@@ -142,10 +157,11 @@ func getPostgreSQLSystemResponseTimeMetrics(server *server.Server) gin.HandlerFu
 	return func(c *gin.Context) {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
+		fullAgentID := fixAgentID(agentID)
 
 		var query string
-		if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_system") |> filter(fn: (r) => r._field == "response_time_ms") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> sort(columns: ["_time"], desc: false)`, timeRange, regexp.QuoteMeta(agentID))
+		if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_system") |> filter(fn: (r) => r._field == "response_time_ms") |> filter(fn: (r) => r.agent_id == "%s") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> sort(columns: ["_time"], desc: false)`, timeRange, fullAgentID)
 		} else {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_system") |> filter(fn: (r) => r._field == "response_time_ms") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> sort(columns: ["_time"], desc: false)`, timeRange)
 		}
@@ -249,12 +265,22 @@ func getPostgreSQLConnectionsMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
 
-		// Tüm yeni PostgreSQL connection alanları
+		// Agent ID formatını düzelt - önüne "agent_" ekle
+		var fullAgentID string
+		if agentID != "" {
+			if !strings.HasPrefix(agentID, "agent_") {
+				fullAgentID = "agent_" + agentID
+			} else {
+				fullAgentID = agentID
+			}
+		}
+
+		// Tüm PostgreSQL connection field'larını dahil et
 		connectionFields := `r._field == "active" or r._field == "available" or r._field == "avg_age_seconds" or r._field == "blocked" or r._field == "blocking" or r._field == "by_application" or r._field == "by_database" or r._field == "conflicts_total" or r._field == "effective_max_connections" or r._field == "idle" or r._field == "idle_in_transaction" or r._field == "idle_in_transaction_aborted" or r._field == "long_running_queries" or r._field == "max_connections" or r._field == "middle_age_connections" or r._field == "old_connections" or r._field == "new_connections" or r._field == "oldest_connection_seconds" or r._field == "reuse_ratio" or r._field == "superuser_reserved" or r._field == "total" or r._field == "temp_byres_used" or r._field == "temp_files_created" or r._field == "utilization_percent" or r._field == "waiting_on_io" or r._field == "waiting_on_locks" or r._field == "waiting_on_lwlocks" or r._field == "waiting_total" or r._field == "young_connections"`
 
 		var query string
-		if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_connections") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, connectionFields, regexp.QuoteMeta(agentID))
+		if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_connections") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id == "%s") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, connectionFields, fullAgentID)
 		} else {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_connections") |> filter(fn: (r) => %s) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, connectionFields)
 		}
@@ -280,6 +306,7 @@ func getPostgreSQLConnectionsMetrics(server *server.Server) gin.HandlerFunc {
 			return
 		}
 
+		// DEBUG bilgilerini kaldır, normal response dön
 		c.JSON(http.StatusOK, gin.H{
 			"status": "success",
 			"data":   results,
@@ -293,12 +320,13 @@ func getPostgreSQLTransactionsMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		database := c.Query("database") // İsteğe bağlı database filtresi
 		timeRange := c.DefaultQuery("range", "1h")
+		fullAgentID := fixAgentID(agentID)
 
 		var query string
-		if agentID != "" && database != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "xact_commit" or r._field == "xact_rollback") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
-		} else if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "xact_commit" or r._field == "xact_rollback") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		if fullAgentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "xact_commit" or r._field == "xact_rollback") |> filter(fn: (r) => r.agent_id == "%s") |> filter(fn: (r) => r.database =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, fullAgentID, regexp.QuoteMeta(database))
+		} else if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "xact_commit" or r._field == "xact_rollback") |> filter(fn: (r) => r.agent_id == "%s") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, fullAgentID)
 		} else {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "xact_commit" or r._field == "xact_rollback") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
@@ -337,12 +365,13 @@ func getPostgreSQLCacheMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		database := c.Query("database") // İsteğe bağlı database filtresi
 		timeRange := c.DefaultQuery("range", "1h")
+		fullAgentID := fixAgentID(agentID)
 
 		var query string
-		if agentID != "" && database != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "blks_hit" or r._field == "blks_read") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
-		} else if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "blks_hit" or r._field == "blks_read") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		if fullAgentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "blks_hit" or r._field == "blks_read") |> filter(fn: (r) => r.agent_id == "%s") |> filter(fn: (r) => r.database =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, fullAgentID, regexp.QuoteMeta(database))
+		} else if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "blks_hit" or r._field == "blks_read") |> filter(fn: (r) => r.agent_id == "%s") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, fullAgentID)
 		} else {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "blks_hit" or r._field == "blks_read") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
@@ -429,12 +458,13 @@ func getPostgreSQLDeadlocksMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		database := c.Query("database") // İsteğe bağlı database filtresi
 		timeRange := c.DefaultQuery("range", "1h")
+		fullAgentID := fixAgentID(agentID)
 
 		var query string
-		if agentID != "" && database != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "deadlocks") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
-		} else if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "deadlocks") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		if fullAgentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "deadlocks") |> filter(fn: (r) => r.agent_id == "%s") |> filter(fn: (r) => r.database =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, fullAgentID, regexp.QuoteMeta(database))
+		} else if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "deadlocks") |> filter(fn: (r) => r.agent_id == "%s") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, fullAgentID)
 		} else {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_database") |> filter(fn: (r) => r._field == "deadlocks") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
@@ -472,14 +502,15 @@ func getPostgreSQLReplicationMetrics(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		agentID := c.Query("agent_id")
 		timeRange := c.DefaultQuery("range", "1h")
+		fullAgentID := fixAgentID(agentID)
 
 		// Replication lag için özel measurement olabileceğini varsayıyoruz
 		// Eğer mevcut değilse postgresql_system'de replication_lag field'ı olabilir
 		var query string
-		if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_replication" or (r._measurement == "postgresql_system" and r._field == "replication_lag")) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_replication" or (r._measurement == "postgresql_system" and r._field == "replication_lag")) |> filter(fn: (r) => r.agent_id == "%s")`, timeRange, fullAgentID)
 		} else {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_replication" or (r._measurement == "postgresql_system" and r._field == "replication_lag")) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_replication" or (r._measurement == "postgresql_system" and r._field == "replication_lag"))`, timeRange)
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
@@ -516,12 +547,13 @@ func getPostgreSQLLocksMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		lockType := c.Query("lock_type") // İsteğe bağlı lock type filtresi
 		timeRange := c.DefaultQuery("range", "1h")
+		fullAgentID := fixAgentID(agentID)
 
 		var query string
-		if agentID != "" && lockType != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_locks") |> filter(fn: (r) => r._field == "granted" or r._field == "waiting") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.lock_type =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(lockType))
-		} else if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_locks") |> filter(fn: (r) => r._field == "granted" or r._field == "waiting") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		if fullAgentID != "" && lockType != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_locks") |> filter(fn: (r) => r._field == "granted" or r._field == "waiting") |> filter(fn: (r) => r.agent_id == "%s") |> filter(fn: (r) => r.lock_type =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, fullAgentID, regexp.QuoteMeta(lockType))
+		} else if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_locks") |> filter(fn: (r) => r._field == "granted" or r._field == "waiting") |> filter(fn: (r) => r.agent_id == "%s") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, fullAgentID)
 		} else {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_locks") |> filter(fn: (r) => r._field == "granted" or r._field == "waiting") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
@@ -562,6 +594,7 @@ func getPostgreSQLTablesMetrics(server *server.Server) gin.HandlerFunc {
 		tableName := c.Query("table")   // İsteğe bağlı table filtresi
 		timeRange := c.DefaultQuery("range", "1h")
 		limit := c.DefaultQuery("limit", "100") // Tablo sayısı limiti
+		fullAgentID := fixAgentID(agentID)
 
 		// Limit'i integer'a çevir
 		limitInt, err := strconv.Atoi(limit)
@@ -571,12 +604,12 @@ func getPostgreSQLTablesMetrics(server *server.Server) gin.HandlerFunc {
 
 		// PostgreSQL table metrikleri için özel measurement
 		var query string
-		if agentID != "" && database != "" && tableName != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_tables") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database =~ /^%s$/) |> filter(fn: (r) => r.table =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> limit(n: %d)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database), regexp.QuoteMeta(tableName), limitInt)
-		} else if agentID != "" && database != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_tables") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> limit(n: %d)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database), limitInt)
-		} else if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_tables") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> limit(n: %d)`, timeRange, regexp.QuoteMeta(agentID), limitInt)
+		if fullAgentID != "" && database != "" && tableName != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_tables") |> filter(fn: (r) => r.agent_id == "%s") |> filter(fn: (r) => r.database =~ /^%s$/) |> filter(fn: (r) => r.table =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> limit(n: %d)`, timeRange, fullAgentID, regexp.QuoteMeta(database), regexp.QuoteMeta(tableName), limitInt)
+		} else if fullAgentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_tables") |> filter(fn: (r) => r.agent_id == "%s") |> filter(fn: (r) => r.database =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> limit(n: %d)`, timeRange, fullAgentID, regexp.QuoteMeta(database), limitInt)
+		} else if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_tables") |> filter(fn: (r) => r.agent_id == "%s") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> limit(n: %d)`, timeRange, fullAgentID, limitInt)
 		} else {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_tables") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> limit(n: %d)`, timeRange, limitInt)
 		}
@@ -617,6 +650,7 @@ func getPostgreSQLIndexesMetrics(server *server.Server) gin.HandlerFunc {
 		indexName := c.Query("index")   // İsteğe bağlı index filtresi
 		timeRange := c.DefaultQuery("range", "1h")
 		limit := c.DefaultQuery("limit", "100") // Index sayısı limiti
+		fullAgentID := fixAgentID(agentID)
 
 		// Limit'i integer'a çevir
 		limitInt, err := strconv.Atoi(limit)
@@ -626,12 +660,12 @@ func getPostgreSQLIndexesMetrics(server *server.Server) gin.HandlerFunc {
 
 		// PostgreSQL index metrikleri için özel measurement
 		var query string
-		if agentID != "" && database != "" && indexName != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_indexes") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database =~ /^%s$/) |> filter(fn: (r) => r.index =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> limit(n: %d)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database), regexp.QuoteMeta(indexName), limitInt)
-		} else if agentID != "" && database != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_indexes") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> limit(n: %d)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database), limitInt)
-		} else if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_indexes") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> limit(n: %d)`, timeRange, regexp.QuoteMeta(agentID), limitInt)
+		if fullAgentID != "" && database != "" && indexName != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_indexes") |> filter(fn: (r) => r.agent_id == "%s") |> filter(fn: (r) => r.database =~ /^%s$/) |> filter(fn: (r) => r.index =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> limit(n: %d)`, timeRange, fullAgentID, regexp.QuoteMeta(database), regexp.QuoteMeta(indexName), limitInt)
+		} else if fullAgentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_indexes") |> filter(fn: (r) => r.agent_id == "%s") |> filter(fn: (r) => r.database =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> limit(n: %d)`, timeRange, fullAgentID, regexp.QuoteMeta(database), limitInt)
+		} else if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_indexes") |> filter(fn: (r) => r.agent_id == "%s") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> limit(n: %d)`, timeRange, fullAgentID, limitInt)
 		} else {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_indexes") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false) |> limit(n: %d)`, timeRange, limitInt)
 		}
@@ -672,12 +706,13 @@ func getPostgreSQLPerformanceQPSMetrics(server *server.Server) gin.HandlerFunc {
 		agentID := c.Query("agent_id")
 		database := c.Query("database")
 		timeRange := c.DefaultQuery("range", "1h")
+		fullAgentID := fixAgentID(agentID)
 
 		var query string
-		if agentID != "" && database != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_performance") |> filter(fn: (r) => r._field == "queries_per_sec") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database =~ /^%s$/) |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
-		} else if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_performance") |> filter(fn: (r) => r._field == "queries_per_sec") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		if fullAgentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_performance") |> filter(fn: (r) => r._field == "queries_per_sec") |> filter(fn: (r) => r.agent_id == "%s") |> filter(fn: (r) => r.database =~ /^%s$/) |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)`, timeRange, fullAgentID, regexp.QuoteMeta(database))
+		} else if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_performance") |> filter(fn: (r) => r._field == "queries_per_sec") |> filter(fn: (r) => r.agent_id == "%s") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)`, timeRange, fullAgentID)
 		} else {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_performance") |> filter(fn: (r) => r._field == "queries_per_sec") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)`, timeRange)
 		}
@@ -716,14 +751,15 @@ func getPostgreSQLPerformanceQueryTimeMetrics(server *server.Server) gin.Handler
 		agentID := c.Query("agent_id")
 		database := c.Query("database")
 		timeRange := c.DefaultQuery("range", "1h")
+		fullAgentID := fixAgentID(agentID)
 
 		var query string
 		queryTimeFields := "r._field == \"avg_query_time_ms\" or r._field == \"query_time_p95_ms\" or r._field == \"query_time_p99_ms\""
 
-		if agentID != "" && database != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_performance") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, queryTimeFields, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
-		} else if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_performance") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, queryTimeFields, regexp.QuoteMeta(agentID))
+		if fullAgentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_performance") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id == "%s") |> filter(fn: (r) => r.database =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, queryTimeFields, fullAgentID, regexp.QuoteMeta(database))
+		} else if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_performance") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id == "%s") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, queryTimeFields, fullAgentID)
 		} else {
 			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_performance") |> filter(fn: (r) => %s) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, queryTimeFields)
 		}
