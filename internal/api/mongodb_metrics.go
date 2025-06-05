@@ -775,3 +775,312 @@ func getMongoDBOplogMetrics(server *server.Server) gin.HandlerFunc {
 		})
 	}
 }
+
+// MongoDB Performance Metrics Handlers
+
+// getMongoDBPerformanceQPSMetrics, MongoDB QPS (queries per second) metriklerini getirir
+func getMongoDBPerformanceQPSMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		database := c.Query("database") // İsteğe bağlı database filtresi
+		timeRange := c.DefaultQuery("range", "1h")
+
+		var query string
+		if agentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r._field == "queries_per_sec") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database_name =~ /^%s$/) |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
+		} else if agentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r._field == "queries_per_sec") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		} else {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r._field == "queries_per_sec") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)`, timeRange)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MongoDB QPS metrikleri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}
+
+// getMongoDBPerformanceReadWriteRatioMetrics, MongoDB Read/Write oranı metriklerini getirir
+func getMongoDBPerformanceReadWriteRatioMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		database := c.Query("database")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		var query string
+		if agentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r._field == "read_write_ratio") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
+		} else if agentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r._field == "read_write_ratio") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		} else {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r._field == "read_write_ratio") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MongoDB Read/Write oranı metrikleri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}
+
+// getMongoDBPerformanceSlowQueriesMetrics, MongoDB yavaş query metriklerini getirir
+func getMongoDBPerformanceSlowQueriesMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		database := c.Query("database")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		var query string
+		if agentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r._field == "slow_queries_count") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: sum, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
+		} else if agentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r._field == "slow_queries_count") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: sum, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		} else {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r._field == "slow_queries_count") |> aggregateWindow(every: 5m, fn: sum, createEmpty: false)`, timeRange)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MongoDB yavaş query metrikleri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}
+
+// getMongoDBPerformanceQueryTimeMetrics, MongoDB query süresi metriklerini getirir (avg, p95, p99)
+func getMongoDBPerformanceQueryTimeMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		database := c.Query("database")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		var query string
+		queryTimeFields := "r._field == \"avg_query_time_ms\" or r._field == \"query_time_p95_ms\" or r._field == \"query_time_p99_ms\""
+
+		if agentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, queryTimeFields, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
+		} else if agentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, queryTimeFields, regexp.QuoteMeta(agentID))
+		} else {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => %s) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, queryTimeFields)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MongoDB query süresi metrikleri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}
+
+// getMongoDBPerformanceActiveQueriesMetrics, MongoDB aktif query metriklerini getirir
+func getMongoDBPerformanceActiveQueriesMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		database := c.Query("database")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		var query string
+		if agentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r._field == "active_queries_count") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database_name =~ /^%s$/) |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
+		} else if agentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r._field == "active_queries_count") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		} else {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r._field == "active_queries_count") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)`, timeRange)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MongoDB aktif query metrikleri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}
+
+// getMongoDBPerformanceProfilerMetrics, MongoDB profiler metriklerini getirir
+func getMongoDBPerformanceProfilerMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		var query string
+		if agentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r._field == "profiler_enabled_dbs") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		} else {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r._field == "profiler_enabled_dbs") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MongoDB profiler metrikleri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}
+
+// getMongoDBPerformanceAllMetrics, tüm MongoDB performance metriklerini tek seferde getirir
+func getMongoDBPerformanceAllMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		database := c.Query("database")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		var query string
+		if agentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
+		} else if agentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		} else {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MongoDB performance metrikleri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+		})
+	}
+}

@@ -215,6 +215,21 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 				database.GET("/tables", getPostgreSQLTablesMetrics(server))
 				database.GET("/indexes", getPostgreSQLIndexesMetrics(server))
 			}
+
+			// PostgreSQL performance metrikleri
+			performance := postgresql.Group("/performance")
+			{
+				performance.GET("/qps", getPostgreSQLPerformanceQPSMetrics(server))
+				performance.GET("/query-time", getPostgreSQLPerformanceQueryTimeMetrics(server))
+				performance.GET("/slow-queries", getPostgreSQLPerformanceSlowQueriesMetrics(server))
+				performance.GET("/active-queries", getPostgreSQLPerformanceActiveQueriesMetrics(server))
+				performance.GET("/long-running-queries", getPostgreSQLPerformanceLongRunningQueriesMetrics(server))
+				performance.GET("/read-write-ratio", getPostgreSQLPerformanceReadWriteRatioMetrics(server))
+				performance.GET("/index-scan-ratio", getPostgreSQLPerformanceIndexScanRatioMetrics(server))
+				performance.GET("/seq-scan-ratio", getPostgreSQLPerformanceSeqScanRatioMetrics(server))
+				performance.GET("/cache-hit-ratio", getPostgreSQLPerformanceCacheHitRatioMetrics(server))
+				performance.GET("/all", getPostgreSQLPerformanceAllMetrics(server))
+			}
 		}
 
 		// MongoDB özel metrikleri
@@ -245,6 +260,18 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 				replication.GET("/status", getMongoDBReplicationStatusMetrics(server))
 				replication.GET("/lag", getMongoDBReplicationLagMetrics(server))
 				replication.GET("/oplog", getMongoDBOplogMetrics(server))
+			}
+
+			// MongoDB performance metrikleri
+			performance := mongodb.Group("/performance")
+			{
+				performance.GET("/qps", getMongoDBPerformanceQPSMetrics(server))
+				performance.GET("/read-write-ratio", getMongoDBPerformanceReadWriteRatioMetrics(server))
+				performance.GET("/slow-queries", getMongoDBPerformanceSlowQueriesMetrics(server))
+				performance.GET("/query-time", getMongoDBPerformanceQueryTimeMetrics(server))
+				performance.GET("/active-queries", getMongoDBPerformanceActiveQueriesMetrics(server))
+				performance.GET("/profiler", getMongoDBPerformanceProfilerMetrics(server))
+				performance.GET("/all", getMongoDBPerformanceAllMetrics(server))
 			}
 		}
 	}
