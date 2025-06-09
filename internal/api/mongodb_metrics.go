@@ -740,7 +740,7 @@ func getMongoDBOplogMetrics(server *server.Server) gin.HandlerFunc {
 		timeRange := c.DefaultQuery("range", "1h")
 
 		// Oplog ile ilgili tüm field'ları dahil et
-		oplogFields := "r._field == \"oplog_size_mb\" or r._field == \"oplog_count\" or r._field == \"oplog_max_size_mb\" or r._field == \"oplog_storage_mb\" or r._field == \"oplog_utilization_percent\""
+		oplogFields := "r._field == \"oplog_size_mb\" or r._field == \"oplog_count\" or r._field == \"oplog_max_size_mb\" or r._field == \"oplog_storage_mb\" or r._field == \"oplog_utilization_percent\" or r._field == \"oplog_first_entry_timestamp\" or r._field == \"oplog_last_entry_timestamp\" or r._field == \"oplog_safe_downtime_hours\" or r._field == \"oplog_time_window_hours\" or r._field == \"oplog_time_window_seconds\""
 
 		var query string
 		if agentID != "" && replicaSetName != "" {
