@@ -739,13 +739,16 @@ func getMongoDBOplogMetrics(server *server.Server) gin.HandlerFunc {
 		replicaSetName := c.Query("replica_set") // İsteğe bağlı replica set filtresi
 		timeRange := c.DefaultQuery("range", "1h")
 
+		// Oplog ile ilgili tüm field'ları dahil et
+		oplogFields := "r._field == \"oplog_size_mb\" or r._field == \"oplog_count\" or r._field == \"oplog_max_size_mb\" or r._field == \"oplog_storage_mb\" or r._field == \"oplog_utilization_percent\""
+
 		var query string
 		if agentID != "" && replicaSetName != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => r._field == "oplog_size") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.replica_set_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(replicaSetName))
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.replica_set_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, oplogFields, regexp.QuoteMeta(agentID), regexp.QuoteMeta(replicaSetName))
 		} else if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => r._field == "oplog_size") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, oplogFields, regexp.QuoteMeta(agentID))
 		} else {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => r._field == "oplog_size") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => %s) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, oplogFields)
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
