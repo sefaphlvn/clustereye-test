@@ -1051,13 +1051,16 @@ func getMongoDBPerformanceAllMetrics(server *server.Server) gin.HandlerFunc {
 		database := c.Query("database")
 		timeRange := c.DefaultQuery("range", "1h")
 
+		// Sadece numerik field'ları dahil et (string field'lar mean() ile agregatlanamaz)
+		numericFields := "r._field == \"queries_per_sec\" or r._field == \"read_write_ratio\" or r._field == \"slow_queries_count\" or r._field == \"avg_query_time_ms\" or r._field == \"query_time_p95_ms\" or r._field == \"query_time_p99_ms\" or r._field == \"active_queries_count\" or r._field == \"profiler_enabled_dbs\""
+
 		var query string
 		if agentID != "" && database != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, numericFields, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
 		} else if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, numericFields, regexp.QuoteMeta(agentID))
 		} else {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => %s) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, numericFields)
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
@@ -1085,5 +1088,233 @@ func getMongoDBPerformanceAllMetrics(server *server.Server) gin.HandlerFunc {
 			"status": "success",
 			"data":   results,
 		})
+	}
+}
+
+// MongoDB Dashboard Endpoint - Tüm MongoDB metriklerini tek seferde getirir
+
+// getMongoDBDashboardMetrics, MongoDB dashboard için tüm metrikleri tek seferde getirir
+func getMongoDBDashboardMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		database := c.Query("database")
+		replicaSetName := c.Query("replica_set")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second) // Dashboard için daha uzun timeout
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		// Paralel sorgu kanalları
+		type QueryResult struct {
+			Category string
+			Data     []map[string]interface{}
+			Error    error
+		}
+
+		resultChan := make(chan QueryResult, 10) // 10 kategori için kanal
+
+		// 1. System Metrics Query
+		go func() {
+			systemFields := "r._field == \"cpu_usage\" or r._field == \"cpu_cores\" or r._field == \"memory_usage\" or r._field == \"total_memory\" or r._field == \"free_memory\" or r._field == \"total_disk\" or r._field == \"free_disk\" or r._field == \"response_time_ms\""
+			var query string
+			if agentID != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_system") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, systemFields, regexp.QuoteMeta(agentID))
+			} else {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_system") |> filter(fn: (r) => %s) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, systemFields)
+			}
+			results, err := influxWriter.QueryMetrics(ctx, query)
+			resultChan <- QueryResult{Category: "system_metrics", Data: results, Error: err}
+		}()
+
+		// 2. Connection Metrics Query
+		go func() {
+			connectionFields := "r._field == \"current\" or r._field == \"available\" or r._field == \"total_created_connections\""
+			var query string
+			if agentID != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_connections") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, connectionFields, regexp.QuoteMeta(agentID))
+			} else {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_connections") |> filter(fn: (r) => %s) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, connectionFields)
+			}
+			results, err := influxWriter.QueryMetrics(ctx, query)
+			resultChan <- QueryResult{Category: "connection_metrics", Data: results, Error: err}
+		}()
+
+		// 3. Operations Metrics Query
+		go func() {
+			operationFields := "r._field == \"insert\" or r._field == \"query\" or r._field == \"update\" or r._field == \"delete\" or r._field == \"getmore\" or r._field == \"command\""
+			var query string
+			if agentID != "" && database != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_operations") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, operationFields, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
+			} else if agentID != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_operations") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, operationFields, regexp.QuoteMeta(agentID))
+			} else {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_operations") |> filter(fn: (r) => %s) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, operationFields)
+			}
+			results, err := influxWriter.QueryMetrics(ctx, query)
+			resultChan <- QueryResult{Category: "operation_metrics", Data: results, Error: err}
+		}()
+
+		// 4. Storage Metrics Query
+		go func() {
+			storageFields := "r._field == \"data_size_mb\" or r._field == \"storage_size_mb\" or r._field == \"index_size_mb\" or r._field == \"avg_obj_size\" or r._field == \"file_size_mb\""
+			var query string
+			if agentID != "" && database != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_storage") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, storageFields, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
+			} else if agentID != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_storage") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, storageFields, regexp.QuoteMeta(agentID))
+			} else {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_storage") |> filter(fn: (r) => %s) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, storageFields)
+			}
+			results, err := influxWriter.QueryMetrics(ctx, query)
+			resultChan <- QueryResult{Category: "storage_metrics", Data: results, Error: err}
+		}()
+
+		// 5. Database Info Metrics Query
+		go func() {
+			databaseFields := "r._field == \"database_count\" or r._field == \"collection_count\""
+			var query string
+			if agentID != "" && database != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_database") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, databaseFields, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
+			} else if agentID != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_database") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, databaseFields, regexp.QuoteMeta(agentID))
+			} else {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_database") |> filter(fn: (r) => %s) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, databaseFields)
+			}
+			results, err := influxWriter.QueryMetrics(ctx, query)
+			resultChan <- QueryResult{Category: "database_info_metrics", Data: results, Error: err}
+		}()
+
+		// 6. Replication Status Metrics Query
+		go func() {
+			replicationFields := "r._field == \"member_state\" or r._field == \"members_healthy\" or r._field == \"members_total\""
+			var query string
+			if agentID != "" && replicaSetName != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.replica_set_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, replicationFields, regexp.QuoteMeta(agentID), regexp.QuoteMeta(replicaSetName))
+			} else if agentID != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, replicationFields, regexp.QuoteMeta(agentID))
+			} else {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => %s) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, replicationFields)
+			}
+			results, err := influxWriter.QueryMetrics(ctx, query)
+			resultChan <- QueryResult{Category: "replication_status_metrics", Data: results, Error: err}
+		}()
+
+		// 7. Replication Lag Metrics Query
+		go func() {
+			var query string
+			if agentID != "" && replicaSetName != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => r._field == "lag_ms_num") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.replica_set_name =~ /^%s$/) |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID), regexp.QuoteMeta(replicaSetName))
+			} else if agentID != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => r._field == "lag_ms_num") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+			} else {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => r._field == "lag_ms_num") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)`, timeRange)
+			}
+			results, err := influxWriter.QueryMetrics(ctx, query)
+			resultChan <- QueryResult{Category: "replication_lag_metrics", Data: results, Error: err}
+		}()
+
+		// 8. Oplog Metrics Query (numerik alanlar için mean, timestamp alanlar için last)
+		go func() {
+			// Numerik oplog field'ları için mean agregasyonu
+			oplogNumericFields := "r._field == \"oplog_size_mb\" or r._field == \"oplog_count\" or r._field == \"oplog_max_size_mb\" or r._field == \"oplog_storage_mb\" or r._field == \"oplog_utilization_percent\" or r._field == \"oplog_safe_downtime_hours\" or r._field == \"oplog_time_window_hours\" or r._field == \"oplog_time_window_seconds\""
+			var query string
+			if agentID != "" && replicaSetName != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.replica_set_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, oplogNumericFields, regexp.QuoteMeta(agentID), regexp.QuoteMeta(replicaSetName))
+			} else if agentID != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, oplogNumericFields, regexp.QuoteMeta(agentID))
+			} else {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_replication") |> filter(fn: (r) => %s) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, oplogNumericFields)
+			}
+			results, err := influxWriter.QueryMetrics(ctx, query)
+			resultChan <- QueryResult{Category: "oplog_metrics", Data: results, Error: err}
+		}()
+
+		// 9. Performance Metrics Query
+		go func() {
+			performanceFields := "r._field == \"queries_per_sec\" or r._field == \"read_write_ratio\" or r._field == \"slow_queries_count\" or r._field == \"avg_query_time_ms\" or r._field == \"query_time_p95_ms\" or r._field == \"query_time_p99_ms\" or r._field == \"active_queries_count\" or r._field == \"profiler_enabled_dbs\""
+			var query string
+			if agentID != "" && database != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> filter(fn: (r) => r.database_name =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, performanceFields, regexp.QuoteMeta(agentID), regexp.QuoteMeta(database))
+			} else if agentID != "" {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => %s) |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, performanceFields, regexp.QuoteMeta(agentID))
+			} else {
+				query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mongodb_performance") |> filter(fn: (r) => %s) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, performanceFields)
+			}
+			results, err := influxWriter.QueryMetrics(ctx, query)
+			resultChan <- QueryResult{Category: "performance_metrics", Data: results, Error: err}
+		}()
+
+		// Sonuçları topla
+		dashboardData := gin.H{
+			"agent_id":     agentID,
+			"database":     database,
+			"replica_set":  replicaSetName,
+			"time_range":   timeRange,
+			"generated_at": time.Now().Format(time.RFC3339),
+		}
+
+		var errors []string
+
+		// 9 kategoriyi bekle
+		for i := 0; i < 9; i++ {
+			select {
+			case result := <-resultChan:
+				if result.Error != nil {
+					errors = append(errors, fmt.Sprintf("%s: %s", result.Category, result.Error.Error()))
+					dashboardData[result.Category] = gin.H{
+						"status": "error",
+						"error":  result.Error.Error(),
+						"data":   []interface{}{},
+					}
+				} else {
+					dashboardData[result.Category] = gin.H{
+						"status":     "success",
+						"data_count": len(result.Data),
+						"data":       result.Data,
+					}
+				}
+			case <-ctx.Done():
+				errors = append(errors, "Context timeout")
+				break
+			}
+		}
+
+		// Toplam özet bilgileri
+		dashboardData["summary"] = gin.H{
+			"total_categories": 9,
+			"error_count":      len(errors),
+			"success_count":    9 - len(errors),
+		}
+
+		if len(errors) > 0 {
+			dashboardData["errors"] = errors
+		}
+
+		// Response durumunu belirle
+		var statusCode int
+		var status string
+		if len(errors) == 9 {
+			statusCode = http.StatusInternalServerError
+			status = "error"
+		} else if len(errors) > 0 {
+			statusCode = http.StatusPartialContent
+			status = "partial_success"
+		} else {
+			statusCode = http.StatusOK
+			status = "success"
+		}
+
+		dashboardData["status"] = status
+
+		c.JSON(statusCode, dashboardData)
 	}
 }

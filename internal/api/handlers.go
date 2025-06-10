@@ -235,6 +235,9 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		// MongoDB özel metrikleri
 		mongodb := metrics.Group("/mongodb")
 		{
+			// MongoDB dashboard - tüm metrikleri tek seferde
+			mongodb.GET("/dashboard", getMongoDBDashboardMetrics(server))
+
 			// MongoDB sistem metrikleri
 			system := mongodb.Group("/system")
 			{
