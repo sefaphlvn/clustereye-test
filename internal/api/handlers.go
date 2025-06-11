@@ -291,7 +291,9 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		mssql.GET("/deadlock", getMSSQLDeadlockMetrics(server))
 		mssql.GET("/response-time", getMSSQLResponseTimeMetrics(server))
 		mssql.GET("/performance", getMSSQLPerformanceMetrics(server))
+		mssql.GET("/performance-rates", getMSSQLPerformanceRateMetrics(server))
 		mssql.GET("/transactions", getMSSQLTransactionsMetrics(server))
+		mssql.GET("/transactions-rates", getMSSQLTransactionsRateMetrics(server))
 		mssql.GET("/all", getMSSQLAllMetrics(server))
 	}
 
@@ -3014,7 +3016,7 @@ func getMSSQLResponseTimeMetrics(server *server.Server) gin.HandlerFunc {
 	}
 }
 
-// getMSSQLPerformanceMetrics, MSSQL performance metriklerini getirir
+// getMSSQLPerformanceMetrics, MSSQL performance metriklerini getirir (raw count değerleri)
 func getMSSQLPerformanceMetrics(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		agentID := c.Query("agent_id")
@@ -3022,9 +3024,9 @@ func getMSSQLPerformanceMetrics(server *server.Server) gin.HandlerFunc {
 
 		var query string
 		if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_performance") |> filter(fn: (r) => r._field == "batch_requests_per_sec" or r._field == "buffer_cache_hit_ratio" or r._field == "compilations_per_sec" or r._field == "lazy_writes_per_sec" or r._field == "lock_requests_per_sec" or r._field == "lock_timeouts_per_sec" or r._field == "lock_waits_per_sec" or r._field == "page_life_expectancy" or r._field == "page_reads_per_sec" or r._field == "page_writes_per_sec" or r._field == "recompilations_per_sec") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_performance") |> filter(fn: (r) => r._field == "batch_requests_count" or r._field == "buffer_cache_hit_ratio" or r._field == "compilations_count" or r._field == "lazy_writes_count" or r._field == "lock_requests_count" or r._field == "lock_timeouts_count" or r._field == "lock_waits_count" or r._field == "page_life_expectancy" or r._field == "page_reads_count" or r._field == "page_writes_count" or r._field == "recompilations_count") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
 		} else {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_performance") |> filter(fn: (r) => r._field == "batch_requests_per_sec" or r._field == "buffer_cache_hit_ratio" or r._field == "compilations_per_sec" or r._field == "lazy_writes_per_sec" or r._field == "lock_requests_per_sec" or r._field == "lock_timeouts_per_sec" or r._field == "lock_waits_per_sec" or r._field == "page_life_expectancy" or r._field == "page_reads_per_sec" or r._field == "page_writes_per_sec" or r._field == "recompilations_per_sec") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_performance") |> filter(fn: (r) => r._field == "batch_requests_count" or r._field == "buffer_cache_hit_ratio" or r._field == "compilations_count" or r._field == "lazy_writes_count" or r._field == "lock_requests_count" or r._field == "lock_timeouts_count" or r._field == "lock_waits_count" or r._field == "page_life_expectancy" or r._field == "page_reads_count" or r._field == "page_writes_count" or r._field == "recompilations_count") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
@@ -3051,11 +3053,12 @@ func getMSSQLPerformanceMetrics(server *server.Server) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "success",
 			"data":   results,
+			"note":   "Raw cumulative count değerleri (sistem başladığından beri toplam)",
 		})
 	}
 }
 
-// getMSSQLTransactionsMetrics, MSSQL transactions metriklerini getirir
+// getMSSQLTransactionsMetrics, MSSQL transactions metriklerini getirir (raw count değerleri)
 func getMSSQLTransactionsMetrics(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		agentID := c.Query("agent_id")
@@ -3063,9 +3066,9 @@ func getMSSQLTransactionsMetrics(server *server.Server) gin.HandlerFunc {
 
 		var query string
 		if agentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_transactions") |> filter(fn: (r) => r._field == "active_by_database" or r._field == "active_total" or r._field == "longest_running_time_seconds" or r._field == "per_sec" or r._field == "tempdb_free_space_kb" or r._field == "update_conflict_ratio" or r._field == "version_cleanup_rate_kb_per_sec" or r._field == "version_generation_rate_kb_per_sec" or r._field == "version_store_unit_count" or r._field == "version_store_unit_creation" or r._field == "version_store_unit_truncation" or r._field == "write_per_sec" or r._field == "xtp_aborted_by_user_per_sec" or r._field == "xtp_aborted_per_sec" or r._field == "xtp_commit_dependencies_per_sec" or r._field == "xtp_created_per_sec") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_transactions") |> filter(fn: (r) => r._field == "active_by_database" or r._field == "active_total" or r._field == "longest_running_time_seconds" or r._field == "count" or r._field == "tempdb_free_space_kb" or r._field == "update_conflict_ratio" or r._field == "version_cleanup_rate_kb_count" or r._field == "version_generation_rate_kb_count" or r._field == "version_store_unit_count" or r._field == "version_store_unit_creation" or r._field == "version_store_unit_truncation" or r._field == "write_count" or r._field == "xtp_aborted_by_user_count" or r._field == "xtp_aborted_count" or r._field == "xtp_commit_dependencies_count" or r._field == "xtp_created_count") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
 		} else {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_transactions") |> filter(fn: (r) => r._field == "active_by_database" or r._field == "active_total" or r._field == "longest_running_time_seconds" or r._field == "per_sec" or r._field == "tempdb_free_space_kb" or r._field == "update_conflict_ratio" or r._field == "version_cleanup_rate_kb_per_sec" or r._field == "version_generation_rate_kb_per_sec" or r._field == "version_store_unit_count" or r._field == "version_store_unit_creation" or r._field == "version_store_unit_truncation" or r._field == "write_per_sec" or r._field == "xtp_aborted_by_user_per_sec" or r._field == "xtp_aborted_per_sec" or r._field == "xtp_commit_dependencies_per_sec" or r._field == "xtp_created_per_sec") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_transactions") |> filter(fn: (r) => r._field == "active_by_database" or r._field == "active_total" or r._field == "longest_running_time_seconds" or r._field == "count" or r._field == "tempdb_free_space_kb" or r._field == "update_conflict_ratio" or r._field == "version_cleanup_rate_kb_count" or r._field == "version_generation_rate_kb_count" or r._field == "version_store_unit_count" or r._field == "version_store_unit_creation" or r._field == "version_store_unit_truncation" or r._field == "write_count" or r._field == "xtp_aborted_by_user_count" or r._field == "xtp_aborted_count" or r._field == "xtp_commit_dependencies_count" or r._field == "xtp_created_count") |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
@@ -3092,6 +3095,93 @@ func getMSSQLTransactionsMetrics(server *server.Server) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "success",
 			"data":   results,
+			"note":   "Raw cumulative count değerleri (sistem başladığından beri toplam)",
+		})
+	}
+}
+
+// getMSSQLPerformanceRateMetrics, MSSQL performance metriklerinin rate hesaplamasını yapar (per-second)
+func getMSSQLPerformanceRateMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		var query string
+		if agentID != "" {
+			// Rate hesaplaması için derivative kullan - sadece count alanları için
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_performance") |> filter(fn: (r) => r._field == "batch_requests_count" or r._field == "compilations_count" or r._field == "lazy_writes_count" or r._field == "lock_requests_count" or r._field == "lock_timeouts_count" or r._field == "lock_waits_count" or r._field == "page_reads_count" or r._field == "page_writes_count" or r._field == "recompilations_count") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> derivative(unit: 1s, nonNegative: true) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		} else {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_performance") |> filter(fn: (r) => r._field == "batch_requests_count" or r._field == "compilations_count" or r._field == "lazy_writes_count" or r._field == "lock_requests_count" or r._field == "lock_timeouts_count" or r._field == "lock_waits_count" or r._field == "page_reads_count" or r._field == "page_writes_count" or r._field == "recompilations_count") |> derivative(unit: 1s, nonNegative: true) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MSSQL performance rate metriklerini alırken hata: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+			"note":   "Rate hesaplaması yapılmış değerler (per second)",
+		})
+	}
+}
+
+// getMSSQLTransactionsRateMetrics, MSSQL transactions metriklerinin rate hesaplamasını yapar (per-second)
+func getMSSQLTransactionsRateMetrics(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		timeRange := c.DefaultQuery("range", "1h")
+
+		var query string
+		if agentID != "" {
+			// Rate hesaplaması için derivative kullan - sadece count alanları için
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_transactions") |> filter(fn: (r) => r._field == "count" or r._field == "version_cleanup_rate_kb_count" or r._field == "version_generation_rate_kb_count" or r._field == "write_count" or r._field == "xtp_aborted_by_user_count" or r._field == "xtp_aborted_count" or r._field == "xtp_commit_dependencies_count" or r._field == "xtp_created_count") |> filter(fn: (r) => r.agent_id =~ /^%s$/) |> derivative(unit: 1s, nonNegative: true) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange, regexp.QuoteMeta(agentID))
+		} else {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "mssql_transactions") |> filter(fn: (r) => r._field == "count" or r._field == "version_cleanup_rate_kb_count" or r._field == "version_generation_rate_kb_count" or r._field == "write_count" or r._field == "xtp_aborted_by_user_count" or r._field == "xtp_aborted_count" or r._field == "xtp_commit_dependencies_count" or r._field == "xtp_created_count") |> derivative(unit: 1s, nonNegative: true) |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)`, timeRange)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "MSSQL transactions rate metriklerini alırken hata: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   results,
+			"note":   "Rate hesaplaması yapılmış değerler (per second)",
 		})
 	}
 }
