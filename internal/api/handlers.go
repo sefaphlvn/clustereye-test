@@ -1262,10 +1262,12 @@ func promoteMongoToPrimary(server *server.Server) gin.HandlerFunc {
 func promotePostgresToMaster(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			AgentID           string `json:"agent_id" binding:"required"`
-			NodeHostname      string `json:"node_hostname" binding:"required"`
-			DataDirectory     string `json:"data_directory" binding:"required"`
-			CurrentMasterHost string `json:"current_master_host"` // Eski master bilgisi
+			AgentID             string `json:"agent_id" binding:"required"`
+			NodeHostname        string `json:"node_hostname" binding:"required"`
+			DataDirectory       string `json:"data_directory" binding:"required"`
+			CurrentMasterHost   string `json:"current_master_host"`  // Eski master bilgisi
+			ReplicationUser     string `json:"replication_user"`     // İsteğe bağlı
+			ReplicationPassword string `json:"replication_password"` // İsteğe bağlı
 		}
 
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -1281,11 +1283,13 @@ func promotePostgresToMaster(server *server.Server) gin.HandlerFunc {
 
 		// gRPC isteği oluştur
 		grpcReq := &pb.PostgresPromoteMasterRequest{
-			JobId:             jobID,
-			AgentId:           req.AgentID,
-			NodeHostname:      req.NodeHostname,
-			DataDirectory:     req.DataDirectory,
-			CurrentMasterHost: req.CurrentMasterHost, // Eski master bilgisini ekle
+			JobId:               jobID,
+			AgentId:             req.AgentID,
+			NodeHostname:        req.NodeHostname,
+			DataDirectory:       req.DataDirectory,
+			CurrentMasterHost:   req.CurrentMasterHost,   // Eski master bilgisini ekle
+			ReplicationUser:     req.ReplicationUser,     // Replication kullanıcı adı
+			ReplicationPassword: req.ReplicationPassword, // Replication şifresi
 		}
 
 		// Context oluştur

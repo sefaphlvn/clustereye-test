@@ -532,6 +532,8 @@ message PostgresPromoteMasterRequest {
   string node_hostname = 3;
   string data_directory = 4;
   string current_master_host = 5; // Eski master node bilgisi (koordinasyon için)
+  string replication_user = 6;     // Replication kullanıcı adı (isteğe bağlı)
+  string replication_password = 7; // Replication şifresi (isteğe bağlı)
 }
 
 message PostgresPromoteMasterResponse {
