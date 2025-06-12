@@ -4664,13 +4664,14 @@ func (x *MongoPromotePrimaryResponse) GetResult() string {
 
 // PostgreSQL Master Promotion
 type PostgresPromoteMasterRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
-	AgentId       string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	NodeHostname  string                 `protobuf:"bytes,3,opt,name=node_hostname,json=nodeHostname,proto3" json:"node_hostname,omitempty"`
-	DataDirectory string                 `protobuf:"bytes,4,opt,name=data_directory,json=dataDirectory,proto3" json:"data_directory,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	JobId             string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	AgentId           string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	NodeHostname      string                 `protobuf:"bytes,3,opt,name=node_hostname,json=nodeHostname,proto3" json:"node_hostname,omitempty"`
+	DataDirectory     string                 `protobuf:"bytes,4,opt,name=data_directory,json=dataDirectory,proto3" json:"data_directory,omitempty"`
+	CurrentMasterHost string                 `protobuf:"bytes,5,opt,name=current_master_host,json=currentMasterHost,proto3" json:"current_master_host,omitempty"` // Eski master node bilgisi (koordinasyon için)
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *PostgresPromoteMasterRequest) Reset() {
@@ -4727,6 +4728,13 @@ func (x *PostgresPromoteMasterRequest) GetNodeHostname() string {
 func (x *PostgresPromoteMasterRequest) GetDataDirectory() string {
 	if x != nil {
 		return x.DataDirectory
+	}
+	return ""
+}
+
+func (x *PostgresPromoteMasterRequest) GetCurrentMasterHost() string {
+	if x != nil {
+		return x.CurrentMasterHost
 	}
 	return ""
 }
@@ -7672,12 +7680,13 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12(\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x10.agent.JobStatusR\x06status\x12#\n" +
 	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\x12\x16\n" +
-	"\x06result\x18\x04 \x01(\tR\x06result\"\x9c\x01\n" +
+	"\x06result\x18\x04 \x01(\tR\x06result\"\xcc\x01\n" +
 	"\x1cPostgresPromoteMasterRequest\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x19\n" +
 	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12#\n" +
 	"\rnode_hostname\x18\x03 \x01(\tR\fnodeHostname\x12%\n" +
-	"\x0edata_directory\x18\x04 \x01(\tR\rdataDirectory\"\x9d\x01\n" +
+	"\x0edata_directory\x18\x04 \x01(\tR\rdataDirectory\x12.\n" +
+	"\x13current_master_host\x18\x05 \x01(\tR\x11currentMasterHost\"\x9d\x01\n" +
 	"\x1dPostgresPromoteMasterResponse\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12(\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x10.agent.JobStatusR\x06status\x12#\n" +

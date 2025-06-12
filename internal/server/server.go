@@ -3053,14 +3053,15 @@ func (s *Server) PromoteMongoToPrimary(ctx context.Context, req *pb.MongoPromote
 
 // PromotePostgresToMaster, PostgreSQL node'unu master'a yükseltir
 func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPromoteMasterRequest) (*pb.PostgresPromoteMasterResponse, error) {
-	log.Printf("PromotePostgresToMaster çağrıldı - Agent ID: %s, Node: %s, Data Directory: %s",
-		req.AgentId, req.NodeHostname, req.DataDirectory)
+	log.Printf("PromotePostgresToMaster çağrıldı - Agent ID: %s, Node: %s, Data Directory: %s, Current Master: %s",
+		req.AgentId, req.NodeHostname, req.DataDirectory, req.CurrentMasterHost)
 
 	// Process log takibi için metadata oluştur
 	metadata := map[string]string{
-		"node_hostname":  req.NodeHostname,
-		"data_directory": req.DataDirectory,
-		"job_id":         req.JobId,
+		"node_hostname":       req.NodeHostname,
+		"data_directory":      req.DataDirectory,
+		"job_id":              req.JobId,
+		"current_master_host": req.CurrentMasterHost, // Eski master bilgisini ekle
 	}
 
 	// Job oluştur
@@ -3072,9 +3073,10 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 		CreatedAt: timestamppb.Now(),
 		UpdatedAt: timestamppb.Now(),
 		Parameters: map[string]string{
-			"node_hostname":  req.NodeHostname,
-			"data_directory": req.DataDirectory,
-			"process_id":     req.JobId, // Process ID olarak job ID'yi kullan
+			"node_hostname":       req.NodeHostname,
+			"data_directory":      req.DataDirectory,
+			"process_id":          req.JobId,             // Process ID olarak job ID'yi kullan
+			"current_master_host": req.CurrentMasterHost, // Eski master bilgisi
 		},
 	}
 
@@ -3158,9 +3160,10 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 		job.UpdatedAt = timestamppb.Now()
 		s.updateJobInDatabase(context.Background(), job)
 
-		// Yeni komut formatı: "postgres_promote|data_dir|process_id"
+		// Yeni komut formatı: "postgres_promote|data_dir|process_id|old_master_host"
 		// Agent tarafındaki ProcessLogger'ı etkinleştirmek için process_id gönderiyoruz
-		command := fmt.Sprintf("postgres_promote|%s|%s", req.DataDirectory, req.JobId)
+		// Eski master bilgisini de gönderiyoruz (koordinasyon için)
+		command := fmt.Sprintf("postgres_promote|%s|%s|%s", req.DataDirectory, req.JobId, req.CurrentMasterHost)
 
 		// Agent'a promote isteği gönder
 		err := agent.Stream.Send(&pb.ServerMessage{

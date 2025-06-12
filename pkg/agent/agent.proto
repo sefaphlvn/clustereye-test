@@ -531,6 +531,7 @@ message PostgresPromoteMasterRequest {
   string agent_id = 2;
   string node_hostname = 3;
   string data_directory = 4;
+  string current_master_host = 5; // Eski master node bilgisi (koordinasyon için)
 }
 
 message PostgresPromoteMasterResponse {
