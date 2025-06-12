@@ -5252,8 +5252,8 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 			s.coordinationMu.Lock()
 			lastProcessed, alreadyProcessed := s.processedCoordinations[coordinationKey]
 
-			// Eğer son 60 saniye içinde işlenmişse skip et
-			if alreadyProcessed && time.Since(lastProcessed) < 60*time.Second {
+			// Eğer son 5 dakika içinde işlenmişse skip et (timeout'u artırdık)
+			if alreadyProcessed && time.Since(lastProcessed) < 5*time.Minute {
 				s.coordinationMu.Unlock()
 				logger.Warn().
 					Str("coordination_key", coordinationKey).
@@ -6113,6 +6113,9 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 		go s.bridgeCoordinationLogToPromotion(bridgeAgentId, newMasterHost, failureMessage)
 	}
 
+	// Coordination completion sonrasında duplicate prevention key'ini temizle
+	s.cleanupCompletedCoordination(coordinationJobId, oldMasterHost, newMasterHost)
+
 	logger.Info().
 		Str("coordination_job_id", coordinationJobId).
 		Str("completion_status", status).
@@ -6356,6 +6359,127 @@ func (s *Server) cleanupOldCoordinations() {
 			Dur("older_than", 10*time.Minute).
 			Msg("Cleaned up old coordination records")
 	}
+}
+
+// cleanupCompletedCoordination, tamamlanan coordination'ın duplicate prevention key'ini temizler
+func (s *Server) cleanupCompletedCoordination(coordinationJobId, oldMasterHost, newMasterHost string) {
+	s.coordinationMu.Lock()
+	defer s.coordinationMu.Unlock()
+
+	// Coordination key formatını oluştur (aynı format kullanılmalı)
+	// Format: {process_id}_{old_master_host}_{new_master_host}_{action}
+	coordinationKey := fmt.Sprintf("%s_%s_%s_convert_master_to_slave",
+		coordinationJobId,
+		oldMasterHost,
+		newMasterHost)
+
+	// Eğer bu key varsa, temizle
+	if _, exists := s.processedCoordinations[coordinationKey]; exists {
+		delete(s.processedCoordinations, coordinationKey)
+		logger.Info().
+			Str("coordination_key", coordinationKey).
+			Str("coordination_job_id", coordinationJobId).
+			Msg("Completed coordination key cleaned up from duplicate prevention")
+	}
+
+	// Fallback: Job ID'si prefix olan tüm key'leri temizle (güvenlik önlemi)
+	keysToDelete := make([]string, 0)
+	for key := range s.processedCoordinations {
+		if strings.HasPrefix(key, coordinationJobId+"_") {
+			keysToDelete = append(keysToDelete, key)
+		}
+	}
+
+	for _, key := range keysToDelete {
+		delete(s.processedCoordinations, key)
+		logger.Debug().
+			Str("fallback_key", key).
+			Str("coordination_job_id", coordinationJobId).
+			Msg("Fallback cleanup: removed coordination key with job ID prefix")
+	}
+}
+
+// GetCoordinationStatus, mevcut coordination state'ini döndürür
+func (s *Server) GetCoordinationStatus() (map[string]time.Time, map[string]*pb.Job) {
+	s.coordinationMu.RLock()
+	defer s.coordinationMu.RUnlock()
+
+	// Processed coordinations map'inin kopyasını oluştur
+	coordinationKeys := make(map[string]time.Time)
+	for k, v := range s.processedCoordinations {
+		coordinationKeys[k] = v
+	}
+
+	// Active coordination jobs'ları bul
+	s.jobMu.RLock()
+	activeJobs := make(map[string]*pb.Job)
+	for jobId, job := range s.jobs {
+		if job.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
+			activeJobs[jobId] = job
+		}
+	}
+	s.jobMu.RUnlock()
+
+	return coordinationKeys, activeJobs
+}
+
+// CleanupAllCoordination, tüm coordination state'ini temizler
+func (s *Server) CleanupAllCoordination() int {
+	s.coordinationMu.Lock()
+	defer s.coordinationMu.Unlock()
+
+	count := len(s.processedCoordinations)
+	s.processedCoordinations = make(map[string]time.Time)
+
+	logger.Info().
+		Int("cleaned_count", count).
+		Msg("All coordination state cleaned up")
+
+	return count
+}
+
+// CleanupOldCoordination, eski coordination kayıtlarını temizler
+func (s *Server) CleanupOldCoordination() int {
+	s.coordinationMu.Lock()
+	defer s.coordinationMu.Unlock()
+
+	cutoff := time.Now().Add(-10 * time.Minute)
+	keysToDelete := make([]string, 0)
+
+	for key, timestamp := range s.processedCoordinations {
+		if timestamp.Before(cutoff) {
+			keysToDelete = append(keysToDelete, key)
+		}
+	}
+
+	for _, key := range keysToDelete {
+		delete(s.processedCoordinations, key)
+	}
+
+	if len(keysToDelete) > 0 {
+		logger.Info().
+			Int("cleaned_count", len(keysToDelete)).
+			Dur("older_than", 10*time.Minute).
+			Msg("Old coordination records cleaned up")
+	}
+
+	return len(keysToDelete)
+}
+
+// CleanupCoordinationKey, belirli bir coordination key'ini temizler
+func (s *Server) CleanupCoordinationKey(key string) bool {
+	s.coordinationMu.Lock()
+	defer s.coordinationMu.Unlock()
+
+	if _, exists := s.processedCoordinations[key]; exists {
+		delete(s.processedCoordinations, key)
+		logger.Info().
+			Str("coordination_key", key).
+			Msg("Specific coordination key cleaned up")
+		return true
+	}
+
+	return false
 }
 
 // GetRecentAlarms, dashboard için optimize edilmiş son alarmları getirir

@@ -306,6 +306,9 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		debug.GET("/fields", getAvailableFields(server))
 		// InfluxDB'de mevcut measurement'ları listeler (debug amaçlı)
 		debug.GET("/measurements", getAvailableMeasurements(server))
+		// Coordination state management (admin/debug)
+		debug.GET("/coordination/status", getCoordinationStatus(server))
+		debug.POST("/coordination/cleanup", cleanupCoordinationState(server))
 	}
 }
 
@@ -3258,6 +3261,96 @@ func getMSSQLTransactionsRateMetrics(server *server.Server) gin.HandlerFunc {
 			"status": "success",
 			"data":   results,
 			"note":   "Rate hesaplaması yapılmış değerler (per second)",
+		})
+	}
+}
+
+// getCoordinationStatus, mevcut coordination state'ini gösterir (debug amaçlı)
+func getCoordinationStatus(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Coordination state'ini al
+		coordinationKeys, activeJobs := server.GetCoordinationStatus()
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"processed_coordinations":  coordinationKeys,
+				"active_coordination_jobs": activeJobs,
+				"total_processed_keys":     len(coordinationKeys),
+				"total_active_jobs":        len(activeJobs),
+			},
+		})
+	}
+}
+
+// cleanupCoordinationState, coordination state'ini temizler (admin amaçlı)
+func cleanupCoordinationState(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Action string `json:"action" binding:"required"` // "cleanup_all", "cleanup_old", "cleanup_key"
+			Key    string `json:"key"`                       // Specific key to cleanup (for "cleanup_key" action)
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz istek formatı: " + err.Error(),
+			})
+			return
+		}
+
+		var cleanedCount int
+		var err error
+
+		switch req.Action {
+		case "cleanup_all":
+			// Tüm coordination state'ini temizle
+			cleanedCount = server.CleanupAllCoordination()
+		case "cleanup_old":
+			// Sadece eski kayıtları temizle (10 dakikadan eski)
+			cleanedCount = server.CleanupOldCoordination()
+		case "cleanup_key":
+			// Belirli bir key'i temizle
+			if req.Key == "" {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"status": "error",
+					"error":  "Key parametresi gerekli",
+				})
+				return
+			}
+			success := server.CleanupCoordinationKey(req.Key)
+			if success {
+				cleanedCount = 1
+			} else {
+				c.JSON(http.StatusNotFound, gin.H{
+					"status": "error",
+					"error":  "Belirtilen key bulunamadı",
+				})
+				return
+			}
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz action. Kullanılabilir: cleanup_all, cleanup_old, cleanup_key",
+			})
+			return
+		}
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Cleanup işlemi sırasında hata: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"action":        req.Action,
+				"cleaned_count": cleanedCount,
+				"message":       fmt.Sprintf("%d coordination key temizlendi", cleanedCount),
+			},
 		})
 	}
 }
