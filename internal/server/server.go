@@ -4740,6 +4740,14 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 	if logUpdate.Status == "completed" || logUpdate.Status == "failed" {
 		log.Printf("Process %s tamamlandı, job durumu güncelleniyor. Status: %s", logUpdate.ProcessId, logUpdate.Status)
 
+		// Coordination job'ları için özel kontrol - handleCoordinationCompletion zaten hallediyor
+		if logUpdate.Metadata != nil {
+			if coordinationCompletion, exists := logUpdate.Metadata["coordination_completion"]; exists && coordinationCompletion == "true" {
+				log.Printf("[COORDINATION] 🚫 Process %s coordination job olduğu için saveProcessLogs'da job update SKIP edildi (handleCoordinationCompletion halletti)", logUpdate.ProcessId)
+				return nil
+			}
+		}
+
 		// Process ID ile job'ı bul (job_id olarak process_id kullanılıyor)
 		s.jobMu.Lock()
 		job, exists := s.jobs[logUpdate.ProcessId]
@@ -5099,7 +5107,88 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 			coordinationJobId, job.Status.String())
 	}
 
+	// 🚀 BONUS: İlgili promotion job'unu da complete et
+	// Eğer coordination başarılı olduysa, requesting agent'ın promotion job'unu da tamamla
+	if status == "success" || status == "completed" {
+		log.Printf("[COORDINATION] 🔄 İlgili promotion job'u aranıyor ve complete ediliyor...")
+		s.completeRelatedPromotionJob(reportingAgentId, newMasterHost)
+	}
+
 	log.Printf("[COORDINATION] 🎉 Coordination completion işlemi tamamlandı!")
+}
+
+// completeRelatedPromotionJob ilgili promotion job'unu complete eder
+func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost string) {
+	log.Printf("[COORDINATION] 🔍 %s agent'ının promotion job'u aranıyor (new master: %s)...", requestingAgentId, newMasterHost)
+
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+
+	// Requesting agent'a ait RUNNING promotion job'larını ara
+	var promotionJob *pb.Job
+	var promotionJobId string
+
+	for jobId, job := range s.jobs {
+		// Promotion job kriterleri:
+		// 1. Agent ID eşleşmeli
+		// 2. Type postgresql_promotion olmalı
+		// 3. Status RUNNING olmalı
+		// 4. Node hostname new master ile eşleşmeli (opsiyonel kontrol)
+		if job.AgentId == requestingAgentId &&
+			job.Type == pb.JobType_JOB_TYPE_POSTGRES_PROMOTE_MASTER &&
+			job.Status == pb.JobStatus_JOB_STATUS_RUNNING {
+
+			// Node hostname kontrolü (eğer varsa)
+			if nodeHostname, exists := job.Parameters["node_hostname"]; exists {
+				if nodeHostname == newMasterHost {
+					promotionJob = job
+					promotionJobId = jobId
+					log.Printf("[COORDINATION] ✅ Eşleşen promotion job bulundu: %s (node: %s)", jobId, nodeHostname)
+					break
+				} else {
+					log.Printf("[COORDINATION] ⚠️  Promotion job bulundu ama node hostname eşleşmiyor: %s != %s", nodeHostname, newMasterHost)
+				}
+			} else {
+				// Node hostname yoksa, agent ve type eşleşen ilk job'u al
+				promotionJob = job
+				promotionJobId = jobId
+				log.Printf("[COORDINATION] ✅ Promotion job bulundu (node hostname bilgisi yok): %s", jobId)
+				break
+			}
+		}
+	}
+
+	if promotionJob == nil {
+		log.Printf("[COORDINATION] ❌ %s agent'ı için RUNNING promotion job bulunamadı", requestingAgentId)
+
+		// Debug: Mevcut job'ları listele
+		log.Printf("[COORDINATION] 📊 Mevcut job'lar:")
+		for jobId, job := range s.jobs {
+			if job.AgentId == requestingAgentId {
+				log.Printf("[COORDINATION]   - %s: Type=%s, Status=%s", jobId, job.Type.String(), job.Status.String())
+			}
+		}
+		return
+	}
+
+	// Promotion job'unu complete et
+	oldStatus := promotionJob.Status.String()
+	promotionJob.Status = pb.JobStatus_JOB_STATUS_COMPLETED
+	promotionJob.Result = fmt.Sprintf("PostgreSQL promotion completed successfully. Coordination also completed for old master conversion.")
+	promotionJob.UpdatedAt = timestamppb.Now()
+	s.jobs[promotionJobId] = promotionJob
+
+	log.Printf("[COORDINATION] 📊 Promotion job status değişimi: %s -> %s", oldStatus, promotionJob.Status.String())
+
+	// Veritabanında da güncelle
+	err := s.updateJobInDatabase(context.Background(), promotionJob)
+	if err != nil {
+		log.Printf("[COORDINATION] ❌ Promotion job veritabanında güncellenirken hata: %v", err)
+	} else {
+		log.Printf("[COORDINATION] ✅ Promotion job veritabanında güncellendi: %s -> %s", promotionJobId, promotionJob.Status.String())
+	}
+
+	log.Printf("[COORDINATION] 🎉 İlgili promotion job başarıyla complete edildi!")
 }
 
 // cleanupOldCoordinations, eski coordination kayıtlarını temizler (memory leak prevention)
