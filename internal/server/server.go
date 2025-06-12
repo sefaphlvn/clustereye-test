@@ -3254,10 +3254,10 @@ func (s *Server) ConvertPostgresToSlave(ctx context.Context, req *pb.ConvertPost
 		}, fmt.Errorf("agent bulunamadı: %s", req.AgentId)
 	}
 
-	// Komutu oluştur ve gönder
-	command := fmt.Sprintf("convert_postgres_to_slave|%s|%d|%s|%s|%s",
+	// Komutu oluştur ve gönder (process tracking için job ID'yi de ekle)
+	command := fmt.Sprintf("convert_postgres_to_slave|%s|%d|%s|%s|%s|%s",
 		req.NewMasterHost, req.NewMasterPort, req.DataDirectory,
-		req.ReplicationUser, req.ReplicationPassword)
+		req.ReplicationUser, req.ReplicationPassword, req.JobId)
 
 	err := agent.Stream.Send(&pb.ServerMessage{
 		Payload: &pb.ServerMessage_Query{
@@ -3648,8 +3648,9 @@ func (s *Server) CreateJob(ctx context.Context, job *pb.Job) error {
 				newMasterPort = "5432" // Varsayılan port
 			}
 
-			command = fmt.Sprintf("convert_postgres_to_slave|%s|%s|%s|%s|%s",
-				newMasterHost, newMasterPort, dataDir, replUser, replPass)
+			// Process tracking için job ID'yi de komuta ekle
+			command = fmt.Sprintf("convert_postgres_to_slave|%s|%s|%s|%s|%s|%s",
+				newMasterHost, newMasterPort, dataDir, replUser, replPass, job.JobId)
 
 		default:
 			job.Status = pb.JobStatus_JOB_STATUS_FAILED
@@ -4716,9 +4717,21 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 			if logUpdate.Status == "completed" {
 				job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
 				job.Result = "Job completed successfully by agent process logger"
+
+				// Eğer bu bir coordination job ise, özel işlem yap
+				if job.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
+					log.Printf("[COORDINATION] 🎉 Coordination job tamamlandı: %s", job.JobId)
+					job.Result = "PostgreSQL convert to slave coordination completed successfully"
+				}
 			} else {
 				job.Status = pb.JobStatus_JOB_STATUS_FAILED
 				job.ErrorMessage = "Job failed as reported by agent process logger"
+
+				// Eğer bu bir coordination job ise, özel hata işlemi yap
+				if job.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
+					log.Printf("[COORDINATION] ❌ Coordination job başarısız: %s", job.JobId)
+					job.ErrorMessage = "PostgreSQL convert to slave coordination failed"
+				}
 			}
 
 			job.UpdatedAt = timestamppb.Now()
@@ -4730,7 +4743,11 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 			if err != nil {
 				log.Printf("Job durumu veritabanında güncellenirken hata: %v", err)
 			} else {
-				log.Printf("Job durumu başarıyla güncellendi: %s -> %s", logUpdate.ProcessId, job.Status.String())
+				if job.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
+					log.Printf("[COORDINATION] ✅ Coordination job veritabanında güncellendi: %s -> %s", logUpdate.ProcessId, job.Status.String())
+				} else {
+					log.Printf("Job durumu başarıyla güncellendi: %s -> %s", logUpdate.ProcessId, job.Status.String())
+				}
 			}
 		} else {
 			s.jobMu.Unlock()
@@ -4934,11 +4951,12 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 	log.Printf("[COORDINATION] ✅ Job kaydedildi: %s", jobID)
 
 	// ConvertPostgresToSlave komutunu gönder - Agent'dan gelen replication bilgilerini kullan
-	// Format: convert_postgres_to_slave|new_master_host|port|data_dir|repl_user|repl_pass
-	command := fmt.Sprintf("convert_postgres_to_slave|%s|5432|%s|%s|%s",
-		newMasterHost, dataDirectory, replUser, replPass)
+	// Format: convert_postgres_to_slave|new_master_host|port|data_dir|repl_user|repl_pass|process_id
+	// Process ID eklenerek coordination job tracking'i yapılacak
+	command := fmt.Sprintf("convert_postgres_to_slave|%s|5432|%s|%s|%s|%s",
+		newMasterHost, dataDirectory, replUser, replPass, jobID)
 
-	log.Printf("[COORDINATION] Komut hazırlandı: %s", command)
+	log.Printf("[COORDINATION] Komut hazırlandı (process tracking ile): %s", command)
 	log.Printf("[COORDINATION] Komut %s agent'ına gönderiliyor...", oldMasterAgentId)
 
 	err := oldMasterAgent.Stream.Send(&pb.ServerMessage{
