@@ -4524,6 +4524,16 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 		log.Printf("[Process Log] [%s] [%s] %s", req.LogUpdate.ProcessId, req.LogUpdate.Status, msg)
 	}
 
+	// DEBUG: Metadata içeriğini tamamen logla
+	if metadata := req.LogUpdate.Metadata; metadata != nil {
+		log.Printf("[DEBUG] ProcessLoggerHandler - Agent: %s, Metadata Count: %d", req.LogUpdate.AgentId, len(metadata))
+		for key, value := range metadata {
+			log.Printf("[DEBUG]   Metadata: %s = %s", key, value)
+		}
+	} else {
+		log.Printf("[DEBUG] ProcessLoggerHandler - Agent: %s, NO METADATA", req.LogUpdate.AgentId)
+	}
+
 	// ProcessLoggerHandler'da metadata kontrolü ekle
 	if metadata := req.LogUpdate.Metadata; metadata != nil {
 		// 1. Failover Coordination Request (Yeni master'dan gelen)
@@ -4569,15 +4579,24 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 		}
 
 		// 2. Coordination Completion (Eski master'dan gelen)
-		if isCoordinationCompletion, exists := metadata["coordination_completion"]; exists && isCoordinationCompletion == "true" {
-			log.Printf("[COORDINATION] 🎉 Coordination completion bildirimi algılandı: %s", req.LogUpdate.AgentId)
-			log.Printf("[COORDINATION] Completion metadata sayısı: %d", len(metadata))
-			for key, value := range metadata {
-				log.Printf("[COORDINATION]   %s: %s", key, value)
-			}
+		log.Printf("[DEBUG] Checking for coordination_completion metadata...")
+		if coordinationCompletionValue, exists := metadata["coordination_completion"]; exists {
+			log.Printf("[DEBUG] coordination_completion metadata found: '%s' (exists: %t)", coordinationCompletionValue, exists)
+			if coordinationCompletionValue == "true" {
+				log.Printf("[COORDINATION] 🎉 Coordination completion bildirimi algılandı: %s", req.LogUpdate.AgentId)
+				log.Printf("[COORDINATION] Completion metadata sayısı: %d", len(metadata))
+				for key, value := range metadata {
+					log.Printf("[COORDINATION]   %s: %s", key, value)
+				}
 
-			// Coordination completion işlemini handle et
-			go s.handleCoordinationCompletion(req.LogUpdate, req.LogUpdate.AgentId)
+				// Coordination completion işlemini handle et
+				log.Printf("[COORDINATION] handleCoordinationCompletion fonksiyonu çağrılıyor...")
+				go s.handleCoordinationCompletion(req.LogUpdate, req.LogUpdate.AgentId)
+			} else {
+				log.Printf("[DEBUG] coordination_completion metadata var ama 'true' değil: '%s'", coordinationCompletionValue)
+			}
+		} else {
+			log.Printf("[DEBUG] coordination_completion metadata bulunamadı")
 		}
 	}
 
@@ -5003,7 +5022,13 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 
 // handleCoordinationCompletion coordination completion işlemini yönetir
 func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, reportingAgentId string) {
+	log.Printf("[COORDINATION] 🎯 handleCoordinationCompletion fonksiyonu başladı!")
+
 	metadata := update.Metadata
+	if metadata == nil {
+		log.Printf("[COORDINATION] ❌ Metadata nil! handleCoordinationCompletion'dan çıkılıyor")
+		return
+	}
 
 	coordinationJobId := metadata["coordination_job_id"]
 	oldMasterHost := metadata["old_master_host"]
@@ -5025,15 +5050,29 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 	}
 
 	// Coordination job'unu bul
+	log.Printf("[COORDINATION] 🔍 Job aranıyor: %s", coordinationJobId)
 	s.jobMu.Lock()
+
+	// Debug: Mevcut job'ları listele
+	log.Printf("[COORDINATION] Mevcut job sayısı: %d", len(s.jobs))
+	for jobId, job := range s.jobs {
+		log.Printf("[COORDINATION]   Job ID: %s, Type: %s, Status: %s", jobId, job.Type.String(), job.Status.String())
+	}
+
 	job, exists := s.jobs[coordinationJobId]
 	if !exists {
 		s.jobMu.Unlock()
 		log.Printf("[COORDINATION] ❌ Coordination job bulunamadı: %s", coordinationJobId)
+		log.Printf("[COORDINATION] ❌ Aranan job ID tam olarak: '%s'", coordinationJobId)
 		return
 	}
 
+	log.Printf("[COORDINATION] ✅ Coordination job bulundu: %s, Status: %s", coordinationJobId, job.Status.String())
+
 	// Job durumunu güncelle
+	log.Printf("[COORDINATION] 🔄 Job status güncelleniyor: %s (Gelen Status: %s)", coordinationJobId, status)
+
+	oldStatus := job.Status.String()
 	if status == "success" || status == "completed" {
 		job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
 		job.Result = fmt.Sprintf("Coordination completed successfully: %s converted to slave by %s", oldMasterHost, reportingAgentId)
@@ -5048,7 +5087,10 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 	s.jobs[coordinationJobId] = job
 	s.jobMu.Unlock()
 
+	log.Printf("[COORDINATION] 📊 Job status değişimi: %s -> %s", oldStatus, job.Status.String())
+
 	// Veritabanında job durumunu güncelle
+	log.Printf("[COORDINATION] 💾 Veritabanında job güncelleniyor...")
 	err := s.updateJobInDatabase(context.Background(), job)
 	if err != nil {
 		log.Printf("[COORDINATION] ❌ Job veritabanında güncellenirken hata: %v", err)
