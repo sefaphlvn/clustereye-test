@@ -4526,6 +4526,7 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 
 	// ProcessLoggerHandler'da metadata kontrolü ekle
 	if metadata := req.LogUpdate.Metadata; metadata != nil {
+		// 1. Failover Coordination Request (Yeni master'dan gelen)
 		if isFailoverRequest, exists := metadata["failover_coordination_request"]; exists && isFailoverRequest == "true" {
 			log.Printf("[COORDINATION] 🚀 Failover koordinasyon talebi algılandı: %s", req.LogUpdate.AgentId)
 			log.Printf("[COORDINATION] Metadata sayısı: %d", len(metadata))
@@ -4565,6 +4566,18 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 			// Koordinasyon işlemini başlat
 			log.Printf("[COORDINATION] ✅ Coordination işlemi goroutine'de başlatılıyor... (Key: %s)", coordinationKey)
 			go s.handleFailoverCoordination(req.LogUpdate, req.LogUpdate.AgentId)
+		}
+
+		// 2. Coordination Completion (Eski master'dan gelen)
+		if isCoordinationCompletion, exists := metadata["coordination_completion"]; exists && isCoordinationCompletion == "true" {
+			log.Printf("[COORDINATION] 🎉 Coordination completion bildirimi algılandı: %s", req.LogUpdate.AgentId)
+			log.Printf("[COORDINATION] Completion metadata sayısı: %d", len(metadata))
+			for key, value := range metadata {
+				log.Printf("[COORDINATION]   %s: %s", key, value)
+			}
+
+			// Coordination completion işlemini handle et
+			go s.handleCoordinationCompletion(req.LogUpdate, req.LogUpdate.AgentId)
 		}
 	}
 
@@ -4986,6 +4999,65 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 
 	s.updateJobInDatabase(context.Background(), job)
 	log.Printf("[COORDINATION] Job durumu güncellendi: %s -> %s", jobID, job.Status.String())
+}
+
+// handleCoordinationCompletion coordination completion işlemini yönetir
+func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, reportingAgentId string) {
+	metadata := update.Metadata
+
+	coordinationJobId := metadata["coordination_job_id"]
+	oldMasterHost := metadata["old_master_host"]
+	newMasterHost := metadata["new_master_host"]
+	action := metadata["action"]
+	status := metadata["completion_status"] // "success" or "failed"
+
+	log.Printf("[COORDINATION] 🎯 Coordination completion işlemi başlatılıyor")
+	log.Printf("[COORDINATION]   Job ID: %s", coordinationJobId)
+	log.Printf("[COORDINATION]   Old Master: %s", oldMasterHost)
+	log.Printf("[COORDINATION]   New Master: %s", newMasterHost)
+	log.Printf("[COORDINATION]   Action: %s", action)
+	log.Printf("[COORDINATION]   Status: %s", status)
+	log.Printf("[COORDINATION]   Reporting Agent: %s", reportingAgentId)
+
+	if coordinationJobId == "" {
+		log.Printf("[COORDINATION] ❌ Coordination job ID eksik, completion işlemi yapılamıyor")
+		return
+	}
+
+	// Coordination job'unu bul
+	s.jobMu.Lock()
+	job, exists := s.jobs[coordinationJobId]
+	if !exists {
+		s.jobMu.Unlock()
+		log.Printf("[COORDINATION] ❌ Coordination job bulunamadı: %s", coordinationJobId)
+		return
+	}
+
+	// Job durumunu güncelle
+	if status == "success" || status == "completed" {
+		job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
+		job.Result = fmt.Sprintf("Coordination completed successfully: %s converted to slave by %s", oldMasterHost, reportingAgentId)
+		log.Printf("[COORDINATION] ✅ Coordination job başarıyla tamamlandı: %s", coordinationJobId)
+	} else {
+		job.Status = pb.JobStatus_JOB_STATUS_FAILED
+		job.ErrorMessage = fmt.Sprintf("Coordination failed: %s could not be converted to slave", oldMasterHost)
+		log.Printf("[COORDINATION] ❌ Coordination job başarısız: %s", coordinationJobId)
+	}
+
+	job.UpdatedAt = timestamppb.Now()
+	s.jobs[coordinationJobId] = job
+	s.jobMu.Unlock()
+
+	// Veritabanında job durumunu güncelle
+	err := s.updateJobInDatabase(context.Background(), job)
+	if err != nil {
+		log.Printf("[COORDINATION] ❌ Job veritabanında güncellenirken hata: %v", err)
+	} else {
+		log.Printf("[COORDINATION] ✅ Coordination job veritabanında güncellendi: %s -> %s",
+			coordinationJobId, job.Status.String())
+	}
+
+	log.Printf("[COORDINATION] 🎉 Coordination completion işlemi tamamlandı!")
 }
 
 // cleanupOldCoordinations, eski coordination kayıtlarını temizler (memory leak prevention)
