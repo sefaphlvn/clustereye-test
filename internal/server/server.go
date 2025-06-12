@@ -64,18 +64,22 @@ type Server struct {
 	jobs  map[string]*pb.Job
 	// InfluxDB writer
 	influxWriter *metrics.InfluxDBWriter
+	// Coordination duplicate prevention
+	coordinationMu         sync.RWMutex
+	processedCoordinations map[string]time.Time // key: process_id + old_master + new_master, value: timestamp
 }
 
 // NewServer, yeni bir sunucu nesnesi oluşturur
 func NewServer(db *sql.DB, influxWriter *metrics.InfluxDBWriter) *Server {
 	return &Server{
-		agents:       make(map[string]*AgentConnection),
-		queryResult:  make(map[string]*QueryResponse),
-		db:           db,
-		companyRepo:  database.NewCompanyRepository(db),
-		lastPingTime: make(map[string]time.Time),
-		jobs:         make(map[string]*pb.Job),
-		influxWriter: influxWriter,
+		agents:                 make(map[string]*AgentConnection),
+		queryResult:            make(map[string]*QueryResponse),
+		db:                     db,
+		companyRepo:            database.NewCompanyRepository(db),
+		lastPingTime:           make(map[string]time.Time),
+		jobs:                   make(map[string]*pb.Job),
+		influxWriter:           influxWriter,
+		processedCoordinations: make(map[string]time.Time), // Coordination tracking
 	}
 }
 
@@ -4528,8 +4532,37 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 				log.Printf("[COORDINATION]   %s: %s", key, value)
 			}
 
+			// Duplicate coordination prevention check
+			coordinationKey := fmt.Sprintf("%s_%s_%s_%s",
+				req.LogUpdate.ProcessId,
+				metadata["old_master_host"],
+				metadata["new_master_host"],
+				metadata["action"])
+
+			s.coordinationMu.Lock()
+			lastProcessed, alreadyProcessed := s.processedCoordinations[coordinationKey]
+
+			// Eğer son 60 saniye içinde işlenmişse skip et
+			if alreadyProcessed && time.Since(lastProcessed) < 60*time.Second {
+				s.coordinationMu.Unlock()
+				log.Printf("[COORDINATION] ⚠️ Duplicate coordination request skipped: %s (last processed: %v ago)",
+					coordinationKey, time.Since(lastProcessed).Round(time.Second))
+				return &pb.ProcessLogResponse{
+					Status:  "ok",
+					Message: "Process logları başarıyla alındı (duplicate coordination skipped)",
+				}, nil
+			}
+
+			// Bu coordination'ı işlenmiş olarak işaretle
+			s.processedCoordinations[coordinationKey] = time.Now()
+
+			// Eski kayıtları temizle (10 dakikadan eski olanları)
+			go s.cleanupOldCoordinations()
+
+			s.coordinationMu.Unlock()
+
 			// Koordinasyon işlemini başlat
-			log.Printf("[COORDINATION] Koordinasyon işlemi goroutine'de başlatılıyor...")
+			log.Printf("[COORDINATION] ✅ Coordination işlemi goroutine'de başlatılıyor... (Key: %s)", coordinationKey)
 			go s.handleFailoverCoordination(req.LogUpdate, req.LogUpdate.AgentId)
 		}
 	}
@@ -4935,6 +4968,29 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 
 	s.updateJobInDatabase(context.Background(), job)
 	log.Printf("[COORDINATION] Job durumu güncellendi: %s -> %s", jobID, job.Status.String())
+}
+
+// cleanupOldCoordinations, eski coordination kayıtlarını temizler (memory leak prevention)
+func (s *Server) cleanupOldCoordinations() {
+	s.coordinationMu.Lock()
+	defer s.coordinationMu.Unlock()
+
+	cutoff := time.Now().Add(-10 * time.Minute) // 10 dakikadan eski olanları temizle
+	keysToDelete := make([]string, 0)
+
+	for key, timestamp := range s.processedCoordinations {
+		if timestamp.Before(cutoff) {
+			keysToDelete = append(keysToDelete, key)
+		}
+	}
+
+	for _, key := range keysToDelete {
+		delete(s.processedCoordinations, key)
+	}
+
+	if len(keysToDelete) > 0 {
+		log.Printf("[COORDINATION] 🧹 Cleaned up %d old coordination records", len(keysToDelete))
+	}
 }
 
 // GetRecentAlarms, dashboard için optimize edilmiş son alarmları getirir
