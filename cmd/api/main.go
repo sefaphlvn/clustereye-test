@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"log"
 	"net"
 	"net/http"
 	"sync"
@@ -12,6 +11,7 @@ import (
 	"github.com/sefaphlvn/clustereye-test/internal/api"
 	"github.com/sefaphlvn/clustereye-test/internal/config"
 	"github.com/sefaphlvn/clustereye-test/internal/database"
+	"github.com/sefaphlvn/clustereye-test/internal/logger"
 	"github.com/sefaphlvn/clustereye-test/internal/metrics"
 	"github.com/sefaphlvn/clustereye-test/internal/server"
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
@@ -56,27 +56,36 @@ func main() {
 	// Konfigürasyon yükleniyor
 	cfg, err := config.LoadServerConfig()
 	if err != nil {
-		log.Fatalf("Konfigürasyon yüklenemedi: %v", err)
+		logger.Fatal().Err(err).Msg("Konfigürasyon yüklenemedi")
 	}
+
+	// Logger'ı initialize et
+	if err := logger.InitLogger(cfg.Log); err != nil {
+		logger.Fatal().Err(err).Msg("Logger initialize edilemedi")
+	}
+
+	logger.Info().Msg("ClusterEye API Server başlatılıyor")
 
 	// Veritabanı bağlantısı
 	db, err := database.ConnectDatabase(cfg.Database)
 	if err != nil {
-		log.Fatalf("Veritabanı bağlantısı kurulamadı: %v", err)
+		logger.Fatal().Err(err).Msg("Veritabanı bağlantısı kurulamadı")
 	}
 	defer db.Close()
+
+	logger.Info().Str("host", cfg.Database.Host).Int("port", cfg.Database.Port).Msg("Veritabanı bağlantısı kuruldu")
 
 	// InfluxDB Writer'ı başlat
 	influxWriter, err := metrics.NewInfluxDBWriter(cfg.InfluxDB)
 	if err != nil {
-		log.Fatalf("InfluxDB bağlantısı kurulamadı: %v", err)
+		logger.Fatal().Err(err).Msg("InfluxDB bağlantısı kurulamadı")
 	}
 	defer influxWriter.Close()
 
 	// gRPC Server başlat
 	listener, err := net.Listen("tcp", cfg.GRPC.Address)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal().Err(err).Str("address", cfg.GRPC.Address).Msg("gRPC listener başlatılamadı")
 	}
 
 	// gRPC sunucu seçeneklerini ayarla
@@ -91,9 +100,9 @@ func main() {
 	pb.RegisterAgentServiceServer(grpcServer, serverInstance)
 
 	go func() {
-		log.Printf("Cloud API gRPC server çalışıyor: %s", cfg.GRPC.Address)
+		logger.Info().Str("address", cfg.GRPC.Address).Msg("Cloud API gRPC server çalışıyor")
 		if err := grpcServer.Serve(listener); err != nil {
-			log.Fatal(err)
+			logger.Fatal().Err(err).Msg("gRPC server hatası")
 		}
 	}()
 
@@ -114,9 +123,9 @@ func main() {
 	api.RegisterHandlers(router, serverInstance)
 
 	// HTTP sunucusunu başlat
-	log.Printf("HTTP API server çalışıyor: %s", cfg.HTTP.Address)
+	logger.Info().Str("address", cfg.HTTP.Address).Msg("HTTP API server çalışıyor")
 	if err := http.ListenAndServe(cfg.HTTP.Address, router); err != nil {
-		log.Fatal(err)
+		logger.Fatal().Err(err).Msg("HTTP server hatası")
 	}
 }
 
@@ -128,7 +137,7 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 	for {
 		in, err := stream.Recv()
 		if err != nil {
-			log.Printf("Agent %s bağlantısı kapandı: %v", currentAgentID, err)
+			logger.Error().Str("agent_id", currentAgentID).Err(err).Msg("Agent bağlantısı kapandı")
 			s.mu.Lock()
 			delete(s.agents, currentAgentID)
 			s.mu.Unlock()
@@ -158,7 +167,7 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 					},
 				})
 
-				log.Printf("Agent kimlik doğrulama hatası: %v", err)
+				logger.Error().Str("agent_id", agentInfo.AgentId).Err(err).Msg("Agent kimlik doğrulama hatası")
 				return err
 			}
 
@@ -176,7 +185,7 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 			)
 
 			if err != nil {
-				log.Printf("Agent kaydedilemedi: %v", err)
+				logger.Error().Str("agent_id", currentAgentID).Err(err).Msg("Agent kaydedilemedi")
 				stream.Send(&pb.ServerMessage{
 					Payload: &pb.ServerMessage_Error{
 						Error: &pb.Error{
@@ -206,7 +215,12 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 				},
 			})
 
-			log.Printf("Yeni Agent bağlandı: %+v (Firma: %s)", agentInfo, company.CompanyName)
+			logger.Info().
+				Str("agent_id", currentAgentID).
+				Str("hostname", agentInfo.Hostname).
+				Str("ip", agentInfo.Ip).
+				Str("company", company.CompanyName).
+				Msg("Yeni Agent bağlandı")
 
 		case *pb.AgentMessage_QueryResult:
 			// Mevcut sorgu sonucu işleme kodu...

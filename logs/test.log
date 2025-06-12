@@ -1,0 +1,5 @@
+{"level":"info","level":"debug","format":"json","output":"both","file_path":"logs/test.log","time":"2025-06-12T18:45:45+03:00","caller":"/home/baris/clustereye-test/internal/logger/logger.go:103","message":"Logger initialized"}
+{"level":"info","time":"2025-06-12T18:45:45+03:00","caller":"/home/baris/clustereye-test/test_logger.go:27","message":"This message should appear in both console and file"}
+{"level":"error","component":"test","operation":"file_write","time":"2025-06-12T18:45:45+03:00","caller":"/home/baris/clustereye-test/test_logger.go:31","message":"Testing file output"}
+{"level":"debug","level_test":"debug","time":"2025-06-12T18:45:45+03:00","caller":"/home/baris/clustereye-test/test_logger.go:35","message":"Debug message - should appear because level=debug"}
+{"level":"info","time":"2025-06-12T18:45:45+03:00","caller":"/home/baris/clustereye-test/test_logger.go:37","message":"Check logs/test.log file for output!"}

@@ -10,6 +10,18 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// LogConfig, loglama ayarları
+type LogConfig struct {
+	Level      string `yaml:"level"`       // debug, info, warn, error
+	Format     string `yaml:"format"`      // json, text
+	Output     string `yaml:"output"`      // console, file, both
+	FilePath   string `yaml:"file_path"`   // log dosyasının yolu
+	MaxSize    int    `yaml:"max_size"`    // MB cinsinden maksimum dosya boyutu
+	MaxBackups int    `yaml:"max_backups"` // tutulacak maksimum eski dosya sayısı
+	MaxAge     int    `yaml:"max_age"`     // gün cinsinden maksimum yaş
+	Compress   bool   `yaml:"compress"`    // eski dosyaları sıkıştır
+}
+
 // ServerConfig, ClusterEye sunucusu için konfigürasyon yapısı
 type ServerConfig struct {
 	// Server bilgileri
@@ -26,6 +38,9 @@ type ServerConfig struct {
 	HTTP struct {
 		Address string `yaml:"address"`
 	} `yaml:"http"`
+
+	// Log Ayarları
+	Log LogConfig `yaml:"log"`
 
 	// Veritabanı ayarları
 	Database database.Config `yaml:"database"`
@@ -139,6 +154,19 @@ func createDefaultServerConfig(configPath string) (*ServerConfig, error) {
 	config.Server.Name = "ClusterEye"
 	config.GRPC.Address = ":50051"
 	config.HTTP.Address = ":8080"
+
+	// Log varsayılan ayarları
+	config.Log = LogConfig{
+		Level:      "info",
+		Format:     "json",
+		Output:     "both",
+		FilePath:   "logs/clustereye.log",
+		MaxSize:    100,
+		MaxBackups: 5,
+		MaxAge:     30,
+		Compress:   true,
+	}
+
 	config.Database = database.Config{
 		Host:     "localhost",
 		Port:     5432,

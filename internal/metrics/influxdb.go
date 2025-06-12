@@ -3,7 +3,6 @@ package metrics
 import (
 	"context"
 	"fmt"
-	"log"
 	"strconv"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
 	"github.com/sefaphlvn/clustereye-test/internal/config"
+	"github.com/sefaphlvn/clustereye-test/internal/logger"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -25,7 +25,7 @@ type InfluxDBWriter struct {
 // NewInfluxDBWriter, yeni bir InfluxDB writer oluşturur
 func NewInfluxDBWriter(cfg config.InfluxDBConfig) (*InfluxDBWriter, error) {
 	if !cfg.Enabled {
-		log.Printf("[INFO] InfluxDB devre dışı")
+		logger.Info().Msg("InfluxDB devre dışı")
 		return &InfluxDBWriter{enabled: false}, nil
 	}
 
@@ -48,8 +48,11 @@ func NewInfluxDBWriter(cfg config.InfluxDBConfig) (*InfluxDBWriter, error) {
 	// Write API oluştur
 	writeAPI := client.WriteAPIBlocking(cfg.Organization, cfg.Bucket)
 
-	log.Printf("[INFO] InfluxDB bağlantısı başarılı - URL: %s, Org: %s, Bucket: %s",
-		cfg.URL, cfg.Organization, cfg.Bucket)
+	logger.Info().
+		Str("url", cfg.URL).
+		Str("organization", cfg.Organization).
+		Str("bucket", cfg.Bucket).
+		Msg("InfluxDB bağlantısı başarılı")
 
 	return &InfluxDBWriter{
 		client:   client,
@@ -115,7 +118,10 @@ func (w *InfluxDBWriter) WriteSystemMetrics(ctx context.Context, agentID string,
 		if err != nil {
 			return fmt.Errorf("InfluxDB yazma hatası: %v", err)
 		}
-		log.Printf("[DEBUG] InfluxDB'ye %d metrik yazıldı - Agent: %s", len(points), agentID)
+		logger.Debug().
+			Int("point_count", len(points)).
+			Str("agent_id", agentID).
+			Msg("InfluxDB'ye metrik yazıldı")
 	}
 
 	return nil
@@ -792,6 +798,6 @@ func (w *InfluxDBWriter) QueryMetrics(ctx context.Context, query string) ([]map[
 func (w *InfluxDBWriter) Close() {
 	if w.enabled && w.client != nil {
 		w.client.Close()
-		log.Printf("[INFO] InfluxDB bağlantısı kapatıldı")
+		logger.Info().Msg("InfluxDB bağlantısı kapatıldı")
 	}
 }

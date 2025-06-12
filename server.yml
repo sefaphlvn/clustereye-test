@@ -4,6 +4,17 @@ grpc:
   address: :50051
 http:
   address: :8080
+
+log:
+  level: info          # debug, info, warn, error
+  format: json         # json, text
+  output: both         # console, file, both
+  file_path: logs/clustereye.log
+  max_size: 100        # MB
+  max_backups: 5       # backup dosya sayısı
+  max_age: 30          # gün
+  compress: true       # eski dosyaları sıkıştır
+
 database:
   host: localhost
   port: 5432

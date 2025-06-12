@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math"
 	"net/http"
 	"reflect"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/sefaphlvn/clustereye-test/internal/database"
+	"github.com/sefaphlvn/clustereye-test/internal/logger"
 	"github.com/sefaphlvn/clustereye-test/internal/metrics"
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 
@@ -88,12 +88,12 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 	var currentAgentID string
 	var companyID int
 
-	log.Println("Yeni agent bağlantı isteği alındı")
+	logger.Info().Msg("Yeni agent bağlantı isteği alındı")
 
 	for {
 		in, err := stream.Recv()
 		if err != nil {
-			log.Printf("Agent %s bağlantısı kapandı: %v", currentAgentID, err)
+			logger.Error().Err(err).Str("agent_id", currentAgentID).Msg("Agent bağlantısı kapandı")
 			s.mu.Lock()
 			delete(s.agents, currentAgentID)
 			s.mu.Unlock()
@@ -103,12 +103,15 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 		switch payload := in.Payload.(type) {
 		case *pb.AgentMessage_AgentInfo:
 			agentInfo := payload.AgentInfo
-			log.Printf("Agent bilgileri alındı - ID: %s, Hostname: %s", agentInfo.AgentId, agentInfo.Hostname)
+			logger.Info().
+				Str("agent_id", agentInfo.AgentId).
+				Str("hostname", agentInfo.Hostname).
+				Msg("Agent bilgileri alındı")
 
 			// Agent anahtarını doğrula
 			company, err := s.companyRepo.ValidateAgentKey(context.Background(), agentInfo.Key)
 			if err != nil {
-				log.Printf("Agent kimlik doğrulama hatası: %v", err)
+				logger.Error().Err(err).Str("agent_id", agentInfo.AgentId).Msg("Agent kimlik doğrulama hatası")
 				return err
 			}
 
@@ -126,7 +129,7 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 			)
 
 			if err != nil {
-				log.Printf("Agent kaydedilemedi: %v", err)
+				logger.Error().Err(err).Str("agent_id", currentAgentID).Msg("Agent kaydedilemedi")
 				return err
 			}
 
@@ -137,7 +140,11 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 				Info:   agentInfo,
 			}
 			s.mu.Unlock()
-			log.Printf("Agent bağlantı listesine eklendi - ID: %s, Toplam bağlantı: %d", currentAgentID, len(s.agents))
+
+			logger.Info().
+				Str("agent_id", currentAgentID).
+				Int("total_connections", len(s.agents)).
+				Msg("Agent bağlantı listesine eklendi")
 
 			// Başarılı kayıt mesajı gönder
 			stream.Send(&pb.ServerMessage{
@@ -149,11 +156,14 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 				},
 			})
 
-			log.Printf("Agent başarıyla kaydedildi ve bağlandı: %s (Firma: %s)", currentAgentID, company.CompanyName)
+			logger.Info().
+				Str("agent_id", currentAgentID).
+				Str("company", company.CompanyName).
+				Msg("Agent başarıyla kaydedildi ve bağlandı")
 
 		case *pb.AgentMessage_QueryResult:
 			queryResult := payload.QueryResult
-			log.Printf("Agent %s sorguya cevap verdi.", currentAgentID)
+			logger.Debug().Str("agent_id", currentAgentID).Msg("Agent sorguya cevap verdi")
 
 			// Sorgu sonucunu ilgili kanal üzerinden ilet
 			s.queryMu.RLock()
@@ -169,13 +179,13 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 
 // Register, agent'ın kaydı için kullanılan gRPC metodudur
 func (s *Server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
-	log.Println("Register metodu çağrıldı")
+	logger.Info().Msg("Register metodu çağrıldı")
 	agentInfo := req.AgentInfo
 
 	// Agent anahtarını doğrula
 	company, err := s.companyRepo.ValidateAgentKey(ctx, agentInfo.Key)
 	if err != nil {
-		log.Printf("Agent kimlik doğrulama hatası: %v", err)
+		logger.Error().Err(err).Str("agent_id", agentInfo.AgentId).Msg("Agent kimlik doğrulama hatası")
 		return &pb.RegisterResponse{
 			Registration: &pb.RegistrationResult{
 				Status:  "error",
@@ -194,7 +204,7 @@ func (s *Server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 	)
 
 	if err != nil {
-		log.Printf("Agent kaydedilemedi: %v", err)
+		logger.Error().Err(err).Str("agent_id", agentInfo.AgentId).Msg("Agent kaydedilemedi")
 		return &pb.RegisterResponse{
 			Registration: &pb.RegistrationResult{
 				Status:  "error",
@@ -204,12 +214,15 @@ func (s *Server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 	}
 
 	// PostgreSQL bağlantı bilgilerini kaydet
-	log.Printf("PostgreSQL bilgileri kaydediliyor: hostname=%s, cluster=%s, user=%s",
-		agentInfo.Hostname, agentInfo.Platform, agentInfo.PostgresUser)
+	logger.Info().
+		Str("hostname", agentInfo.Hostname).
+		Str("cluster", agentInfo.Platform).
+		Str("postgres_user", agentInfo.PostgresUser).
+		Msg("PostgreSQL bilgileri kaydediliyor")
 
 	// Veritabanı bağlantısını kontrol et
 	if err := s.checkDatabaseConnection(); err != nil {
-		log.Printf("Veritabanı bağlantı hatası: %v", err)
+		logger.Error().Err(err).Msg("Veritabanı bağlantı hatası")
 	}
 
 	// PostgreSQL bilgilerini kaydet
@@ -222,12 +235,16 @@ func (s *Server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 	)
 
 	if err != nil {
-		log.Printf("PostgreSQL bağlantı bilgileri kaydedilemedi: %v", err)
+		logger.Error().Err(err).Str("hostname", agentInfo.Hostname).Msg("PostgreSQL bağlantı bilgileri kaydedilemedi")
 	} else {
-		log.Printf("PostgreSQL bağlantı bilgileri kaydedildi: %s", agentInfo.Hostname)
+		logger.Info().Str("hostname", agentInfo.Hostname).Msg("PostgreSQL bağlantı bilgileri kaydedildi")
 	}
 
-	log.Printf("Yeni Agent bağlandı ve kaydedildi: %+v (Firma: %s)", agentInfo, company.CompanyName)
+	logger.Info().
+		Str("agent_id", agentInfo.AgentId).
+		Str("hostname", agentInfo.Hostname).
+		Str("company", company.CompanyName).
+		Msg("Yeni Agent bağlandı ve kaydedildi")
 
 	return &pb.RegisterResponse{
 		Registration: &pb.RegistrationResult{
@@ -249,31 +266,44 @@ func (s *Server) ExecuteQuery(ctx context.Context, req *pb.QueryRequest) (*pb.Qu
 }
 
 func (s *Server) SendPostgresInfo(ctx context.Context, req *pb.PostgresInfoRequest) (*pb.PostgresInfoResponse, error) {
-	log.Println("SendPostgresInfo metodu çağrıldı")
+	logger.Info().Msg("SendPostgresInfo metodu çağrıldı")
 
 	// Gelen PostgreSQL bilgilerini logla
 	pgInfo := req.PostgresInfo
-	log.Printf("PostgreSQL bilgileri alındı: %+v", pgInfo)
+	logger.Debug().
+		Str("cluster", pgInfo.ClusterName).
+		Str("hostname", pgInfo.Hostname).
+		Str("ip", pgInfo.Ip).
+		Msg("PostgreSQL bilgileri alındı")
 
 	// Daha detaylı loglama
-	log.Printf("Cluster: %s, IP: %s, Hostname: %s", pgInfo.ClusterName, pgInfo.Ip, pgInfo.Hostname)
-	log.Printf("Node Durumu: %s, PG Sürümü: %s, Konum: %s", pgInfo.NodeStatus, pgInfo.PgVersion, pgInfo.Location)
-	log.Printf("PGBouncer Durumu: %s, PG Servis Durumu: %s", pgInfo.PgBouncerStatus, pgInfo.PgServiceStatus)
-	log.Printf("Replikasyon Gecikmesi: %d saniye, Boş Disk: %s, FD Yüzdesi: %d%%",
-		pgInfo.ReplicationLagSec, pgInfo.FreeDisk, pgInfo.FdPercent)
-	log.Printf("Config Yolu: %s, Data Yolu: %s", pgInfo.ConfigPath, pgInfo.DataPath)
+	logger.Debug().
+		Str("cluster", pgInfo.ClusterName).
+		Str("ip", pgInfo.Ip).
+		Str("hostname", pgInfo.Hostname).
+		Str("node_status", pgInfo.NodeStatus).
+		Str("pg_version", pgInfo.PgVersion).
+		Str("location", pgInfo.Location).
+		Str("pgbouncer_status", pgInfo.PgBouncerStatus).
+		Str("pg_service_status", pgInfo.PgServiceStatus).
+		Int64("replication_lag_sec", pgInfo.ReplicationLagSec).
+		Str("free_disk", pgInfo.FreeDisk).
+		Int64("fd_percent", int64(pgInfo.FdPercent)).
+		Str("config_path", pgInfo.ConfigPath).
+		Str("data_path", pgInfo.DataPath).
+		Msg("PostgreSQL detay bilgileri")
 
 	// Veritabanına kaydetme işlemi
 	// Bu kısmı ihtiyacınıza göre geliştirebilirsiniz
 	err := s.savePostgresInfoToDatabase(ctx, pgInfo)
 	if err != nil {
-		log.Printf("PostgreSQL bilgileri veritabanına kaydedilemedi: %v", err)
+		logger.Error().Err(err).Str("cluster", pgInfo.ClusterName).Msg("PostgreSQL bilgileri veritabanına kaydedilemedi")
 		return &pb.PostgresInfoResponse{
 			Status: "error",
 		}, nil
 	}
 
-	log.Printf("PostgreSQL bilgileri başarıyla işlendi ve kaydedildi")
+	logger.Info().Str("cluster", pgInfo.ClusterName).Msg("PostgreSQL bilgileri başarıyla işlendi ve kaydedildi")
 
 	return &pb.PostgresInfoResponse{
 		Status: "success",
@@ -318,11 +348,14 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 	// Hata kontrolünü düzgün yap
 	if err == nil {
 		// Mevcut kayıt var, güncelle
-		log.Printf("PostgreSQL cluster için mevcut kayıt bulundu, güncelleniyor: %s (ID: %d)", pgInfo.ClusterName, id)
+		logger.Debug().
+			Str("cluster", pgInfo.ClusterName).
+			Int("id", id).
+			Msg("PostgreSQL cluster için mevcut kayıt bulundu, güncelleniyor")
 
 		var existingJSON map[string][]interface{}
 		if err := json.Unmarshal(existingData, &existingJSON); err != nil {
-			log.Printf("Mevcut JSON ayrıştırma hatası: %v", err)
+			logger.Error().Err(err).Str("cluster", pgInfo.ClusterName).Msg("Mevcut JSON ayrıştırma hatası")
 			return err
 		}
 
@@ -355,14 +388,21 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 					if !exists {
 						// Değer mevcut değil, yeni alan ekleniyor
 						hasChanged = true
-						log.Printf("PostgreSQL node'da yeni alan eklendi: %s, %s", pgInfo.Hostname, key)
+						logger.Debug().
+							Str("hostname", pgInfo.Hostname).
+							Str("field", key).
+							Msg("PostgreSQL node'da yeni alan eklendi")
 					} else {
 						// Mevcut değer ile yeni değeri karşılaştır
 						// Numeric değerler için özel karşılaştırma yap
 						hasChanged = !compareValues(currentValue, newValue)
 						if hasChanged {
-							log.Printf("PostgreSQL node'da değişiklik tespit edildi: %s, %s: %v -> %v",
-								pgInfo.Hostname, key, currentValue, newValue)
+							logger.Debug().
+								Str("hostname", pgInfo.Hostname).
+								Str("field", key).
+								Interface("old_value", currentValue).
+								Interface("new_value", newValue).
+								Msg("PostgreSQL node'da değişiklik tespit edildi")
 						}
 					}
 
@@ -384,12 +424,12 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 		if !nodeFound {
 			clusterData = append(clusterData, pgData)
 			nodeChanged = true
-			log.Printf("Yeni PostgreSQL node eklendi: %s", pgInfo.Hostname)
+			logger.Info().Str("hostname", pgInfo.Hostname).Msg("Yeni PostgreSQL node eklendi")
 		}
 
 		// Eğer önemli bir değişiklik yoksa veritabanını güncelleme
 		if !nodeChanged {
-			log.Printf("PostgreSQL node'da önemli bir değişiklik yok, güncelleme yapılmadı: %s", pgInfo.Hostname)
+			logger.Debug().Str("hostname", pgInfo.Hostname).Msg("PostgreSQL node'da önemli bir değişiklik yok, güncelleme yapılmadı")
 			return nil
 		}
 
@@ -398,7 +438,7 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 		// JSON'ı güncelle
 		jsonData, err = json.Marshal(existingJSON)
 		if err != nil {
-			log.Printf("JSON dönüştürme hatası: %v", err)
+			logger.Error().Err(err).Str("cluster", pgInfo.ClusterName).Msg("JSON dönüştürme hatası")
 			return err
 		}
 
@@ -411,14 +451,14 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 
 		_, err = s.db.ExecContext(ctx, updateQuery, jsonData, id)
 		if err != nil {
-			log.Printf("Veritabanı güncelleme hatası: %v", err)
+			logger.Error().Err(err).Str("cluster", pgInfo.ClusterName).Msg("Veritabanı güncelleme hatası")
 			return err
 		}
 
-		log.Printf("PostgreSQL node bilgileri başarıyla güncellendi (önemli değişiklik nedeniyle)")
+		logger.Info().Str("cluster", pgInfo.ClusterName).Msg("PostgreSQL node bilgileri başarıyla güncellendi (önemli değişiklik nedeniyle)")
 	} else if err == sql.ErrNoRows {
 		// Kayıt bulunamadı, yeni kayıt oluştur
-		log.Printf("PostgreSQL cluster için kayıt bulunamadı, yeni kayıt oluşturuluyor: %s", pgInfo.ClusterName)
+		logger.Info().Str("cluster", pgInfo.ClusterName).Msg("PostgreSQL cluster için kayıt bulunamadı, yeni kayıt oluşturuluyor")
 
 		outerJSON := map[string][]interface{}{
 			pgInfo.ClusterName: {pgData},
@@ -426,7 +466,7 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 
 		jsonData, err = json.Marshal(outerJSON)
 		if err != nil {
-			log.Printf("JSON dönüştürme hatası: %v", err)
+			logger.Error().Err(err).Str("cluster", pgInfo.ClusterName).Msg("JSON dönüştürme hatası")
 			return err
 		}
 
@@ -441,14 +481,14 @@ func (s *Server) savePostgresInfoToDatabase(ctx context.Context, pgInfo *pb.Post
 
 		_, err = s.db.ExecContext(ctx, insertQuery, jsonData, pgInfo.ClusterName)
 		if err != nil {
-			log.Printf("Veritabanı ekleme hatası: %v", err)
+			logger.Error().Err(err).Str("cluster", pgInfo.ClusterName).Msg("Veritabanı ekleme hatası")
 			return err
 		}
 
-		log.Printf("PostgreSQL node bilgileri başarıyla veritabanına kaydedildi (yeni kayıt)")
+		logger.Info().Str("cluster", pgInfo.ClusterName).Msg("PostgreSQL node bilgileri başarıyla veritabanına kaydedildi (yeni kayıt)")
 	} else {
 		// Başka bir veritabanı hatası oluştu
-		log.Printf("PostgreSQL cluster kayıt kontrolü sırasında hata: %v", err)
+		logger.Error().Err(err).Str("cluster", pgInfo.ClusterName).Msg("PostgreSQL cluster kayıt kontrolü sırasında hata")
 		return fmt.Errorf("veritabanı kontrol hatası: %v", err)
 	}
 
@@ -502,19 +542,19 @@ func (s *Server) GetConnectedAgents() []map[string]interface{} {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	log.Printf("Aktif gRPC bağlantıları: %d", len(s.agents))
+	logger.Debug().Int("active_connections", len(s.agents)).Msg("Aktif gRPC bağlantıları")
 
 	// Istanbul zaman dilimini al
 	loc, err := time.LoadLocation("Europe/Istanbul")
 	if err != nil {
-		log.Printf("Zaman dilimi yüklenemedi: %v", err)
+		logger.Warn().Err(err).Msg("Zaman dilimi yüklenemedi")
 		loc = time.UTC
 	}
 
 	agents := make([]map[string]interface{}, 0)
 	for id, conn := range s.agents {
 		if conn == nil || conn.Info == nil {
-			log.Printf("Geçersiz agent bağlantısı: %s", id)
+			logger.Warn().Str("agent_id", id).Msg("Geçersiz agent bağlantısı")
 			continue
 		}
 
@@ -555,7 +595,7 @@ func (s *Server) GetConnectedAgents() []map[string]interface{} {
 					s.lastPingTime[id] = time.Now()
 					s.lastPingMu.Unlock()
 				} else {
-					log.Printf("Agent %s ping hatası: %v", id, err)
+					logger.Warn().Err(err).Str("agent_id", id).Msg("Agent ping hatası")
 					// Stream'i kapat ve agent'ı sil
 					delete(s.agents, id)
 					// Son ping zamanını da sil
@@ -566,8 +606,6 @@ func (s *Server) GetConnectedAgents() []map[string]interface{} {
 				}
 			}
 		}
-
-		log.Printf("Agent bulundu - ID: %s, Hostname: %s, Status: %s", id, conn.Info.Hostname, status)
 		agent := map[string]interface{}{
 			"id":         id,
 			"hostname":   conn.Info.Hostname,
@@ -623,7 +661,7 @@ func (s *Server) GetAgentStatusFromDB(ctx context.Context) ([]map[string]interfa
 func (s *Server) checkDatabaseConnection() error {
 	err := s.db.Ping()
 	if err != nil {
-		log.Printf("Veritabanı bağlantı hatası: %v", err)
+		logger.Error().Err(err).Msg("Veritabanı bağlantı hatası")
 		return err
 	}
 	return nil
@@ -675,11 +713,11 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command, datab
 	})
 
 	if err != nil {
-		log.Printf("[ERROR] Sorgu gönderimi başarısız: %v", err)
+		logger.Error().Err(err).Str("query_id", queryID).Msg("Sorgu gönderimi başarısız")
 		return nil, err
 	}
 
-	log.Printf("[DEBUG] Sorgu gönderildi, yanıt bekleniyor - Query ID: %s", queryID)
+	logger.Debug().Str("query_id", queryID).Msg("Sorgu gönderildi, yanıt bekleniyor")
 
 	// Cevabı bekle (timeout ile)
 	select {
@@ -689,7 +727,7 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command, datab
 			// Protobuf struct'ı parse et
 			var structValue structpb.Struct
 			if err := result.Result.UnmarshalTo(&structValue); err != nil {
-				log.Printf("Error unmarshaling to struct: %v", err)
+				logger.Error().Err(err).Str("query_id", queryID).Msg("Error unmarshaling to struct")
 				return result, nil
 			}
 
@@ -699,7 +737,7 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command, datab
 			// Map'i JSON'a dönüştür
 			jsonBytes, err := json.Marshal(resultMap)
 			if err != nil {
-				log.Printf("Error marshaling map to JSON: %v", err)
+				logger.Error().Err(err).Str("query_id", queryID).Msg("Error marshaling map to JSON")
 				return result, nil
 			}
 
@@ -709,26 +747,26 @@ func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command, datab
 				Value:   jsonBytes,
 			}
 		}
-		log.Printf("[DEBUG] Sorgu yanıtı alındı - Query ID: %s", queryID)
+		logger.Debug().Str("query_id", queryID).Msg("Sorgu yanıtı alındı")
 		return result, nil
 	case <-ctx.Done():
-		log.Printf("[ERROR] Context iptal edildi - Query ID: %s, Hata: %v", queryID, ctx.Err())
+		logger.Error().Err(ctx.Err()).Str("query_id", queryID).Msg("Context iptal edildi")
 		return nil, ctx.Err()
 	case <-time.After(60 * time.Second): // 60 saniye timeout - uzun süren sorgular için
-		log.Printf("[ERROR] Sorgu zaman aşımına uğradı - Query ID: %s", queryID)
+		logger.Error().Str("query_id", queryID).Msg("Sorgu zaman aşımına uğradı")
 		return nil, fmt.Errorf("sorgu zaman aşımına uğradı")
 	}
 }
 
 // SendSystemMetrics, agent'dan sistem metriklerini alır
 func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsRequest) (*pb.SystemMetricsResponse, error) {
-	log.Printf("[INFO] SendSystemMetrics başladı - basitleştirilmiş yaklaşım: agent_id=%s", req.AgentId)
+	logger.Info().Str("agent_id", req.AgentId).Msg("SendSystemMetrics başladı - basitleştirilmiş yaklaşım")
 
 	// Agent ID'yi standart formata getir
 	agentID := req.AgentId
 	if !strings.HasPrefix(agentID, "agent_") {
 		agentID = "agent_" + agentID
-		log.Printf("[DEBUG] Agent ID düzeltildi: %s", agentID)
+		logger.Debug().Str("agent_id", agentID).Msg("Agent ID düzeltildi")
 	}
 
 	// Agent bağlantısını bul
@@ -737,12 +775,12 @@ func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsReq
 	s.mu.RUnlock()
 
 	if !ok {
-		log.Printf("[ERROR] Agent bulunamadı: %s", agentID)
+		logger.Error().Str("agent_id", agentID).Msg("Agent bulunamadı")
 		return nil, fmt.Errorf("agent bulunamadı: %s", agentID)
 	}
 
 	if agentConn.Stream == nil {
-		log.Printf("[ERROR] Agent stream bağlantısı yok: %s", agentID)
+		logger.Error().Str("agent_id", agentID).Msg("Agent stream bağlantısı yok")
 		return nil, fmt.Errorf("agent stream bağlantısı yok: %s", agentID)
 	}
 
@@ -771,7 +809,7 @@ func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsReq
 		close(errorChan)
 	}()
 
-	log.Printf("[INFO] Metrik almak için özel sorgu gönderiliyor - QueryID: %s", queryID)
+	logger.Info().Str("query_id", queryID).Msg("Metrik almak için özel sorgu gönderiliyor")
 
 	// Metrik almak için "get_system_metrics" adında özel bir sorgu gönder
 	err := agentConn.Stream.Send(&pb.ServerMessage{
@@ -785,11 +823,11 @@ func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsReq
 	})
 
 	if err != nil {
-		log.Printf("[ERROR] Metrik sorgusu gönderilemedi: %v", err)
+		logger.Error().Err(err).Str("query_id", queryID).Msg("Metrik sorgusu gönderilemedi")
 		return nil, fmt.Errorf("metrik sorgusu gönderilemedi: %v", err)
 	}
 
-	log.Printf("[INFO] Metrik sorgusu gönderildi, yanıt bekleniyor... QueryID: %s", queryID)
+	logger.Info().Str("query_id", queryID).Msg("Metrik sorgusu gönderildi, yanıt bekleniyor")
 
 	// 3 saniyelik timeout ayarla
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -799,16 +837,16 @@ func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsReq
 	select {
 	case result := <-resultChan:
 		if result == nil {
-			log.Printf("[ERROR] Boş metrik yanıtı alındı")
+			logger.Error().Str("query_id", queryID).Msg("Boş metrik yanıtı alındı")
 			return nil, fmt.Errorf("boş metrik yanıtı alındı")
 		}
 
-		log.Printf("[INFO] Metrik yanıtı alındı - QueryID: %s", queryID)
+		logger.Info().Str("query_id", queryID).Msg("Metrik yanıtı alındı")
 
 		// Result içerisindeki Any tipini Struct'a dönüştür
 		var metricsStruct structpb.Struct
 		if err := result.Result.UnmarshalTo(&metricsStruct); err != nil {
-			log.Printf("[ERROR] Metrik yapısı çözümlenemedi: %v", err)
+			logger.Error().Err(err).Str("query_id", queryID).Msg("Metrik yapısı çözümlenemedi")
 			return nil, fmt.Errorf("metrik yapısı çözümlenemedi: %v", err)
 		}
 		// Yanıtı oluştur ve döndür
@@ -817,11 +855,11 @@ func (s *Server) SendSystemMetrics(ctx context.Context, req *pb.SystemMetricsReq
 			Data:   &metricsStruct,
 		}
 
-		log.Printf("[INFO] Metrik yanıtı başarıyla döndürülüyor")
+		logger.Info().Str("query_id", queryID).Msg("Metrik yanıtı başarıyla döndürülüyor")
 		return response, nil
 
 	case <-ctx.Done():
-		log.Printf("[ERROR] Metrik yanıtı beklerken timeout: %v", ctx.Err())
+		logger.Error().Err(ctx.Err()).Str("query_id", queryID).Msg("Metrik yanıtı beklerken timeout")
 		return nil, ctx.Err()
 	}
 }
@@ -846,8 +884,6 @@ func (s *Server) SendMetrics(ctx context.Context, req *pb.SendMetricsRequest) (*
 	}
 
 	batch := req.Batch
-	log.Printf("[INFO] Metric batch alındı - Agent: %s, Type: %s, Count: %d",
-		batch.AgentId, batch.MetricType, len(batch.Metrics))
 
 	var errors []string
 	processedCount := int32(0)
@@ -859,7 +895,11 @@ func (s *Server) SendMetrics(ctx context.Context, req *pb.SendMetricsRequest) (*
 			if err := s.writeMetricToInfluxDB(ctx, batch, metric); err != nil {
 				errorMsg := fmt.Sprintf("Metric yazma hatası (%s): %v", metric.Name, err)
 				errors = append(errors, errorMsg)
-				log.Printf("[ERROR] %s", errorMsg)
+				logger.Error().
+					Str("metric_name", metric.Name).
+					Str("agent_id", batch.AgentId).
+					Err(err).
+					Msg("Metric yazma hatası")
 			} else {
 				processedCount++
 			}
@@ -867,8 +907,11 @@ func (s *Server) SendMetrics(ctx context.Context, req *pb.SendMetricsRequest) (*
 	} else {
 		// InfluxDB yoksa sadece log'la
 		for _, metric := range batch.Metrics {
-			log.Printf("[DEBUG] Metric alındı: %s = %v (Agent: %s)",
-				metric.Name, s.getMetricValueAsFloat(metric.Value), batch.AgentId)
+			logger.Debug().
+				Str("metric_name", metric.Name).
+				Float64("value", s.getMetricValueAsFloat(metric.Value)).
+				Str("agent_id", batch.AgentId).
+				Msg("Metric alındı")
 			processedCount++
 		}
 	}
@@ -886,9 +929,6 @@ func (s *Server) SendMetrics(ctx context.Context, req *pb.SendMetricsRequest) (*
 			message = fmt.Sprintf("Processed %d metrics with %d errors", processedCount, len(errors))
 		}
 	}
-
-	log.Printf("[INFO] Metric batch işlendi - Agent: %s, Processed: %d, Errors: %d",
-		batch.AgentId, processedCount, len(errors))
 
 	return &pb.SendMetricsResponse{
 		Status:         status,
@@ -997,7 +1037,10 @@ func (s *Server) extractMeasurementName(metricName string) string {
 
 // CollectMetrics, agent'a metric toplama talebi gönderir
 func (s *Server) CollectMetrics(ctx context.Context, req *pb.CollectMetricsRequest) (*pb.CollectMetricsResponse, error) {
-	log.Printf("[INFO] Metric toplama talebi - Agent: %s, Types: %v", req.AgentId, req.MetricTypes)
+	logger.Info().
+		Str("agent_id", req.AgentId).
+		Strs("metric_types", req.MetricTypes).
+		Msg("Metric toplama talebi")
 
 	// Bu metod şu anda sadece acknowledgment döndürüyor
 	// Gelecekte agent'a aktif olarak metric toplama talebi göndermek için kullanılabilir
@@ -1010,7 +1053,10 @@ func (s *Server) CollectMetrics(ctx context.Context, req *pb.CollectMetricsReque
 
 // ReportAlarm, agent'lardan gelen alarm bildirimlerini işler
 func (s *Server) ReportAlarm(ctx context.Context, req *pb.ReportAlarmRequest) (*pb.ReportAlarmResponse, error) {
-	log.Printf("ReportAlarm metodu çağrıldı, Agent ID: %s, Alarm sayısı: %d", req.AgentId, len(req.Events))
+	logger.Info().
+		Str("agent_id", req.AgentId).
+		Int("alarm_count", len(req.Events)).
+		Msg("ReportAlarm metodu çağrıldı")
 
 	// Agent ID doğrula
 	s.mu.RLock()
@@ -1018,26 +1064,31 @@ func (s *Server) ReportAlarm(ctx context.Context, req *pb.ReportAlarmRequest) (*
 	s.mu.RUnlock()
 
 	if !agentExists {
-		log.Printf("Bilinmeyen agent'dan alarm bildirimi: %s", req.AgentId)
+		logger.Warn().Str("agent_id", req.AgentId).Msg("Bilinmeyen agent'dan alarm bildirimi")
 		// Bilinmeyen agent olsa da işlemeye devam ediyoruz
 	}
 
 	// Gelen her alarmı işle
 	for _, event := range req.Events {
-		log.Printf("Alarm işleniyor - ID: %s, Status: %s, Metric: %s, Value: %s, Severity: %s",
-			event.Id, event.Status, event.MetricName, event.MetricValue, event.Severity)
+		logger.Info().
+			Str("event_id", event.Id).
+			Str("status", event.Status).
+			Str("metric_name", event.MetricName).
+			Str("metric_value", event.MetricValue).
+			Str("severity", event.Severity).
+			Msg("Alarm işleniyor")
 
 		// Alarm verilerini veritabanına kaydet
 		err := s.saveAlarmToDatabase(ctx, event)
 		if err != nil {
-			log.Printf("Alarm veritabanına kaydedilemedi: %v", err)
+			logger.Error().Err(err).Str("event_id", event.Id).Msg("Alarm veritabanına kaydedilemedi")
 			// Devam et, bir alarmın kaydedilememesi diğerlerini etkilememeli
 		}
 
 		// Bildirimi gönder (Slack, Email vb.)
 		err = s.sendAlarmNotification(ctx, event)
 		if err != nil {
-			log.Printf("Alarm bildirimi gönderilemedi: %v", err)
+			logger.Error().Err(err).Str("event_id", event.Id).Msg("Alarm bildirimi gönderilemedi")
 			// Devam et, bir bildirimin gönderilememesi diğerlerini etkilememeli
 		}
 	}
@@ -1049,14 +1100,14 @@ func (s *Server) ReportAlarm(ctx context.Context, req *pb.ReportAlarmRequest) (*
 
 // saveAlarmToDatabase, alarm olayını veritabanına kaydeder
 func (s *Server) saveAlarmToDatabase(ctx context.Context, event *pb.AlarmEvent) error {
-	log.Printf("[DEBUG] Starting saveAlarmToDatabase for alarm ID: %s", event.AlarmId)
+	logger.Debug().Str("alarm_id", event.AlarmId).Msg("Starting saveAlarmToDatabase")
 
 	// Veritabanı bağlantısını kontrol et
 	if err := s.checkDatabaseConnection(); err != nil {
-		log.Printf("[ERROR] Database connection check failed: %v", err)
+		logger.Error().Err(err).Str("alarm_id", event.AlarmId).Msg("Database connection check failed")
 		return fmt.Errorf("veritabanı bağlantı hatası: %v", err)
 	}
-	log.Printf("[DEBUG] Database connection check passed")
+	logger.Debug().Str("alarm_id", event.AlarmId).Msg("Database connection check passed")
 
 	// SQL sorgusu hazırla
 	query := `
@@ -1077,34 +1128,51 @@ func (s *Server) saveAlarmToDatabase(ctx context.Context, event *pb.AlarmEvent) 
 	// Zaman damgasını parse et
 	timestamp, err := time.Parse(time.RFC3339, event.Timestamp)
 	if err != nil {
-		log.Printf("[WARN] Failed to parse timestamp %q: %v, using current time", event.Timestamp, err)
+		logger.Warn().
+			Str("timestamp", event.Timestamp).
+			Err(err).
+			Str("alarm_id", event.AlarmId).
+			Msg("Failed to parse timestamp, using current time")
 		timestamp = time.Now() // Parse edilemezse şu anki zamanı kullan
 	} else {
-		log.Printf("[DEBUG] Successfully parsed timestamp: %v", timestamp)
+		logger.Debug().
+			Time("timestamp", timestamp).
+			Str("alarm_id", event.AlarmId).
+			Msg("Successfully parsed timestamp")
 	}
 
 	// UTC zamanını Türkiye saatine (UTC+3) çevir
 	turkeyLoc, err := time.LoadLocation("Europe/Istanbul")
 	if err != nil {
-		log.Printf("[WARN] Failed to load Turkey timezone: %v, using UTC", err)
+		logger.Warn().Err(err).Str("alarm_id", event.AlarmId).Msg("Failed to load Turkey timezone, using UTC")
 	} else {
 		timestamp = timestamp.In(turkeyLoc)
-		log.Printf("[DEBUG] Converted timestamp to Turkey time: %v", timestamp)
+		logger.Debug().
+			Time("timestamp", timestamp).
+			Str("alarm_id", event.AlarmId).
+			Msg("Converted timestamp to Turkey time")
 	}
 
 	// Veritabanına kaydet
 	if event.MetricName == "postgresql_slow_queries" {
-		log.Printf("[DEBUG] Slow query alarm received - Agent: %s, Value: %s, Message: %s",
-			event.AgentId, event.MetricValue, event.Message)
+		logger.Debug().
+			Str("agent_id", event.AgentId).
+			Str("metric_value", event.MetricValue).
+			Str("message", event.Message).
+			Str("alarm_id", event.AlarmId).
+			Msg("Slow query alarm received")
 
 		// postgresql_slow_queries için database alanı boşsa varsayılan olarak "postgres" ata
 		if event.Database == "" {
-			log.Printf("[DEBUG] Setting default database 'postgres' for postgresql_slow_queries alarm")
+			logger.Debug().Str("alarm_id", event.AlarmId).Msg("Setting default database 'postgres' for postgresql_slow_queries alarm")
 			event.Database = "postgres"
 		}
 	}
 
-	log.Printf("[DEBUG] Executing database insert for alarm ID: %s, Event ID: %s", event.AlarmId, event.Id)
+	logger.Debug().
+		Str("alarm_id", event.AlarmId).
+		Str("event_id", event.Id).
+		Msg("Executing database insert")
 	_, err = s.db.ExecContext(
 		ctx,
 		query,
@@ -1121,12 +1189,20 @@ func (s *Server) saveAlarmToDatabase(ctx context.Context, event *pb.AlarmEvent) 
 	)
 
 	if err != nil {
-		log.Printf("[ERROR] Failed to save alarm to database: %v", err)
+		logger.Error().
+			Err(err).
+			Str("alarm_id", event.AlarmId).
+			Str("event_id", event.Id).
+			Msg("Failed to save alarm to database")
 		return fmt.Errorf("alarm veritabanına kaydedilemedi: %v", err)
 	}
 
-	log.Printf("[INFO] Successfully saved alarm to database - ID: %s, Metric: %s, Agent: %s",
-		event.Id, event.MetricName, event.AgentId)
+	logger.Info().
+		Str("event_id", event.Id).
+		Str("metric_name", event.MetricName).
+		Str("agent_id", event.AgentId).
+		Str("alarm_id", event.AlarmId).
+		Msg("Successfully saved alarm to database")
 	return nil
 }
 
@@ -1169,7 +1245,7 @@ func (s *Server) sendAlarmNotification(ctx context.Context, event *pb.AlarmEvent
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			log.Println("Notification ayarları bulunamadı, bildirim gönderilemiyor")
+			logger.Debug().Str("alarm_id", event.AlarmId).Msg("Notification ayarları bulunamadı, bildirim gönderilemiyor")
 			return nil // Ayar yok, hata kabul etmiyoruz
 		}
 		return fmt.Errorf("notification ayarları alınamadı: %v", err)
@@ -1179,7 +1255,7 @@ func (s *Server) sendAlarmNotification(ctx context.Context, event *pb.AlarmEvent
 	if slackEnabled && slackWebhookURL != "" {
 		err = s.sendSlackNotification(event, slackWebhookURL)
 		if err != nil {
-			log.Printf("Slack bildirimi gönderilemedi: %v", err)
+			logger.Error().Err(err).Str("alarm_id", event.AlarmId).Msg("Slack bildirimi gönderilemedi")
 		}
 	}
 
@@ -1198,7 +1274,7 @@ func (s *Server) sendAlarmNotification(ctx context.Context, event *pb.AlarmEvent
 		if len(emailRecipients) > 0 {
 			err = s.sendEmailNotification(event, emailServer, emailPort, emailUser, emailPassword, emailFrom, emailRecipients)
 			if err != nil {
-				log.Printf("Email bildirimi gönderilemedi: %v", err)
+				logger.Error().Err(err).Str("alarm_id", event.AlarmId).Msg("Email bildirimi gönderilemedi")
 			}
 		}
 	}
@@ -1297,7 +1373,7 @@ func (s *Server) sendSlackNotification(event *pb.AlarmEvent, webhookURL string) 
 		return fmt.Errorf("slack yanıt kodu başarısız: %d", resp.StatusCode)
 	}
 
-	log.Printf("Slack bildirimi başarıyla gönderildi - Alarm ID: %s", event.Id)
+	logger.Info().Str("alarm_id", event.Id).Msg("Slack bildirimi başarıyla gönderildi")
 	return nil
 }
 
@@ -1430,8 +1506,14 @@ func (s *Server) sendEmailNotification(event *pb.AlarmEvent, server, port, user,
 		event.Timestamp,
 	)
 
-	log.Printf("Email bildirimi gönderiliyor - Konu: %s", subject)
-	log.Printf("Email alıcıları: %v", recipients)
+	logger.Info().
+		Str("subject", subject).
+		Str("alarm_id", event.Id).
+		Msg("Email bildirimi gönderiliyor")
+	logger.Debug().
+		Strs("recipients", recipients).
+		Str("alarm_id", event.Id).
+		Msg("Email alıcıları")
 
 	// Email gönderme işlemi burada gerçekleştirilecek
 	// Bu kısım şimdilik log kaydı yapmaktadır
@@ -1464,35 +1546,54 @@ func (s *Server) sendEmailNotification(event *pb.AlarmEvent, server, port, user,
 	_ = textBody
 
 	// Başarılı bir şekilde gönderildi
-	log.Printf("Email bildirimi başarıyla gönderildi (simüle edildi) - Alarm ID: %s", event.Id)
+	logger.Info().Str("alarm_id", event.Id).Msg("Email bildirimi başarıyla gönderildi (simüle edildi)")
 	return nil
 }
 
 // SendMongoInfo, agent'dan gelen MongoDB bilgilerini işler
 func (s *Server) SendMongoInfo(ctx context.Context, req *pb.MongoInfoRequest) (*pb.MongoInfoResponse, error) {
-	log.Println("SendMongoInfo metodu çağrıldı")
+	logger.Info().Msg("SendMongoInfo metodu çağrıldı")
 
 	// Gelen MongoDB bilgilerini logla
 	mongoInfo := req.MongoInfo
-	log.Printf("MongoDB bilgileri alındı: %+v", mongoInfo)
+	logger.Debug().
+		Str("cluster", mongoInfo.ClusterName).
+		Str("hostname", mongoInfo.Hostname).
+		Str("ip", mongoInfo.Ip).
+		Msg("MongoDB bilgileri alındı")
 
 	// Daha detaylı loglama
-	log.Printf("Cluster: %s, IP: %s, Hostname: %s", mongoInfo.ClusterName, mongoInfo.Ip, mongoInfo.Hostname)
-	log.Printf("Node Durumu: %s, Mongo Sürümü: %s, Konum: %s", mongoInfo.NodeStatus, mongoInfo.MongoVersion, mongoInfo.Location)
-	log.Printf("Mongo Servis Durumu: %s, Replica Set: %s", mongoInfo.MongoStatus, mongoInfo.ReplicaSetName)
-	log.Printf("Replikasyon Gecikmesi: %d saniye, Boş Disk: %s, FD Yüzdesi: %d%%",
-		mongoInfo.ReplicationLagSec, mongoInfo.FreeDisk, mongoInfo.FdPercent)
+	logger.Debug().
+		Str("cluster", mongoInfo.ClusterName).
+		Str("ip", mongoInfo.Ip).
+		Str("hostname", mongoInfo.Hostname).
+		Str("node_status", mongoInfo.NodeStatus).
+		Str("mongo_version", mongoInfo.MongoVersion).
+		Str("location", mongoInfo.Location).
+		Str("mongo_status", mongoInfo.MongoStatus).
+		Str("replica_set_name", mongoInfo.ReplicaSetName).
+		Int64("replication_lag_sec", mongoInfo.ReplicationLagSec).
+		Str("free_disk", mongoInfo.FreeDisk).
+		Int64("fd_percent", int64(mongoInfo.FdPercent)).
+		Msg("MongoDB detay bilgileri")
 
 	// Veritabanına kaydetme işlemi
 	err := s.saveMongoInfoToDatabase(ctx, mongoInfo)
 	if err != nil {
-		log.Printf("MongoDB bilgileri veritabanına kaydedilemedi: %v", err)
+		logger.Error().
+			Err(err).
+			Str("cluster", mongoInfo.ClusterName).
+			Str("hostname", mongoInfo.Hostname).
+			Msg("MongoDB bilgileri veritabanına kaydedilemedi")
 		return &pb.MongoInfoResponse{
 			Status: "error",
 		}, nil
 	}
 
-	log.Printf("MongoDB bilgileri başarıyla işlendi ve kaydedildi")
+	logger.Info().
+		Str("cluster", mongoInfo.ClusterName).
+		Str("hostname", mongoInfo.Hostname).
+		Msg("MongoDB bilgileri başarıyla işlendi ve kaydedildi")
 
 	return &pb.MongoInfoResponse{
 		Status: "success",
@@ -1537,11 +1638,17 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 	// Hata kontrolünü düzgün yap
 	if err == nil {
 		// Mevcut kayıt var, güncelle
-		log.Printf("MongoDB cluster için mevcut kayıt bulundu, güncelleniyor: %s (ID: %d)", mongoInfo.ClusterName, id)
+		logger.Debug().
+			Str("cluster", mongoInfo.ClusterName).
+			Int("id", id).
+			Msg("MongoDB cluster için mevcut kayıt bulundu, güncelleniyor")
 
 		var existingJSON map[string][]interface{}
 		if err := json.Unmarshal(existingData, &existingJSON); err != nil {
-			log.Printf("Mevcut JSON ayrıştırma hatası: %v", err)
+			logger.Error().
+				Err(err).
+				Str("cluster", mongoInfo.ClusterName).
+				Msg("Mevcut MongoDB JSON ayrıştırma hatası")
 			return err
 		}
 
@@ -1574,14 +1681,21 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 					if !exists {
 						// Değer mevcut değil, yeni alan ekleniyor
 						hasChanged = true
-						log.Printf("MongoDB node'da yeni alan eklendi: %s, %s", mongoInfo.Hostname, key)
+						logger.Debug().
+							Str("hostname", mongoInfo.Hostname).
+							Str("field", key).
+							Msg("MongoDB node'da yeni alan eklendi")
 					} else {
 						// Mevcut değer ile yeni değeri karşılaştır
 						// Numeric değerler için özel karşılaştırma yap
 						hasChanged = !compareValues(currentValue, newValue)
 						if hasChanged {
-							log.Printf("MongoDB node'da değişiklik tespit edildi: %s, %s: %v -> %v",
-								mongoInfo.Hostname, key, currentValue, newValue)
+							logger.Debug().
+								Str("hostname", mongoInfo.Hostname).
+								Str("field", key).
+								Interface("old_value", currentValue).
+								Interface("new_value", newValue).
+								Msg("MongoDB node'da değişiklik tespit edildi")
 						}
 					}
 
@@ -1603,12 +1717,18 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 		if !nodeFound {
 			clusterData = append(clusterData, mongoData)
 			nodeChanged = true
-			log.Printf("Yeni MongoDB node eklendi: %s", mongoInfo.Hostname)
+			logger.Info().
+				Str("hostname", mongoInfo.Hostname).
+				Str("cluster", mongoInfo.ClusterName).
+				Msg("Yeni MongoDB node eklendi")
 		}
 
 		// Eğer önemli bir değişiklik yoksa veritabanını güncelleme
 		if !nodeChanged {
-			log.Printf("MongoDB node'da önemli bir değişiklik yok, güncelleme yapılmadı: %s", mongoInfo.Hostname)
+			logger.Debug().
+				Str("hostname", mongoInfo.Hostname).
+				Str("cluster", mongoInfo.ClusterName).
+				Msg("MongoDB node'da önemli bir değişiklik yok, güncelleme yapılmadı")
 			return nil
 		}
 
@@ -1617,7 +1737,10 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 		// JSON'ı güncelle
 		jsonData, err = json.Marshal(existingJSON)
 		if err != nil {
-			log.Printf("JSON dönüştürme hatası: %v", err)
+			logger.Error().
+				Err(err).
+				Str("cluster", mongoInfo.ClusterName).
+				Msg("MongoDB JSON dönüştürme hatası")
 			return err
 		}
 
@@ -1630,14 +1753,25 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 
 		_, err = s.db.ExecContext(ctx, updateQuery, jsonData, id)
 		if err != nil {
-			log.Printf("Veritabanı güncelleme hatası: %v", err)
+			logger.Error().
+				Err(err).
+				Str("cluster", mongoInfo.ClusterName).
+				Int("id", id).
+				Msg("MongoDB veritabanı güncelleme hatası")
 			return err
 		}
 
-		log.Printf("MongoDB node bilgileri başarıyla güncellendi (önemli değişiklik nedeniyle)")
+		logger.Info().
+			Str("hostname", mongoInfo.Hostname).
+			Str("cluster", mongoInfo.ClusterName).
+			Int("record_id", id).
+			Msg("MongoDB node bilgileri başarıyla güncellendi (önemli değişiklik nedeniyle)")
 	} else if err == sql.ErrNoRows {
 		// Kayıt bulunamadı, yeni kayıt oluştur
-		log.Printf("MongoDB cluster için kayıt bulunamadı, yeni kayıt oluşturuluyor: %s", mongoInfo.ClusterName)
+		logger.Info().
+			Str("cluster", mongoInfo.ClusterName).
+			Str("hostname", mongoInfo.Hostname).
+			Msg("MongoDB cluster için kayıt bulunamadı, yeni kayıt oluşturuluyor")
 
 		outerJSON := map[string][]interface{}{
 			mongoInfo.ClusterName: {mongoData},
@@ -1645,7 +1779,10 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 
 		jsonData, err = json.Marshal(outerJSON)
 		if err != nil {
-			log.Printf("JSON dönüştürme hatası: %v", err)
+			logger.Error().
+				Err(err).
+				Str("cluster", mongoInfo.ClusterName).
+				Msg("MongoDB yeni kayıt JSON dönüştürme hatası")
 			return err
 		}
 
@@ -1660,14 +1797,25 @@ func (s *Server) saveMongoInfoToDatabase(ctx context.Context, mongoInfo *pb.Mong
 
 		_, err = s.db.ExecContext(ctx, insertQuery, jsonData, mongoInfo.ClusterName)
 		if err != nil {
-			log.Printf("Veritabanı ekleme hatası: %v", err)
+			logger.Error().
+				Err(err).
+				Str("cluster", mongoInfo.ClusterName).
+				Str("hostname", mongoInfo.Hostname).
+				Msg("MongoDB veritabanı ekleme hatası")
 			return err
 		}
 
-		log.Printf("MongoDB node bilgileri başarıyla veritabanına kaydedildi (yeni kayıt)")
+		logger.Info().
+			Str("cluster", mongoInfo.ClusterName).
+			Str("hostname", mongoInfo.Hostname).
+			Msg("MongoDB node bilgileri başarıyla veritabanına kaydedildi (yeni kayıt)")
 	} else {
 		// Başka bir veritabanı hatası oluştu
-		log.Printf("MongoDB cluster kayıt kontrolü sırasında hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("cluster", mongoInfo.ClusterName).
+			Str("hostname", mongoInfo.Hostname).
+			Msg("MongoDB cluster kayıt kontrolü sırasında hata")
 		return fmt.Errorf("veritabanı kontrol hatası: %v", err)
 	}
 
@@ -1706,21 +1854,26 @@ func (s *Server) GetStatusMongo(ctx context.Context, _ *structpb.Struct) (*struc
 
 // ListMongoLogs, belirtilen agent'tan MongoDB log dosyalarını listeler
 func (s *Server) ListMongoLogs(ctx context.Context, req *pb.MongoLogListRequest) (*pb.MongoLogListResponse, error) {
-	log.Printf("ListMongoLogs çağrıldı")
+	logger.Info().Msg("ListMongoLogs çağrıldı")
 
 	// Agent ID'yi önce metadata'dan almayı dene
 	md, ok := metadata.FromIncomingContext(ctx)
 	if ok {
 		agentIDValues := md.Get("agent-id")
 		if len(agentIDValues) > 0 {
-			log.Printf("Metadata'dan agent ID alındı: %s", agentIDValues[0])
+			logger.Debug().
+				Str("agent_id", agentIDValues[0]).
+				Msg("Metadata'dan agent ID alındı")
 			// Metadata'dan gelen agent ID'yi kullan
 			agentID := agentIDValues[0]
 
 			// Agent'a istek gönder ve sonucu al
 			response, err := s.sendMongoLogListQuery(ctx, agentID)
 			if err != nil {
-				log.Printf("MongoDB log dosyaları listelenirken hata: %v", err)
+				logger.Error().
+					Err(err).
+					Str("agent_id", agentID).
+					Msg("MongoDB log dosyaları listelenirken hata")
 
 				// Daha açıklayıcı hata mesajları için gRPC status kodlarına dönüştür
 				if strings.Contains(err.Error(), "agent bulunamadı") {
@@ -1732,8 +1885,10 @@ func (s *Server) ListMongoLogs(ctx context.Context, req *pb.MongoLogListRequest)
 				return nil, status.Errorf(codes.Internal, "MongoDB log dosyaları listelenirken bir hata oluştu: %v", err)
 			}
 
-			log.Printf("MongoDB log dosyaları başarıyla listelendi - Agent: %s, Dosya sayısı: %d",
-				agentID, len(response.LogFiles))
+			logger.Info().
+				Str("agent_id", agentID).
+				Int("file_count", len(response.LogFiles)).
+				Msg("MongoDB log dosyaları başarıyla listelendi")
 			return response, nil
 		}
 	}
@@ -1752,7 +1907,10 @@ func (s *Server) ListMongoLogs(ctx context.Context, req *pb.MongoLogListRequest)
 	// Agent'a istek gönder ve sonucu al
 	response, err := s.sendMongoLogListQuery(ctx, agentID)
 	if err != nil {
-		log.Printf("MongoDB log dosyaları listelenirken hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", agentID).
+			Msg("MongoDB log dosyaları listelenirken hata")
 
 		// Daha açıklayıcı hata mesajları için gRPC status kodlarına dönüştür
 		if strings.Contains(err.Error(), "agent bulunamadı") {
@@ -1764,15 +1922,21 @@ func (s *Server) ListMongoLogs(ctx context.Context, req *pb.MongoLogListRequest)
 		return nil, status.Errorf(codes.Internal, "MongoDB log dosyaları listelenirken bir hata oluştu: %v", err)
 	}
 
-	log.Printf("MongoDB log dosyaları başarıyla listelendi - Agent: %s, Dosya sayısı: %d",
-		agentID, len(response.LogFiles))
+	logger.Info().
+		Str("agent_id", agentID).
+		Int("file_count", len(response.LogFiles)).
+		Msg("MongoDB log dosyaları başarıyla listelendi")
 	return response, nil
 }
 
 // AnalyzeMongoLog, belirtilen agent'tan MongoDB log dosyasını analiz etmesini ister
 func (s *Server) AnalyzeMongoLog(ctx context.Context, req *pb.MongoLogAnalyzeRequest) (*pb.MongoLogAnalyzeResponse, error) {
-	log.Printf("AnalyzeMongoLog çağrıldı, log_file_path: '%s' (boş mu? %t), threshold: %d ms, agent_id param: %s",
-		req.LogFilePath, req.LogFilePath == "", req.SlowQueryThresholdMs, req.AgentId)
+	logger.Info().
+		Str("log_file_path", req.LogFilePath).
+		Bool("log_path_empty", req.LogFilePath == "").
+		Int64("threshold_ms", req.SlowQueryThresholdMs).
+		Str("agent_id", req.AgentId).
+		Msg("AnalyzeMongoLog çağrıldı")
 
 	// Agent ID'yi önce doğrudan istekten al
 	agentID := req.AgentId
@@ -1783,7 +1947,9 @@ func (s *Server) AnalyzeMongoLog(ctx context.Context, req *pb.MongoLogAnalyzeReq
 		if ok {
 			agentIDValues := md.Get("agent-id")
 			if len(agentIDValues) > 0 {
-				log.Printf("Metadata'dan agent ID alındı: %s", agentIDValues[0])
+				logger.Debug().
+					Str("agent_id", agentIDValues[0]).
+					Msg("Metadata'dan agent ID alındı")
 				agentID = agentIDValues[0]
 			}
 		}
@@ -1797,7 +1963,7 @@ func (s *Server) AnalyzeMongoLog(ctx context.Context, req *pb.MongoLogAnalyzeReq
 		}
 	}
 
-	log.Printf("Kullanılan agent_id: %s", agentID)
+	logger.Debug().Str("agent_id", agentID).Msg("Kullanılan agent_id")
 
 	if agentID == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "Agent ID belirtilmedi")
@@ -1812,13 +1978,19 @@ func (s *Server) AnalyzeMongoLog(ctx context.Context, req *pb.MongoLogAnalyzeReq
 	threshold := req.SlowQueryThresholdMs
 	if threshold <= 0 {
 		threshold = 100 // Varsayılan 100ms
-		log.Printf("Threshold değeri 0 veya negatif, varsayılan değer kullanılıyor: %d ms", threshold)
+		logger.Debug().
+			Int64("default_threshold", threshold).
+			Msg("Threshold değeri 0 veya negatif, varsayılan değer kullanılıyor")
 	}
 
 	// Agent'a istek gönder ve sonucu al
 	response, err := s.sendMongoLogAnalyzeQuery(ctx, agentID, req.LogFilePath, threshold)
 	if err != nil {
-		log.Printf("MongoDB log analizi için hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", agentID).
+			Str("log_file_path", req.LogFilePath).
+			Msg("MongoDB log analizi için hata")
 
 		// Daha açıklayıcı hata mesajları için gRPC status kodlarına dönüştür
 		if strings.Contains(err.Error(), "agent bulunamadı") {
@@ -1848,7 +2020,11 @@ func (s *Server) sendMongoLogListQuery(ctx context.Context, agentID string) (*pb
 	command := "list_mongo_logs"
 	queryID := fmt.Sprintf("mongo_log_list_%d", time.Now().UnixNano())
 
-	log.Printf("MongoDB log listesi için komut: %s", command)
+	logger.Debug().
+		Str("command", command).
+		Str("agent_id", agentID).
+		Str("query_id", queryID).
+		Msg("MongoDB log listesi için komut")
 
 	// Sonuç kanalı oluştur
 	resultChan := make(chan *pb.QueryResult, 1)
@@ -1878,8 +2054,10 @@ func (s *Server) sendMongoLogListQuery(ctx context.Context, agentID string) (*pb
 		return nil, fmt.Errorf("sorgu gönderilemedi: %v", err)
 	}
 
-	log.Printf("MongoDB log dosyaları için sorgu gönderildi - Agent: %s, QueryID: %s",
-		agentID, queryID)
+	logger.Info().
+		Str("agent_id", agentID).
+		Str("query_id", queryID).
+		Msg("MongoDB log dosyaları için sorgu gönderildi")
 
 	// Cevabı bekle
 	select {
@@ -1889,21 +2067,33 @@ func (s *Server) sendMongoLogListQuery(ctx context.Context, agentID string) (*pb
 			return nil, fmt.Errorf("null sorgu sonucu alındı")
 		}
 
-		log.Printf("Agent'tan yanıt alındı - QueryID: %s, TypeUrl: %s", queryID, result.Result.TypeUrl)
+		logger.Debug().
+			Str("query_id", queryID).
+			Str("type_url", result.Result.TypeUrl).
+			Msg("Agent'tan yanıt alındı")
 
 		// Önce struct olarak ayrıştırmayı dene (Agent'ın gönderdiği tipte)
 		var resultStruct structpb.Struct
 		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
-			log.Printf("Struct ayrıştırma hatası: %v", err)
+			logger.Debug().
+				Err(err).
+				Str("query_id", queryID).
+				Msg("Struct ayrıştırma hatası")
 
 			// Struct ayrıştırma başarısız olursa, MongoLogListResponse olarak dene
 			var logListResponse pb.MongoLogListResponse
 			if err := result.Result.UnmarshalTo(&logListResponse); err != nil {
-				log.Printf("MongoLogListResponse ayrıştırma hatası: %v", err)
+				logger.Error().
+					Err(err).
+					Str("query_id", queryID).
+					Msg("MongoLogListResponse ayrıştırma hatası")
 				return nil, fmt.Errorf("sonuç ayrıştırma hatası: %v", err)
 			}
 
-			log.Printf("Doğrudan MongoLogListResponse'a başarıyla ayrıştırıldı - Dosya sayısı: %d", len(logListResponse.LogFiles))
+			logger.Debug().
+				Int("file_count", len(logListResponse.LogFiles)).
+				Str("query_id", queryID).
+				Msg("Doğrudan MongoLogListResponse'a başarıyla ayrıştırıldı")
 			return &logListResponse, nil
 		}
 
@@ -1934,7 +2124,10 @@ func (s *Server) sendMongoLogListQuery(ctx context.Context, agentID string) (*pb
 			}
 		}
 
-		log.Printf("Struct'tan oluşturulan log dosyaları sayısı: %d", len(logFiles))
+		logger.Debug().
+			Int("file_count", len(logFiles)).
+			Str("query_id", queryID).
+			Msg("Struct'tan oluşturulan log dosyaları sayısı")
 
 		return &pb.MongoLogListResponse{
 			LogFiles: logFiles,
@@ -1966,7 +2159,13 @@ func (s *Server) sendMongoLogAnalyzeQuery(ctx context.Context, agentID, logFileP
 	command := fmt.Sprintf("analyze_mongo_log|%s|%d", logFilePath, thresholdMs)
 	queryID := fmt.Sprintf("mongo_log_analyze_%d", time.Now().UnixNano())
 
-	log.Printf("MongoDB log analizi için komut: %s", command)
+	logger.Debug().
+		Str("command", command).
+		Str("agent_id", agentID).
+		Str("query_id", queryID).
+		Str("log_file_path", logFilePath).
+		Int64("threshold_ms", thresholdMs).
+		Msg("MongoDB log analizi için komut")
 
 	// Sonuç kanalı oluştur
 	resultChan := make(chan *pb.QueryResult, 1)
@@ -1994,37 +2193,59 @@ func (s *Server) sendMongoLogAnalyzeQuery(ctx context.Context, agentID, logFileP
 		},
 	})
 	if err != nil {
-		log.Printf("MongoDB log analizi sorgusu gönderilemedi - Hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", agentID).
+			Str("query_id", queryID).
+			Str("log_file_path", logFilePath).
+			Msg("MongoDB log analizi sorgusu gönderilemedi")
 		return nil, fmt.Errorf("sorgu gönderilemedi: %v", err)
 	}
 
-	log.Printf("MongoDB log analizi için sorgu gönderildi - Agent: %s, Path: %s, QueryID: %s",
-		agentID, logFilePath, queryID)
+	logger.Info().
+		Str("agent_id", agentID).
+		Str("log_file_path", logFilePath).
+		Str("query_id", queryID).
+		Msg("MongoDB log analizi için sorgu gönderildi")
 
 	// Cevabı bekle
 	select {
 	case result := <-resultChan:
 		// Sonuç geldi
 		if result == nil {
-			log.Printf("Null sorgu sonucu alındı - QueryID: %s", queryID)
+			logger.Error().
+				Str("query_id", queryID).
+				Msg("Null sorgu sonucu alındı")
 			return nil, fmt.Errorf("null sorgu sonucu alındı")
 		}
 
-		log.Printf("Agent'tan yanıt alındı - QueryID: %s, TypeUrl: %s", queryID, result.Result.TypeUrl)
+		logger.Debug().
+			Str("query_id", queryID).
+			Str("type_url", result.Result.TypeUrl).
+			Msg("Agent'tan yanıt alındı")
 
 		// Önce struct olarak ayrıştırmayı dene (Agent'ın gönderdiği tipte)
 		var resultStruct structpb.Struct
 		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
-			log.Printf("Struct ayrıştırma hatası: %v", err)
+			logger.Debug().
+				Err(err).
+				Str("query_id", queryID).
+				Msg("Struct ayrıştırma hatası")
 
 			// Struct ayrıştırma başarısız olursa, MongoLogAnalyzeResponse olarak dene
 			var analyzeResponse pb.MongoLogAnalyzeResponse
 			if err := result.Result.UnmarshalTo(&analyzeResponse); err != nil {
-				log.Printf("MongoLogAnalyzeResponse ayrıştırma hatası: %v", err)
+				logger.Error().
+					Err(err).
+					Str("query_id", queryID).
+					Msg("MongoLogAnalyzeResponse ayrıştırma hatası")
 				return nil, fmt.Errorf("sonuç ayrıştırma hatası: %v", err)
 			}
 
-			log.Printf("Doğrudan MongoLogAnalyzeResponse'a başarıyla ayrıştırıldı - Log girişleri: %d", len(analyzeResponse.LogEntries))
+			logger.Debug().
+				Int("log_entries_count", len(analyzeResponse.LogEntries)).
+				Str("query_id", queryID).
+				Msg("Doğrudan MongoLogAnalyzeResponse'a başarıyla ayrıştırıldı")
 			return &analyzeResponse, nil
 		}
 
@@ -2067,7 +2288,10 @@ func (s *Server) sendMongoLogAnalyzeQuery(ctx context.Context, agentID, logFileP
 			}
 		}
 
-		log.Printf("Struct'tan oluşturulan log girişleri sayısı: %d", len(logEntries))
+		logger.Debug().
+			Int("log_entries_count", len(logEntries)).
+			Str("query_id", queryID).
+			Msg("Struct'tan oluşturulan log girişleri sayısı")
 
 		return &pb.MongoLogAnalyzeResponse{
 			LogEntries: logEntries,
@@ -2075,7 +2299,9 @@ func (s *Server) sendMongoLogAnalyzeQuery(ctx context.Context, agentID, logFileP
 
 	case <-ctx.Done():
 		// Context iptal edildi veya zaman aşımına uğradı
-		log.Printf("Context iptal edildi veya zaman aşımına uğradı - QueryID: %s", queryID)
+		logger.Warn().
+			Str("query_id", queryID).
+			Msg("Context iptal edildi veya zaman aşımına uğradı")
 		return nil, ctx.Err()
 	}
 }
@@ -2095,7 +2321,11 @@ func (s *Server) sendPostgresLogListQuery(ctx context.Context, agentID string) (
 	command := "list_postgres_logs"
 	queryID := fmt.Sprintf("postgres_log_list_%d", time.Now().UnixNano())
 
-	log.Printf("PostgreSQL log listesi için komut: %s", command)
+	logger.Debug().
+		Str("command", command).
+		Str("agent_id", agentID).
+		Str("query_id", queryID).
+		Msg("PostgreSQL log listesi için komut")
 
 	// Sonuç kanalı oluştur
 	resultChan := make(chan *pb.QueryResult, 1)
@@ -2125,8 +2355,10 @@ func (s *Server) sendPostgresLogListQuery(ctx context.Context, agentID string) (
 		return nil, fmt.Errorf("sorgu gönderilemedi: %v", err)
 	}
 
-	log.Printf("PostgreSQL log dosyaları için sorgu gönderildi - Agent: %s, QueryID: %s",
-		agentID, queryID)
+	logger.Info().
+		Str("agent_id", agentID).
+		Str("query_id", queryID).
+		Msg("PostgreSQL log dosyaları için sorgu gönderildi")
 
 	// Cevabı bekle
 	select {
@@ -2136,27 +2368,44 @@ func (s *Server) sendPostgresLogListQuery(ctx context.Context, agentID string) (
 			return nil, fmt.Errorf("null sorgu sonucu alındı")
 		}
 
-		log.Printf("Agent'tan yanıt alındı - QueryID: %s, TypeUrl: %s", queryID, result.Result.TypeUrl)
+		logger.Debug().
+			Str("query_id", queryID).
+			Str("type_url", result.Result.TypeUrl).
+			Str("agent_id", agentID).
+			Msg("PostgreSQL log list query yanıt alındı")
 
 		// Önce struct olarak ayrıştırmayı dene (Agent'ın gönderdiği tipte)
 		var resultStruct structpb.Struct
 		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
-			log.Printf("Struct ayrıştırma hatası: %v", err)
+			logger.Debug().
+				Err(err).
+				Str("query_id", queryID).
+				Str("agent_id", agentID).
+				Msg("PostgreSQL log list struct ayrıştırma hatası")
 
 			// Struct ayrıştırma başarısız olursa, PostgresLogListResponse olarak dene
 			var logListResponse pb.PostgresLogListResponse
 			if err := result.Result.UnmarshalTo(&logListResponse); err != nil {
-				log.Printf("PostgresLogListResponse ayrıştırma hatası: %v", err)
+				logger.Error().
+					Err(err).
+					Str("query_id", queryID).
+					Msg("PostgresLogListResponse ayrıştırma hatası")
 				return nil, fmt.Errorf("sonuç ayrıştırma hatası: %v", err)
 			}
 
-			log.Printf("Doğrudan PostgresLogListResponse'a başarıyla ayrıştırıldı - Dosya sayısı: %d", len(logListResponse.LogFiles))
+			logger.Debug().
+				Int("file_count", len(logListResponse.LogFiles)).
+				Str("query_id", queryID).
+				Msg("Doğrudan PostgresLogListResponse'a başarıyla ayrıştırıldı")
 			return &logListResponse, nil
 		}
 
 		// Sonucun içeriğini logla
 		structBytes, _ := json.Marshal(resultStruct.AsMap())
-		log.Printf("Struct içeriği: %s", string(structBytes))
+		logger.Debug().
+			Str("query_id", queryID).
+			RawJSON("struct_content", structBytes).
+			Msg("PostgreSQL log struct içeriği")
 
 		// Struct'tan PostgresLogListResponse oluştur
 		logFiles := make([]*pb.PostgresLogFile, 0)
@@ -2185,7 +2434,10 @@ func (s *Server) sendPostgresLogListQuery(ctx context.Context, agentID string) (
 			}
 		}
 
-		log.Printf("Struct'tan oluşturulan log dosyaları sayısı: %d", len(logFiles))
+		logger.Debug().
+			Int("file_count", len(logFiles)).
+			Str("query_id", queryID).
+			Msg("Struct'tan oluşturulan log dosyaları sayısı")
 
 		return &pb.PostgresLogListResponse{
 			LogFiles: logFiles,
@@ -2199,21 +2451,26 @@ func (s *Server) sendPostgresLogListQuery(ctx context.Context, agentID string) (
 
 // ListPostgresLogs, belirtilen agent'tan PostgreSQL log dosyalarını listeler
 func (s *Server) ListPostgresLogs(ctx context.Context, req *pb.PostgresLogListRequest) (*pb.PostgresLogListResponse, error) {
-	log.Printf("ListPostgresLogs çağrıldı")
+	logger.Info().Msg("ListPostgresLogs çağrıldı")
 
 	// Agent ID'yi önce metadata'dan almayı dene
 	md, ok := metadata.FromIncomingContext(ctx)
 	if ok {
 		agentIDValues := md.Get("agent-id")
 		if len(agentIDValues) > 0 {
-			log.Printf("Metadata'dan agent ID alındı: %s", agentIDValues[0])
+			logger.Debug().
+				Str("agent_id", agentIDValues[0]).
+				Msg("Metadata'dan agent ID alındı")
 			// Metadata'dan gelen agent ID'yi kullan
 			agentID := agentIDValues[0]
 
 			// Agent'a istek gönder ve sonucu al
 			response, err := s.sendPostgresLogListQuery(ctx, agentID)
 			if err != nil {
-				log.Printf("PostgreSQL log dosyaları listelenirken hata: %v", err)
+				logger.Error().
+					Err(err).
+					Str("agent_id", agentID).
+					Msg("PostgreSQL log dosyaları listelenirken hata")
 
 				// Daha açıklayıcı hata mesajları için gRPC status kodlarına dönüştür
 				if strings.Contains(err.Error(), "agent bulunamadı") {
@@ -2225,8 +2482,10 @@ func (s *Server) ListPostgresLogs(ctx context.Context, req *pb.PostgresLogListRe
 				return nil, status.Errorf(codes.Internal, "PostgreSQL log dosyaları listelenirken bir hata oluştu: %v", err)
 			}
 
-			log.Printf("PostgreSQL log dosyaları başarıyla listelendi - Agent: %s, Dosya sayısı: %d",
-				agentID, len(response.LogFiles))
+			logger.Info().
+				Str("agent_id", agentID).
+				Int("file_count", len(response.LogFiles)).
+				Msg("PostgreSQL log dosyaları başarıyla listelendi")
 			return response, nil
 		}
 	}
@@ -2245,7 +2504,10 @@ func (s *Server) ListPostgresLogs(ctx context.Context, req *pb.PostgresLogListRe
 	// Agent'a istek gönder ve sonucu al
 	response, err := s.sendPostgresLogListQuery(ctx, agentID)
 	if err != nil {
-		log.Printf("PostgreSQL log dosyaları listelenirken hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", agentID).
+			Msg("PostgreSQL log dosyaları listelenirken hata")
 
 		// Daha açıklayıcı hata mesajları için gRPC status kodlarına dönüştür
 		if strings.Contains(err.Error(), "agent bulunamadı") {
@@ -2257,8 +2519,10 @@ func (s *Server) ListPostgresLogs(ctx context.Context, req *pb.PostgresLogListRe
 		return nil, status.Errorf(codes.Internal, "PostgreSQL log dosyaları listelenirken bir hata oluştu: %v", err)
 	}
 
-	log.Printf("PostgreSQL log dosyaları başarıyla listelendi - Agent: %s, Dosya sayısı: %d",
-		agentID, len(response.LogFiles))
+	logger.Info().
+		Str("agent_id", agentID).
+		Int("file_count", len(response.LogFiles)).
+		Msg("PostgreSQL log dosyaları başarıyla listelendi")
 	return response, nil
 }
 
@@ -2305,7 +2569,13 @@ func (s *Server) sendPostgresLogAnalyzeQuery(ctx context.Context, agentID, logFi
 	command := fmt.Sprintf("analyze_postgres_log|%s|%d", logFilePath, thresholdMs)
 	queryID := fmt.Sprintf("postgres_log_analyze_%d", time.Now().UnixNano())
 
-	log.Printf("PostgreSQL log analizi için komut: %s", command)
+	logger.Debug().
+		Str("command", command).
+		Str("agent_id", agentID).
+		Str("query_id", queryID).
+		Str("log_file_path", logFilePath).
+		Int64("threshold_ms", thresholdMs).
+		Msg("PostgreSQL log analizi için komut")
 
 	// Sonuç kanalı oluştur
 	resultChan := make(chan *pb.QueryResult, 1)
@@ -2333,37 +2603,59 @@ func (s *Server) sendPostgresLogAnalyzeQuery(ctx context.Context, agentID, logFi
 		},
 	})
 	if err != nil {
-		log.Printf("PostgreSQL log analizi sorgusu gönderilemedi - Hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", agentID).
+			Str("query_id", queryID).
+			Str("log_file_path", logFilePath).
+			Msg("PostgreSQL log analizi sorgusu gönderilemedi")
 		return nil, fmt.Errorf("sorgu gönderilemedi: %v", err)
 	}
 
-	log.Printf("PostgreSQL log analizi için sorgu gönderildi - Agent: %s, Path: %s, QueryID: %s",
-		agentID, logFilePath, queryID)
+	logger.Info().
+		Str("agent_id", agentID).
+		Str("log_file_path", logFilePath).
+		Str("query_id", queryID).
+		Msg("PostgreSQL log analizi için sorgu gönderildi")
 
 	// Cevabı bekle
 	select {
 	case result := <-resultChan:
 		// Sonuç geldi
 		if result == nil {
-			log.Printf("Null sorgu sonucu alındı - QueryID: %s", queryID)
+			logger.Error().
+				Str("query_id", queryID).
+				Msg("Null sorgu sonucu alındı")
 			return nil, fmt.Errorf("null sorgu sonucu alındı")
 		}
 
-		log.Printf("Agent'tan yanıt alındı - QueryID: %s, TypeUrl: %s", queryID, result.Result.TypeUrl)
+		logger.Debug().
+			Str("query_id", queryID).
+			Str("type_url", result.Result.TypeUrl).
+			Msg("Agent'tan yanıt alındı")
 
 		// Önce struct olarak ayrıştırmayı dene (Agent'ın gönderdiği tipte)
 		var resultStruct structpb.Struct
 		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
-			log.Printf("Struct ayrıştırma hatası: %v", err)
+			logger.Debug().
+				Err(err).
+				Str("query_id", queryID).
+				Msg("Struct ayrıştırma hatası")
 
 			// Struct ayrıştırma başarısız olursa, PostgresLogAnalyzeResponse olarak dene
 			var analyzeResponse pb.PostgresLogAnalyzeResponse
 			if err := result.Result.UnmarshalTo(&analyzeResponse); err != nil {
-				log.Printf("PostgresLogAnalyzeResponse ayrıştırma hatası: %v", err)
+				logger.Error().
+					Err(err).
+					Str("query_id", queryID).
+					Msg("PostgresLogAnalyzeResponse ayrıştırma hatası")
 				return nil, fmt.Errorf("sonuç ayrıştırma hatası: %v", err)
 			}
 
-			log.Printf("Doğrudan PostgresLogAnalyzeResponse'a başarıyla ayrıştırıldı - Log girişleri: %d", len(analyzeResponse.LogEntries))
+			logger.Debug().
+				Int("log_entries_count", len(analyzeResponse.LogEntries)).
+				Str("query_id", queryID).
+				Msg("Doğrudan PostgresLogAnalyzeResponse'a başarıyla ayrıştırıldı")
 			return &analyzeResponse, nil
 		}
 
@@ -2427,7 +2719,11 @@ func (s *Server) sendPostgresLogAnalyzeQuery(ctx context.Context, agentID, logFi
 			}
 		}
 
-		log.Printf("Struct'tan oluşturulan log girişleri sayısı: %d", len(logEntries))
+		logger.Debug().
+			Int("log_entries_count", len(logEntries)).
+			Str("query_id", queryID).
+			Str("agent_id", agentID).
+			Msg("PostgreSQL log analizi struct'tan oluşturuldu")
 
 		return &pb.PostgresLogAnalyzeResponse{
 			LogEntries: logEntries,
@@ -2435,7 +2731,11 @@ func (s *Server) sendPostgresLogAnalyzeQuery(ctx context.Context, agentID, logFi
 
 	case <-ctx.Done():
 		// Context iptal edildi veya zaman aşımına uğradı
-		log.Printf("Context iptal edildi veya zaman aşımına uğradı - QueryID: %s", queryID)
+		logger.Error().
+			Err(ctx.Err()).
+			Str("query_id", queryID).
+			Str("agent_id", agentID).
+			Msg("PostgreSQL log analizi context timeout")
 		return nil, ctx.Err()
 	}
 }
@@ -2528,8 +2828,13 @@ func (s *Server) GetAlarms(ctx context.Context, onlyUnacknowledged bool, limit, 
 	// LIMIT ve OFFSET parametrelerini ekle
 	queryParams = append(queryParams, limit, offset)
 
-	log.Printf("Alarm sorgusu - Limit: %d, Offset: %d, Total: %d, Filters: severity=%s, metric=%s",
-		limit, offset, totalCount, severityFilter, metricFilter)
+	logger.Debug().
+		Int("limit", limit).
+		Int("offset", offset).
+		Int64("total", totalCount).
+		Str("severity_filter", severityFilter).
+		Str("metric_filter", metricFilter).
+		Msg("Alarm sorgusu")
 
 	// Sorguyu çalıştır
 	rows, err := s.db.QueryContext(ctx, query, queryParams...)
@@ -2694,7 +2999,12 @@ func (s *Server) sendPostgresConfigQuery(ctx context.Context, agentID, configPat
 	command := fmt.Sprintf("read_postgres_config|%s", configPath)
 	queryID := fmt.Sprintf("postgres_config_%d", time.Now().UnixNano())
 
-	log.Printf("PostgreSQL config okuması için komut: %s", command)
+	logger.Debug().
+		Str("command", command).
+		Str("agent_id", agentID).
+		Str("query_id", queryID).
+		Str("config_path", configPath).
+		Msg("PostgreSQL config okuması için komut")
 
 	// Sonuç kanalı oluştur
 	resultChan := make(chan *pb.QueryResult, 1)
@@ -2722,37 +3032,63 @@ func (s *Server) sendPostgresConfigQuery(ctx context.Context, agentID, configPat
 		},
 	})
 	if err != nil {
-		log.Printf("PostgreSQL config sorgusu gönderilemedi - Hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", agentID).
+			Str("query_id", queryID).
+			Str("config_path", configPath).
+			Msg("PostgreSQL config sorgusu gönderilemedi")
 		return nil, fmt.Errorf("sorgu gönderilemedi: %v", err)
 	}
 
-	log.Printf("PostgreSQL config için sorgu gönderildi - Agent: %s, Path: %s, QueryID: %s",
-		agentID, configPath, queryID)
+	logger.Info().
+		Str("agent_id", agentID).
+		Str("config_path", configPath).
+		Str("query_id", queryID).
+		Msg("PostgreSQL config için sorgu gönderildi")
 
 	// Cevabı bekle
 	select {
 	case result := <-resultChan:
 		// Sonuç geldi
 		if result == nil {
-			log.Printf("Null sorgu sonucu alındı - QueryID: %s", queryID)
+			logger.Error().
+				Str("query_id", queryID).
+				Str("agent_id", agentID).
+				Str("config_path", configPath).
+				Msg("PostgreSQL config query null sonuç")
 			return nil, fmt.Errorf("null sorgu sonucu alındı")
 		}
 
-		log.Printf("Agent'tan yanıt alındı - QueryID: %s, TypeUrl: %s", queryID, result.Result.TypeUrl)
+		logger.Debug().
+			Str("query_id", queryID).
+			Str("type_url", result.Result.TypeUrl).
+			Str("agent_id", agentID).
+			Msg("PostgreSQL config query yanıt alındı")
 
 		// Önce struct olarak ayrıştırmayı dene (Agent'ın gönderdiği tipte)
 		var resultStruct structpb.Struct
 		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
-			log.Printf("Struct ayrıştırma hatası: %v", err)
+			logger.Debug().
+				Err(err).
+				Str("query_id", queryID).
+				Str("agent_id", agentID).
+				Msg("PostgreSQL config struct ayrıştırma hatası")
 
 			// Struct ayrıştırma başarısız olursa, PostgresConfigResponse olarak dene
 			var configResponse pb.PostgresConfigResponse
 			if err := result.Result.UnmarshalTo(&configResponse); err != nil {
-				log.Printf("PostgresConfigResponse ayrıştırma hatası: %v", err)
+				logger.Error().
+					Err(err).
+					Str("query_id", queryID).
+					Msg("PostgresConfigResponse ayrıştırma hatası")
 				return nil, fmt.Errorf("sonuç ayrıştırma hatası: %v", err)
 			}
 
-			log.Printf("Doğrudan PostgresConfigResponse'a başarıyla ayrıştırıldı - Config girişleri: %d", len(configResponse.Configurations))
+			logger.Debug().
+				Int("config_entries_count", len(configResponse.Configurations)).
+				Str("query_id", queryID).
+				Msg("Doğrudan PostgresConfigResponse'a başarıyla ayrıştırıldı")
 			return &configResponse, nil
 		}
 
@@ -2785,7 +3121,11 @@ func (s *Server) sendPostgresConfigQuery(ctx context.Context, agentID, configPat
 			}
 		}
 
-		log.Printf("Struct'tan oluşturulan config girişleri sayısı: %d", len(configEntries))
+		logger.Debug().
+			Int("config_entries_count", len(configEntries)).
+			Str("query_id", queryID).
+			Str("agent_id", agentID).
+			Msg("PostgreSQL config struct'tan oluşturuldu")
 
 		// Config dosya yolunu al
 		configPathValue := ""
@@ -2801,18 +3141,28 @@ func (s *Server) sendPostgresConfigQuery(ctx context.Context, agentID, configPat
 
 	case <-ctx.Done():
 		// Context iptal edildi veya zaman aşımına uğradı
-		log.Printf("Context iptal edildi veya zaman aşımına uğradı - QueryID: %s", queryID)
+		logger.Error().
+			Err(ctx.Err()).
+			Str("query_id", queryID).
+			Str("agent_id", agentID).
+			Str("config_path", configPath).
+			Msg("PostgreSQL config query context timeout")
 		return nil, ctx.Err()
 	}
 }
 
 // ReportVersion, agent'ın versiyon bilgilerini işler
 func (s *Server) ReportVersion(ctx context.Context, req *pb.ReportVersionRequest) (*pb.ReportVersionResponse, error) {
-	log.Printf("ReportVersion metodu çağrıldı - Agent ID: %s", req.AgentId)
+	logger.Info().
+		Str("agent_id", req.AgentId).
+		Msg("ReportVersion metodu çağrıldı")
 
 	// Veritabanı bağlantısını kontrol et
 	if err := s.checkDatabaseConnection(); err != nil {
-		log.Printf("Veritabanı bağlantı hatası: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", req.AgentId).
+			Msg("Veritabanı bağlantı hatası")
 		return &pb.ReportVersionResponse{
 			Status: "error",
 		}, fmt.Errorf("veritabanı bağlantı hatası: %v", err)
@@ -2820,13 +3170,15 @@ func (s *Server) ReportVersion(ctx context.Context, req *pb.ReportVersionRequest
 
 	// Versiyon bilgilerini logla
 	versionInfo := req.VersionInfo
-	log.Printf("Agent versiyon bilgileri alındı:")
-	log.Printf("  Version: %s", versionInfo.Version)
-	log.Printf("  Platform: %s", versionInfo.Platform)
-	log.Printf("  Architecture: %s", versionInfo.Architecture)
-	log.Printf("  Hostname: %s", versionInfo.Hostname)
-	log.Printf("  OS Version: %s", versionInfo.OsVersion)
-	log.Printf("  Go Version: %s", versionInfo.GoVersion)
+	logger.Info().
+		Str("agent_id", req.AgentId).
+		Str("version", versionInfo.Version).
+		Str("platform", versionInfo.Platform).
+		Str("architecture", versionInfo.Architecture).
+		Str("hostname", versionInfo.Hostname).
+		Str("os_version", versionInfo.OsVersion).
+		Str("go_version", versionInfo.GoVersion).
+		Msg("Agent versiyon bilgileri alındı")
 
 	// Versiyon bilgilerini veritabanına kaydet
 	query := `
@@ -2861,13 +3213,19 @@ func (s *Server) ReportVersion(ctx context.Context, req *pb.ReportVersionRequest
 	)
 
 	if err != nil {
-		log.Printf("Versiyon bilgileri kaydedilemedi: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", req.AgentId).
+			Msg("Versiyon bilgileri kaydedilemedi")
 		return &pb.ReportVersionResponse{
 			Status: "error",
 		}, fmt.Errorf("versiyon bilgileri kaydedilemedi: %v", err)
 	}
 
-	log.Printf("Agent versiyon bilgileri başarıyla kaydedildi - Agent ID: %s", req.AgentId)
+	logger.Info().
+		Str("agent_id", req.AgentId).
+		Str("version", versionInfo.Version).
+		Msg("Agent versiyon bilgileri başarıyla kaydedildi")
 	return &pb.ReportVersionResponse{
 		Status: "success",
 	}, nil
@@ -3057,8 +3415,13 @@ func (s *Server) PromoteMongoToPrimary(ctx context.Context, req *pb.MongoPromote
 
 // PromotePostgresToMaster, PostgreSQL node'unu master'a yükseltir
 func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPromoteMasterRequest) (*pb.PostgresPromoteMasterResponse, error) {
-	log.Printf("PromotePostgresToMaster çağrıldı - Agent ID: %s, Node: %s, Data Directory: %s, Current Master: %s",
-		req.AgentId, req.NodeHostname, req.DataDirectory, req.CurrentMasterHost)
+	logger.Info().
+		Str("agent_id", req.AgentId).
+		Str("node_hostname", req.NodeHostname).
+		Str("data_directory", req.DataDirectory).
+		Str("current_master_host", req.CurrentMasterHost).
+		Str("job_id", req.JobId).
+		Msg("PromotePostgresToMaster çağrıldı")
 
 	// Process log takibi için metadata oluştur
 	metadata := map[string]string{
@@ -3164,7 +3527,11 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 	go func() {
 		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
 		job.UpdatedAt = timestamppb.Now()
-		s.updateJobInDatabase(context.Background(), job)
+
+		// 🔧 FIX: Database update için timeout context kullan
+		dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		s.updateJobInDatabase(dbCtx, job)
+		dbCancel()
 
 		// Yeni komut formatı: "postgres_promote|data_dir|process_id|old_master_host"
 		// Agent tarafındaki ProcessLogger'ı etkinleştirmek için process_id gönderiyoruz
@@ -3173,43 +3540,96 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 		command := fmt.Sprintf("postgres_promote|%s|%s|%s",
 			req.DataDirectory, req.JobId, req.CurrentMasterHost)
 
-		// Agent'a promote isteği gönder
-		err := agent.Stream.Send(&pb.ServerMessage{
-			Payload: &pb.ServerMessage_Query{
-				Query: &pb.Query{
-					QueryId: job.JobId,
-					Command: command,
+		// 🔧 FIX: Timeout ile Stream.Send() çağrısı
+		sendCtx, sendCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer sendCancel()
+
+		// Channel kullanarak timeout kontrollü gönderme
+		sendDone := make(chan error, 1)
+		go func() {
+			err := agent.Stream.Send(&pb.ServerMessage{
+				Payload: &pb.ServerMessage_Query{
+					Query: &pb.Query{
+						QueryId: job.JobId,
+						Command: command,
+					},
 				},
-			},
-		})
+			})
+			sendDone <- err
+		}()
 
-		if err != nil {
+		// Timeout veya başarı durumunu bekle
+		select {
+		case err := <-sendDone:
+			if err != nil {
+				job.Status = pb.JobStatus_JOB_STATUS_FAILED
+				job.ErrorMessage = fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)
+				job.UpdatedAt = timestamppb.Now()
+
+				// Database update için timeout context
+				dbCtx2, dbCancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+				s.updateJobInDatabase(dbCtx2, job)
+				dbCancel2()
+
+				// Hata durumu process log'u
+				errorLog := &pb.ProcessLogUpdate{
+					AgentId:      req.AgentId,
+					ProcessId:    req.JobId,
+					ProcessType:  "postgresql_promotion",
+					Status:       "failed",
+					LogMessages:  []string{fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)},
+					ElapsedTimeS: 0,
+					UpdatedAt:    time.Now().Format(time.RFC3339),
+					Metadata:     metadata,
+				}
+				// Process logs için de timeout context
+				logCtx, logCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				s.saveProcessLogs(logCtx, errorLog)
+				logCancel()
+			} else {
+				// Başarılı başlatma durumu
+				logger.Info().
+					Str("job_id", job.JobId).
+					Str("agent_id", req.AgentId).
+					Str("node_hostname", req.NodeHostname).
+					Msg("PostgreSQL promotion işlemi agent'a iletildi")
+
+				// Job'ı IN_PROGRESS olarak işaretle
+				// Agent ProcessLogger ile ilerleyişi bildirecek, burada bir şey yapmamıza gerek yok
+
+				// Tamamlandı olarak işaretleme işlemini artık agent tarafından gelen
+				// son log mesajı (completed statüsünde) ile yapacağız.
+			}
+		case <-sendCtx.Done():
+			logger.Error().
+				Str("job_id", job.JobId).
+				Str("agent_id", req.AgentId).
+				Dur("timeout", 10*time.Second).
+				Msg("Timeout: PostgreSQL promotion agent'a gönderilemedi")
 			job.Status = pb.JobStatus_JOB_STATUS_FAILED
-			job.ErrorMessage = fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)
+			job.ErrorMessage = "Timeout: Agent'a istek gönderilemedi (10s timeout)"
 			job.UpdatedAt = timestamppb.Now()
-			s.updateJobInDatabase(context.Background(), job)
 
-			// Hata durumu process log'u
-			errorLog := &pb.ProcessLogUpdate{
+			// Database update için timeout context
+			dbCtx3, dbCancel3 := context.WithTimeout(context.Background(), 5*time.Second)
+			s.updateJobInDatabase(dbCtx3, job)
+			dbCancel3()
+
+			// Timeout durumu process log'u
+			timeoutLog := &pb.ProcessLogUpdate{
 				AgentId:      req.AgentId,
 				ProcessId:    req.JobId,
 				ProcessType:  "postgresql_promotion",
 				Status:       "failed",
-				LogMessages:  []string{fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)},
+				LogMessages:  []string{"Timeout: Agent'a istek gönderilemedi (10s timeout)"},
 				ElapsedTimeS: 0,
 				UpdatedAt:    time.Now().Format(time.RFC3339),
 				Metadata:     metadata,
 			}
-			s.saveProcessLogs(context.Background(), errorLog)
-		} else {
-			// Başarılı başlatma durumu
-			log.Printf("PostgreSQL promotion işlemi agent'a iletildi - Job ID: %s", job.JobId)
-
-			// Job'ı IN_PROGRESS olarak işaretle
-			// Agent ProcessLogger ile ilerleyişi bildirecek, burada bir şey yapmamıza gerek yok
-
-			// Tamamlandı olarak işaretleme işlemini artık agent tarafından gelen
-			// son log mesajı (completed statüsünde) ile yapacağız.
+			// Process logs için de timeout context
+			logCtx2, logCancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+			s.saveProcessLogs(logCtx2, timeoutLog)
+			logCancel2()
 		}
 	}()
 
@@ -3221,8 +3641,13 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 
 // ConvertPostgresToSlave PostgreSQL master'ı slave'e dönüştürür
 func (s *Server) ConvertPostgresToSlave(ctx context.Context, req *pb.ConvertPostgresToSlaveRequest) (*pb.ConvertPostgresToSlaveResponse, error) {
-	log.Printf("ConvertPostgresToSlave çağrıldı - Agent ID: %s, Node: %s",
-		req.AgentId, req.NodeHostname)
+	logger.Info().
+		Str("agent_id", req.AgentId).
+		Str("node_hostname", req.NodeHostname).
+		Str("new_master_host", req.NewMasterHost).
+		Int32("new_master_port", req.NewMasterPort).
+		Str("job_id", req.JobId).
+		Msg("ConvertPostgresToSlave çağrıldı")
 
 	// Job oluştur
 	job := &pb.Job{
@@ -3259,20 +3684,41 @@ func (s *Server) ConvertPostgresToSlave(ctx context.Context, req *pb.ConvertPost
 		req.NewMasterHost, req.NewMasterPort, req.DataDirectory,
 		req.ReplicationUser, req.ReplicationPassword, req.JobId)
 
-	err := agent.Stream.Send(&pb.ServerMessage{
-		Payload: &pb.ServerMessage_Query{
-			Query: &pb.Query{
-				QueryId: req.JobId,
-				Command: command,
-			},
-		},
-	})
+	// 🔧 FIX: Timeout ile Stream.Send() çağrısı
+	sendCtx, sendCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer sendCancel()
 
-	if err != nil {
+	// Channel kullanarak timeout kontrollü gönderme
+	sendDone := make(chan error, 1)
+	go func() {
+		err := agent.Stream.Send(&pb.ServerMessage{
+			Payload: &pb.ServerMessage_Query{
+				Query: &pb.Query{
+					QueryId: req.JobId,
+					Command: command,
+				},
+			},
+		})
+		sendDone <- err
+	}()
+
+	// Timeout veya başarı durumunu bekle
+	select {
+	case err := <-sendDone:
+		if err != nil {
+			job.Status = pb.JobStatus_JOB_STATUS_FAILED
+			job.ErrorMessage = fmt.Sprintf("Agent'a komut gönderilemedi: %v", err)
+		} else {
+			job.Status = pb.JobStatus_JOB_STATUS_RUNNING
+		}
+	case <-sendCtx.Done():
+		logger.Error().
+			Str("job_id", req.JobId).
+			Str("agent_id", req.AgentId).
+			Dur("timeout", 10*time.Second).
+			Msg("Timeout: ConvertPostgresToSlave agent'a gönderilemedi")
 		job.Status = pb.JobStatus_JOB_STATUS_FAILED
-		job.ErrorMessage = fmt.Sprintf("Agent'a komut gönderilemedi: %v", err)
-	} else {
-		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
+		job.ErrorMessage = "Timeout: Agent'a komut gönderilemedi (10s timeout)"
 	}
 
 	job.UpdatedAt = timestamppb.Now()
@@ -3304,8 +3750,13 @@ func (s *Server) GetJob(ctx context.Context, req *pb.GetJobRequest) (*pb.GetJobR
 
 // ListJobs, job listesini veritabanından doğrudan sorgular ve getirir
 func (s *Server) ListJobs(ctx context.Context, req *pb.ListJobsRequest) (*pb.ListJobsResponse, error) {
-	log.Printf("[DEBUG] ListJobs çağrıldı - Parametreler: agent_id=%s, status=%v, type=%v, limit=%d, offset=%d",
-		req.AgentId, req.Status, req.Type, req.Limit, req.Offset)
+	logger.Debug().
+		Str("agent_id", req.AgentId).
+		Interface("status", req.Status).
+		Interface("type", req.Type).
+		Int32("limit", req.Limit).
+		Int32("offset", req.Offset).
+		Msg("ListJobs çağrıldı")
 
 	// Veritabanı bağlantısını kontrol et
 	if err := s.checkDatabaseConnection(); err != nil {
@@ -3365,10 +3816,15 @@ func (s *Server) ListJobs(ctx context.Context, req *pb.ListJobsRequest) (*pb.Lis
 	var total int32
 	err := s.db.QueryRowContext(ctx, countQuery, queryParams...).Scan(&total)
 	if err != nil {
-		log.Printf("[ERROR] Job sayısı alınamadı: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", req.AgentId).
+			Msg("Job sayısı alınamadı")
 		return nil, fmt.Errorf("job sayısı alınamadı: %v", err)
 	}
-	log.Printf("[DEBUG] Filtrelere göre toplam job sayısı: %d", total)
+	logger.Debug().
+		Int64("total_jobs", int64(total)).
+		Msg("Filtrelere göre toplam job sayısı")
 
 	// Sıralama ve limit ekle
 	query += " ORDER BY created_at DESC"
@@ -3387,13 +3843,20 @@ func (s *Server) ListJobs(ctx context.Context, req *pb.ListJobsRequest) (*pb.Lis
 	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", paramCount, paramCount+1)
 	queryParams = append(queryParams, limit, offset)
 
-	log.Printf("[DEBUG] SQL sorgusu: %s", query)
-	log.Printf("[DEBUG] Parametreler: %v", queryParams)
+	logger.Debug().
+		Str("query", query).
+		Interface("parameters", queryParams).
+		Msg("SQL sorgusu hazırlandı")
 
 	// Asıl sorguyu çalıştır
 	rows, err := s.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
-		log.Printf("[ERROR] Job sorgusu çalıştırılamadı: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", req.AgentId).
+			Str("query", query).
+			Interface("params", queryParams).
+			Msg("Job sorgusu çalıştırılamadı")
 		return nil, fmt.Errorf("job sorgusu çalıştırılamadı: %v", err)
 	}
 	defer rows.Close()
@@ -3419,27 +3882,38 @@ func (s *Server) ListJobs(ctx context.Context, req *pb.ListJobsRequest) (*pb.Lis
 			&createdAt, &updatedAt, &errorMessage,
 			&parameters, &result,
 		); err != nil {
-			log.Printf("[ERROR] Job kaydı okunamadı: %v", err)
+			logger.Error().
+				Err(err).
+				Msg("Job kaydı okunamadı")
 			continue
 		}
 
 		// Parameters JSON'ı çözümle
 		var paramsMap map[string]string
 		if err := json.Unmarshal(parameters, &paramsMap); err != nil {
-			log.Printf("[ERROR] Job parametreleri çözümlenemedi (%s): %v", jobID, err)
+			logger.Error().
+				Err(err).
+				Str("job_id", jobID).
+				Msg("Job parametreleri çözümlenemedi")
 			paramsMap = make(map[string]string) // Boş map kullan
 		}
 
 		// JobType ve JobStatus enum değerlerini çözümle
 		jobTypeEnum, ok := pb.JobType_value[jobType]
 		if !ok {
-			log.Printf("[WARN] Bilinmeyen job tipi: %s, varsayılan olarak JOB_TYPE_UNKNOWN kullanılıyor", jobType)
+			logger.Warn().
+				Str("job_type", jobType).
+				Str("job_id", jobID).
+				Msg("Bilinmeyen job tipi, varsayılan olarak JOB_TYPE_UNKNOWN kullanılıyor")
 			jobTypeEnum = int32(pb.JobType_JOB_TYPE_UNKNOWN)
 		}
 
 		jobStatusEnum, ok := pb.JobStatus_value[jobStatus]
 		if !ok {
-			log.Printf("[WARN] Bilinmeyen job durumu: %s, varsayılan olarak JOB_STATUS_UNKNOWN kullanılıyor", jobStatus)
+			logger.Warn().
+				Str("job_status", jobStatus).
+				Str("job_id", jobID).
+				Msg("Bilinmeyen job durumu, varsayılan olarak JOB_STATUS_UNKNOWN kullanılıyor")
 			jobStatusEnum = int32(pb.JobStatus_JOB_STATUS_UNKNOWN)
 		}
 
@@ -3469,11 +3943,18 @@ func (s *Server) ListJobs(ctx context.Context, req *pb.ListJobsRequest) (*pb.Lis
 
 	// Rows.Err() kontrolü
 	if err := rows.Err(); err != nil {
-		log.Printf("[ERROR] Job kayıtları okunurken hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", req.AgentId).
+			Msg("Job kayıtları okunurken hata")
 		return nil, fmt.Errorf("job kayıtları okunurken hata: %v", err)
 	}
 
-	log.Printf("[DEBUG] Veritabanından %d job kaydı döndürülüyor (toplam: %d)", len(jobs), total)
+	logger.Debug().
+		Int("returned_jobs", len(jobs)).
+		Int64("total_jobs", int64(total)).
+		Str("agent_id", req.AgentId).
+		Msg("Veritabanından job kayıtları döndürülüyor")
 
 	return &pb.ListJobsResponse{
 		Jobs:  jobs,
@@ -3572,7 +4053,6 @@ func (s *Server) CreateJob(ctx context.Context, job *pb.Job) error {
 			return
 		}
 
-		var err error
 		var command string
 
 		// Job tipine göre işlemi belirle
@@ -3663,26 +4143,50 @@ func (s *Server) CreateJob(ctx context.Context, job *pb.Job) error {
 			return
 		}
 
-		// Agent'a komutu gönder
-		err = agent.Stream.Send(&pb.ServerMessage{
-			Payload: &pb.ServerMessage_Query{
-				Query: &pb.Query{
-					QueryId: job.JobId,
-					Command: command,
-				},
-			},
-		})
+		// 🔧 FIX: Timeout ile Stream.Send() çağrısı
+		sendCtx, sendCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer sendCancel()
 
-		if err != nil {
+		// Channel kullanarak timeout kontrollü gönderme
+		sendDone := make(chan error, 1)
+		go func() {
+			sendErr := agent.Stream.Send(&pb.ServerMessage{
+				Payload: &pb.ServerMessage_Query{
+					Query: &pb.Query{
+						QueryId: job.JobId,
+						Command: command,
+					},
+				},
+			})
+			sendDone <- sendErr
+		}()
+
+		// Timeout veya başarı durumunu bekle
+		select {
+		case err := <-sendDone:
+			if err != nil {
+				job.Status = pb.JobStatus_JOB_STATUS_FAILED
+				job.ErrorMessage = fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)
+			} else {
+				job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
+				job.Result = "Job request sent successfully"
+			}
+		case <-sendCtx.Done():
+			logger.Error().
+				Str("job_id", job.JobId).
+				Str("agent_id", job.AgentId).
+				Dur("timeout", 10*time.Second).
+				Msg("Timeout: CreateJob agent'a gönderilemedi")
 			job.Status = pb.JobStatus_JOB_STATUS_FAILED
-			job.ErrorMessage = fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)
-		} else {
-			job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
-			job.Result = "Job request sent successfully"
+			job.ErrorMessage = "Timeout: Agent'a istek gönderilemedi (10s timeout)"
 		}
 
 		job.UpdatedAt = timestamppb.Now()
-		s.updateJobInDatabase(context.Background(), job)
+
+		// Database update için de timeout context kullan
+		dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		s.updateJobInDatabase(dbCtx, job)
+		dbCancel()
 	}()
 
 	return nil
@@ -3754,26 +4258,50 @@ func (s *Server) FreezeMongoSecondary(ctx context.Context, req *pb.MongoFreezeSe
 		// rs.freeze() komutu oluştur
 		command := fmt.Sprintf("rs.freeze(%d)", seconds)
 
-		// Agent'a freeze isteği gönder
-		err := agent.Stream.Send(&pb.ServerMessage{
-			Payload: &pb.ServerMessage_Query{
-				Query: &pb.Query{
-					QueryId: job.JobId,
-					Command: command,
-				},
-			},
-		})
+		// 🔧 FIX: Timeout ile Stream.Send() çağrısı
+		sendCtx, sendCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer sendCancel()
 
-		if err != nil {
+		// Channel kullanarak timeout kontrollü gönderme
+		sendDone := make(chan error, 1)
+		go func() {
+			sendErr := agent.Stream.Send(&pb.ServerMessage{
+				Payload: &pb.ServerMessage_Query{
+					Query: &pb.Query{
+						QueryId: job.JobId,
+						Command: command,
+					},
+				},
+			})
+			sendDone <- sendErr
+		}()
+
+		// Timeout veya başarı durumunu bekle
+		select {
+		case err := <-sendDone:
+			if err != nil {
+				job.Status = pb.JobStatus_JOB_STATUS_FAILED
+				job.ErrorMessage = fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)
+			} else {
+				job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
+				job.Result = fmt.Sprintf("MongoDB node %s successfully frozen for %d seconds", req.NodeHostname, seconds)
+			}
+		case <-sendCtx.Done():
+			logger.Error().
+				Str("job_id", job.JobId).
+				Str("node_hostname", req.NodeHostname).
+				Dur("timeout", 10*time.Second).
+				Msg("Timeout: FreezeMongoSecondary agent'a gönderilemedi")
 			job.Status = pb.JobStatus_JOB_STATUS_FAILED
-			job.ErrorMessage = fmt.Sprintf("Agent'a istek gönderilemedi: %v", err)
-		} else {
-			job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
-			job.Result = fmt.Sprintf("MongoDB node %s successfully frozen for %d seconds", req.NodeHostname, seconds)
+			job.ErrorMessage = "Timeout: Agent'a istek gönderilemedi (10s timeout)"
 		}
 
 		job.UpdatedAt = timestamppb.Now()
-		s.updateJobInDatabase(context.Background(), job)
+
+		// Database update için de timeout context kullan
+		dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		s.updateJobInDatabase(dbCtx, job)
+		dbCancel()
 	}()
 
 	return &pb.MongoFreezeSecondaryResponse{
@@ -3784,7 +4312,10 @@ func (s *Server) FreezeMongoSecondary(ctx context.Context, req *pb.MongoFreezeSe
 
 // ExplainQuery, PostgreSQL sorgu planını EXPLAIN ANALYZE kullanarak getirir
 func (s *Server) ExplainQuery(ctx context.Context, req *pb.ExplainQueryRequest) (*pb.ExplainQueryResponse, error) {
-	log.Printf("ExplainQuery metodu çağrıldı - Agent ID: %s, Database: %s", req.AgentId, req.Database)
+	logger.Info().
+		Str("agent_id", req.AgentId).
+		Str("database", req.Database).
+		Msg("ExplainQuery metodu çağrıldı")
 
 	// Agent ID'yi kontrol et
 	agentID := req.AgentId
@@ -3813,7 +4344,12 @@ func (s *Server) ExplainQuery(ctx context.Context, req *pb.ExplainQueryRequest) 
 	// Agent'a sorguyu gönder ve cevabı al
 	result, err := s.SendQuery(ctx, agentID, queryID, explainQuery, req.Database)
 	if err != nil {
-		log.Printf("Sorgu planı alınırken hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", agentID).
+			Str("database", req.Database).
+			Str("query_id", queryID).
+			Msg("Sorgu planı alınırken hata")
 		return &pb.ExplainQueryResponse{
 			Status:       "error",
 			ErrorMessage: fmt.Sprintf("Sorgu planı alınırken hata: %v", err),
@@ -3822,17 +4358,26 @@ func (s *Server) ExplainQuery(ctx context.Context, req *pb.ExplainQueryRequest) 
 
 	// Sorgu sonucunu döndür
 	if result.Result != nil {
-		log.Printf("Sorgu sonucu alındı, type_url: %s", result.Result.TypeUrl)
+		logger.Debug().
+			Str("type_url", result.Result.TypeUrl).
+			Str("query_id", queryID).
+			Msg("Sorgu sonucu alındı")
 
 		// Sonucu okunabilir formata dönüştür
 		var resultStruct structpb.Struct
 		if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
-			log.Printf("Sonuç structpb.Struct'a dönüştürülürken hata: %v", err)
+			logger.Debug().
+				Err(err).
+				Str("query_id", queryID).
+				Msg("Sonuç structpb.Struct'a dönüştürülürken hata")
 
 			// Farklı bir yöntem deneyelim - doğrudan JSON string'e çevirmeyi deneyelim
 			resultStr := string(result.Result.Value)
 			if len(resultStr) > 0 {
-				log.Printf("Result.Value doğrudan string olarak kullanılıyor: %d byte", len(resultStr))
+				logger.Debug().
+					Int("result_size", len(resultStr)).
+					Str("query_id", queryID).
+					Msg("Result.Value doğrudan string olarak kullanılıyor")
 				return &pb.ExplainQueryResponse{
 					Status: "success",
 					Plan:   resultStr,
@@ -3849,7 +4394,11 @@ func (s *Server) ExplainQuery(ctx context.Context, req *pb.ExplainQueryRequest) 
 		resultMap := resultStruct.AsMap()
 		resultBytes, err := json.Marshal(resultMap)
 		if err != nil {
-			log.Printf("JSON dönüştürme hatası: %v", err)
+			logger.Error().
+				Err(err).
+				Str("agent_id", req.AgentId).
+				Str("database", req.Database).
+				Msg("ExplainQuery JSON dönüştürme hatası")
 			return &pb.ExplainQueryResponse{
 				Status:       "error",
 				ErrorMessage: fmt.Sprintf("JSON dönüştürme hatası: %v", err),
@@ -3902,10 +4451,15 @@ func (s *Server) ExplainQuery(ctx context.Context, req *pb.ExplainQueryRequest) 
 
 // ExplainMongoQuery, MongoDB sorgu planını explain() kullanarak getirir
 func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequest) (*pb.ExplainQueryResponse, error) {
-	log.Printf("[INFO] ExplainMongoQuery çağrıldı - Agent ID: %s, Database: %s", req.AgentId, req.Database)
+	logger.Info().
+		Str("agent_id", req.AgentId).
+		Str("database", req.Database).
+		Msg("ExplainMongoQuery çağrıldı")
 
 	// Ham sorguyu loglayalım
-	log.Printf("[DEBUG] Ham sorgu (JSON): %s", req.Query)
+	logger.Debug().
+		Str("raw_query", req.Query).
+		Msg("Ham sorgu (JSON)")
 
 	// Agent ID'yi kontrol et
 	agentID := req.AgentId
@@ -3938,14 +4492,23 @@ func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequ
 	// Yeni protokol formatı: MONGO_EXPLAIN|<database>|<query_json>
 	explainCommand := fmt.Sprintf("MONGO_EXPLAIN|%s|%s", database, query)
 
-	log.Printf("[DEBUG] MongoDB Explain protokol formatı: MONGO_EXPLAIN|<database>|<query_json>")
-	log.Printf("[DEBUG] Hazırlanan sorgu komut uzunluğu: %d bytes", len(explainCommand))
+	logger.Debug().
+		Str("protocol_format", "MONGO_EXPLAIN|<database>|<query_json>").
+		Msg("MongoDB Explain protokol formatı")
+	logger.Debug().
+		Int("command_length", len(explainCommand)).
+		Msg("Hazırlanan sorgu komut uzunluğu")
 
 	// Sorgunun ilk kısmını loglayalım, çok uzunsa sadece başını
 	if len(query) > 500 {
-		log.Printf("[DEBUG] Sorgu (ilk 500 karakter): %s...", query[:500])
+		logger.Debug().
+			Str("query_preview", query[:500]+"...").
+			Int("total_length", len(query)).
+			Msg("Sorgu (ilk 500 karakter)")
 	} else {
-		log.Printf("[DEBUG] Sorgu: %s", query)
+		logger.Debug().
+			Str("query", query).
+			Msg("Sorgu")
 	}
 
 	// Unique bir sorgu ID'si oluştur
@@ -3956,11 +4519,19 @@ func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequ
 	defer cancel()
 
 	// Agent'a sorguyu gönder ve cevabı al
-	log.Printf("[DEBUG] MongoDB sorgusu agent'a gönderiliyor: %s", agentID)
+	logger.Debug().
+		Str("agent_id", agentID).
+		Str("query_id", queryID).
+		Msg("MongoDB sorgusu agent'a gönderiliyor")
 	// Burada database parametresini boş geçiyoruz çünkü zaten explainCommand içinde belirttik
 	result, err := s.SendQuery(longCtx, agentID, queryID, explainCommand, "")
 	if err != nil {
-		log.Printf("[ERROR] MongoDB sorgu planı alınırken hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", agentID).
+			Str("query_id", queryID).
+			Str("database", req.Database).
+			Msg("MongoDB sorgu planı alınırken hata")
 		errMsg := err.Error()
 		if err == context.DeadlineExceeded {
 			errMsg = "sorgu zaman aşımına uğradı"
@@ -3973,7 +4544,10 @@ func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequ
 
 	// Sorgu sonucunu döndür
 	if result.Result != nil {
-		log.Printf("[DEBUG] MongoDB sorgu planı alındı, type_url: %s", result.Result.TypeUrl)
+		logger.Debug().
+			Str("type_url", result.Result.TypeUrl).
+			Str("query_id", queryID).
+			Msg("MongoDB sorgu planı alındı")
 
 		// Agent'tan gelen ham veriyi direkt kullan
 		var rawResult string
@@ -3982,12 +4556,18 @@ func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequ
 		if result.Result.TypeUrl == "type.googleapis.com/google.protobuf.Value" {
 			// Value tipinde olanlar için direkt string değerini kullan
 			rawResult = string(result.Result.Value)
-			log.Printf("[DEBUG] Value tipi veri direkt string olarak kullanıldı, uzunluk: %d", len(rawResult))
+			logger.Debug().
+				Int("result_length", len(rawResult)).
+				Str("query_id", queryID).
+				Msg("Value tipi veri direkt string olarak kullanıldı")
 		} else {
 			// Struct veya diğer tipler için unmarshalling yapılmalı
 			var resultStruct structpb.Struct
 			if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
-				log.Printf("[ERROR] MongoDB sonucu ayrıştırılamadı: %v", err)
+				logger.Error().
+					Err(err).
+					Str("query_id", queryID).
+					Msg("MongoDB sonucu ayrıştırılamadı")
 				return &pb.ExplainQueryResponse{
 					Status:       "error",
 					ErrorMessage: fmt.Sprintf("MongoDB sorgu planı ayrıştırılamadı: %v", err),
@@ -3998,7 +4578,10 @@ func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequ
 			resultMap := resultStruct.AsMap()
 			resultBytes, err := json.Marshal(resultMap)
 			if err != nil {
-				log.Printf("[ERROR] MongoDB JSON serileştirilirken hata: %v", err)
+				logger.Error().
+					Err(err).
+					Str("query_id", queryID).
+					Msg("MongoDB JSON serileştirilirken hata")
 				return &pb.ExplainQueryResponse{
 					Status:       "error",
 					ErrorMessage: fmt.Sprintf("MongoDB JSON serileştirme hatası: %v", err),
@@ -4016,7 +4599,10 @@ func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequ
 	}
 
 	// Sonuç boş ise hata döndür
-	log.Printf("[ERROR] MongoDB sorgu planı boş sonuç döndü")
+	logger.Error().
+		Str("query_id", queryID).
+		Str("agent_id", agentID).
+		Msg("MongoDB sorgu planı boş sonuç döndü")
 	return &pb.ExplainQueryResponse{
 		Status:       "error",
 		ErrorMessage: "MongoDB sorgu planı alınamadı: Boş sonuç",
@@ -4025,66 +4611,80 @@ func (s *Server) ExplainMongoQuery(ctx context.Context, req *pb.ExplainQueryRequ
 
 // SendMSSQLInfo, agent'dan gelen MSSQL bilgilerini işler
 func (s *Server) SendMSSQLInfo(ctx context.Context, req *pb.MSSQLInfoRequest) (*pb.MSSQLInfoResponse, error) {
-	log.Println("SendMSSQLInfo metodu çağrıldı")
+	logger.Info().
+		Str("cluster", req.MssqlInfo.ClusterName).
+		Str("hostname", req.MssqlInfo.Hostname).
+		Bool("ha_enabled", req.MssqlInfo.IsHaEnabled).
+		Msg("SendMSSQLInfo metodu çağrıldı")
 
 	// Gelen MSSQL bilgilerini logla
 	mssqlInfo := req.MssqlInfo
-	log.Printf("MSSQL bilgileri alındı: %+v", mssqlInfo)
-
-	// Daha detaylı loglama
-	log.Printf("Cluster: %s, IP: %s, Hostname: %s", mssqlInfo.ClusterName, mssqlInfo.Ip, mssqlInfo.Hostname)
-	log.Printf("Node Durumu: %s, MSSQL Sürümü: %s, Konum: %s", mssqlInfo.NodeStatus, mssqlInfo.Version, mssqlInfo.Location)
-	log.Printf("MSSQL Servis Durumu: %s, Instance: %s", mssqlInfo.Status, mssqlInfo.Instance)
-	log.Printf("Boş Disk: %s, FD Yüzdesi: %d%%", mssqlInfo.FreeDisk, mssqlInfo.FdPercent)
-	log.Printf("HA Enabled: %t, HA Role: %s, Edition: %s", mssqlInfo.IsHaEnabled, mssqlInfo.HaRole, mssqlInfo.Edition)
 
 	// AlwaysOn bilgilerini logla
 	if mssqlInfo.IsHaEnabled && mssqlInfo.AlwaysOnMetrics != nil {
 		alwaysOn := mssqlInfo.AlwaysOnMetrics
-		log.Printf("AlwaysOn Cluster: %s, Health: %s, Operational: %s",
-			alwaysOn.ClusterName, alwaysOn.HealthState, alwaysOn.OperationalState)
-		log.Printf("Primary Replica: %s, Local Role: %s, Sync Mode: %s",
-			alwaysOn.PrimaryReplica, alwaysOn.LocalRole, alwaysOn.SynchronizationMode)
-		log.Printf("Replication Lag: %d ms, Log Send Queue: %d KB, Redo Queue: %d KB",
-			alwaysOn.ReplicationLagMs, alwaysOn.LogSendQueueKb, alwaysOn.RedoQueueKb)
+		logger.Info().
+			Str("cluster_name", alwaysOn.ClusterName).
+			Str("health_state", alwaysOn.HealthState).
+			Str("operational_state", alwaysOn.OperationalState).
+			Str("primary_replica", alwaysOn.PrimaryReplica).
+			Str("local_role", alwaysOn.LocalRole).
+			Str("sync_mode", alwaysOn.SynchronizationMode).
+			Int64("replication_lag_ms", alwaysOn.ReplicationLagMs).
+			Int64("log_send_queue_kb", alwaysOn.LogSendQueueKb).
+			Int64("redo_queue_kb", alwaysOn.RedoQueueKb).
+			Msg("AlwaysOn Cluster bilgileri")
 
 		if len(alwaysOn.Replicas) > 0 {
-			log.Printf("AlwaysOn Replicas count: %d", len(alwaysOn.Replicas))
+			logger.Debug().
+				Int("replica_count", len(alwaysOn.Replicas)).
+				Msg("AlwaysOn Replicas")
 			for i, replica := range alwaysOn.Replicas {
-				log.Printf("Replica %d: %s (Role: %s, Connection: %s)",
-					i+1, replica.ReplicaName, replica.Role, replica.ConnectionState)
-			}
-		}
-
-		if len(alwaysOn.Databases) > 0 {
-			log.Printf("AlwaysOn Databases count: %d", len(alwaysOn.Databases))
-			for i, db := range alwaysOn.Databases {
-				log.Printf("Database %d: %s (Sync State: %s, Replica: %s)",
-					i+1, db.DatabaseName, db.SynchronizationState, db.ReplicaName)
+				logger.Debug().
+					Int("replica_index", i+1).
+					Str("replica_name", replica.ReplicaName).
+					Str("role", replica.Role).
+					Str("connection_state", replica.ConnectionState).
+					Msg("AlwaysOn Replica")
 			}
 		}
 
 		if len(alwaysOn.Listeners) > 0 {
-			log.Printf("AlwaysOn Listeners count: %d", len(alwaysOn.Listeners))
+			logger.Debug().
+				Int("listener_count", len(alwaysOn.Listeners)).
+				Msg("AlwaysOn Listeners")
 			for i, listener := range alwaysOn.Listeners {
-				log.Printf("Listener %d: %s (Port: %d, State: %s)",
-					i+1, listener.ListenerName, listener.Port, listener.ListenerState)
+				logger.Debug().
+					Int("listener_index", i+1).
+					Str("listener_name", listener.ListenerName).
+					Int32("port", listener.Port).
+					Str("state", listener.ListenerState).
+					Msg("AlwaysOn Listener")
 			}
 		}
 	} else if mssqlInfo.IsHaEnabled {
-		log.Printf("HA enabled but AlwaysOn metrics not available")
+		logger.Warn().
+			Str("hostname", mssqlInfo.Hostname).
+			Msg("HA enabled but AlwaysOn metrics not available")
 	}
 
 	// Veritabanına kaydetme işlemi
 	err := s.saveMSSQLInfoToDatabase(ctx, mssqlInfo)
 	if err != nil {
-		log.Printf("MSSQL bilgileri veritabanına kaydedilemedi: %v", err)
+		logger.Error().
+			Err(err).
+			Str("cluster", mssqlInfo.ClusterName).
+			Str("hostname", mssqlInfo.Hostname).
+			Msg("MSSQL bilgileri veritabanına kaydedilemedi")
 		return &pb.MSSQLInfoResponse{
 			Status: "error",
 		}, nil
 	}
 
-	log.Printf("MSSQL bilgileri başarıyla işlendi ve kaydedildi")
+	logger.Info().
+		Str("cluster", mssqlInfo.ClusterName).
+		Str("hostname", mssqlInfo.Hostname).
+		Msg("MSSQL bilgileri başarıyla işlendi ve kaydedildi")
 
 	return &pb.MSSQLInfoResponse{
 		Status: "success",
@@ -4206,7 +4806,10 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 		}
 
 		mssqlData["AlwaysOnMetrics"] = alwaysOnData
-		log.Printf("AlwaysOn metrics veritabanına kaydedildi: %s", mssqlInfo.Hostname)
+		logger.Debug().
+			Str("hostname", mssqlInfo.Hostname).
+			Str("cluster", mssqlInfo.ClusterName).
+			Msg("AlwaysOn metrics veritabanına kaydedildi")
 	}
 
 	var jsonData []byte
@@ -4214,11 +4817,17 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 	// Hata kontrolünü düzgün yap
 	if err == nil {
 		// Mevcut kayıt var, güncelle
-		log.Printf("MSSQL cluster için mevcut kayıt bulundu, güncelleniyor: %s (ID: %d)", mssqlInfo.ClusterName, id)
+		logger.Debug().
+			Str("cluster", mssqlInfo.ClusterName).
+			Int("id", id).
+			Msg("MSSQL cluster için mevcut kayıt bulundu, güncelleniyor")
 
 		var existingJSON map[string][]interface{}
 		if err := json.Unmarshal(existingData, &existingJSON); err != nil {
-			log.Printf("Mevcut JSON ayrıştırma hatası: %v", err)
+			logger.Error().
+				Err(err).
+				Str("cluster", mssqlInfo.ClusterName).
+				Msg("MSSQL mevcut JSON ayrıştırma hatası")
 			return err
 		}
 
@@ -4251,17 +4860,26 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 					if !exists {
 						// Değer mevcut değil, yeni alan ekleniyor
 						hasChanged = true
-						log.Printf("MSSQL node'da yeni alan eklendi: %s, %s", mssqlInfo.Hostname, key)
+						logger.Debug().
+							Str("hostname", mssqlInfo.Hostname).
+							Str("field", key).
+							Msg("MSSQL node'da yeni alan eklendi")
 					} else {
 						// Mevcut değer ile yeni değeri karşılaştır
 						// Numeric değerler için özel karşılaştırma yap
 						hasChanged = !compareValues(currentValue, newValue)
 						if hasChanged {
 							if key == "AlwaysOnMetrics" {
-								log.Printf("MSSQL node'da AlwaysOn metrics güncellendi: %s", mssqlInfo.Hostname)
+								logger.Debug().
+									Str("hostname", mssqlInfo.Hostname).
+									Msg("MSSQL node'da AlwaysOn metrics güncellendi")
 							} else {
-								log.Printf("MSSQL node'da değişiklik tespit edildi: %s, %s: %v -> %v",
-									mssqlInfo.Hostname, key, currentValue, newValue)
+								logger.Debug().
+									Str("hostname", mssqlInfo.Hostname).
+									Str("field", key).
+									Interface("old_value", currentValue).
+									Interface("new_value", newValue).
+									Msg("MSSQL node'da değişiklik tespit edildi")
 							}
 						}
 					}
@@ -4284,12 +4902,18 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 		if !nodeFound {
 			clusterData = append(clusterData, mssqlData)
 			nodeChanged = true
-			log.Printf("Yeni MSSQL node eklendi: %s", mssqlInfo.Hostname)
+			logger.Info().
+				Str("hostname", mssqlInfo.Hostname).
+				Str("cluster", mssqlInfo.ClusterName).
+				Msg("Yeni MSSQL node eklendi")
 		}
 
 		// Eğer önemli bir değişiklik yoksa veritabanını güncelleme
 		if !nodeChanged {
-			log.Printf("MSSQL node'da önemli bir değişiklik yok, güncelleme yapılmadı: %s", mssqlInfo.Hostname)
+			logger.Debug().
+				Str("hostname", mssqlInfo.Hostname).
+				Str("cluster", mssqlInfo.ClusterName).
+				Msg("MSSQL node'da önemli bir değişiklik yok, güncelleme yapılmadı")
 			return nil
 		}
 
@@ -4298,7 +4922,10 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 		// JSON'ı güncelle
 		jsonData, err = json.Marshal(existingJSON)
 		if err != nil {
-			log.Printf("JSON dönüştürme hatası: %v", err)
+			logger.Error().
+				Err(err).
+				Str("cluster", mssqlInfo.ClusterName).
+				Msg("MSSQL JSON dönüştürme hatası")
 			return err
 		}
 
@@ -4311,14 +4938,25 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 
 		_, err = s.db.ExecContext(ctx, updateQuery, jsonData, id)
 		if err != nil {
-			log.Printf("Veritabanı güncelleme hatası: %v", err)
+			logger.Error().
+				Err(err).
+				Str("cluster", mssqlInfo.ClusterName).
+				Int("id", id).
+				Msg("MSSQL veritabanı güncelleme hatası")
 			return err
 		}
 
-		log.Printf("MSSQL node bilgileri başarıyla güncellendi (önemli değişiklik nedeniyle)")
+		logger.Info().
+			Str("hostname", mssqlInfo.Hostname).
+			Str("cluster", mssqlInfo.ClusterName).
+			Int("record_id", id).
+			Msg("MSSQL node bilgileri başarıyla güncellendi (önemli değişiklik nedeniyle)")
 	} else if err == sql.ErrNoRows {
 		// Kayıt bulunamadı, yeni kayıt oluştur
-		log.Printf("MSSQL cluster için kayıt bulunamadı, yeni kayıt oluşturuluyor: %s", mssqlInfo.ClusterName)
+		logger.Info().
+			Str("cluster", mssqlInfo.ClusterName).
+			Str("hostname", mssqlInfo.Hostname).
+			Msg("MSSQL cluster için kayıt bulunamadı, yeni kayıt oluşturuluyor")
 
 		outerJSON := map[string][]interface{}{
 			mssqlInfo.ClusterName: {mssqlData},
@@ -4326,7 +4964,10 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 
 		jsonData, err = json.Marshal(outerJSON)
 		if err != nil {
-			log.Printf("JSON dönüştürme hatası: %v", err)
+			logger.Error().
+				Err(err).
+				Str("cluster", mssqlInfo.ClusterName).
+				Msg("MSSQL yeni kayıt JSON dönüştürme hatası")
 			return err
 		}
 
@@ -4341,14 +4982,25 @@ func (s *Server) saveMSSQLInfoToDatabase(ctx context.Context, mssqlInfo *pb.MSSQ
 
 		_, err = s.db.ExecContext(ctx, insertQuery, jsonData, mssqlInfo.ClusterName)
 		if err != nil {
-			log.Printf("Veritabanı ekleme hatası: %v", err)
+			logger.Error().
+				Err(err).
+				Str("cluster", mssqlInfo.ClusterName).
+				Str("hostname", mssqlInfo.Hostname).
+				Msg("MSSQL veritabanı ekleme hatası")
 			return err
 		}
 
-		log.Printf("MSSQL node bilgileri başarıyla veritabanına kaydedildi (yeni kayıt)")
+		logger.Info().
+			Str("cluster", mssqlInfo.ClusterName).
+			Str("hostname", mssqlInfo.Hostname).
+			Msg("MSSQL node bilgileri başarıyla veritabanına kaydedildi (yeni kayıt)")
 	} else {
 		// Başka bir veritabanı hatası oluştu
-		log.Printf("MSSQL cluster kayıt kontrolü sırasında hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("cluster", mssqlInfo.ClusterName).
+			Str("hostname", mssqlInfo.Hostname).
+			Msg("MSSQL cluster kayıt kontrolü sırasında hata")
 		return fmt.Errorf("veritabanı kontrol hatası: %v", err)
 	}
 
@@ -4387,7 +5039,10 @@ func (s *Server) GetStatusMSSQL(ctx context.Context, _ *structpb.Struct) (*struc
 
 // GetMSSQLBestPracticesAnalysis, MSSQL best practice analizi gerçekleştirir
 func (s *Server) GetMSSQLBestPracticesAnalysis(ctx context.Context, agentID, database string) (*pb.BestPracticesAnalysisResponse, error) {
-	log.Printf("[INFO] GetMSSQLBestPracticesAnalysis çağrıldı - Agent ID: %s, Database: %s", agentID, database)
+	logger.Info().
+		Str("agent_id", agentID).
+		Str("database", database).
+		Msg("GetMSSQLBestPracticesAnalysis çağrıldı")
 
 	// Agent ID'yi kontrol et
 	if agentID == "" {
@@ -4429,7 +5084,10 @@ func (s *Server) GetBestPracticesAnalysis(ctx context.Context, req *pb.BestPract
 		command = fmt.Sprintf("%s|%s", command, req.ServerName)
 	}
 
-	log.Printf("[DEBUG] MSSQL Best Practices Analysis komut: %s", command)
+	logger.Debug().
+		Str("command", command).
+		Str("agent_id", agentID).
+		Msg("MSSQL Best Practices Analysis komut")
 
 	// Sonuç kanalı oluştur
 	resultChan := make(chan *pb.QueryResult, 1)
@@ -4457,22 +5115,36 @@ func (s *Server) GetBestPracticesAnalysis(ctx context.Context, req *pb.BestPract
 		},
 	})
 	if err != nil {
-		log.Printf("[ERROR] MSSQL Best Practices Analysis sorgusu gönderilemedi: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", agentID).
+			Str("query_id", queryID).
+			Msg("MSSQL Best Practices Analysis sorgusu gönderilemedi")
 		return nil, fmt.Errorf("sorgu gönderilemedi: %v", err)
 	}
 
-	log.Printf("[INFO] MSSQL Best Practices Analysis sorgusu gönderildi - Agent: %s, QueryID: %s", agentID, queryID)
+	logger.Info().
+		Str("agent_id", agentID).
+		Str("query_id", queryID).
+		Msg("MSSQL Best Practices Analysis sorgusu gönderildi")
 
 	// Cevabı bekle
 	select {
 	case result := <-resultChan:
 		// Sonuç geldi
 		if result == nil {
-			log.Printf("[ERROR] Null sorgu sonucu alındı")
+			logger.Error().
+				Str("query_id", queryID).
+				Str("agent_id", agentID).
+				Msg("Best Practices Analysis null sonuç alındı")
 			return nil, fmt.Errorf("null sorgu sonucu alındı")
 		}
 
-		log.Printf("[DEBUG] Agent'tan yanıt alındı - QueryID: %s, TypeUrl: %s", queryID, result.Result.TypeUrl)
+		logger.Debug().
+			Str("query_id", queryID).
+			Str("type_url", result.Result.TypeUrl).
+			Str("agent_id", agentID).
+			Msg("Best Practices Analysis yanıt alındı")
 
 		// Sonucu BestPracticesAnalysisResponse'a dönüştür
 		response := &pb.BestPracticesAnalysisResponse{
@@ -4485,64 +5157,90 @@ func (s *Server) GetBestPracticesAnalysis(ctx context.Context, req *pb.BestPract
 		if result.Result.TypeUrl == "type.googleapis.com/google.protobuf.Value" {
 			// Value tipinde ise, doğrudan JSON string olarak kullan
 			response.AnalysisResults = result.Result.Value
-			log.Printf("[DEBUG] Best Practices Analysis sonucu alındı (JSON string, %d bytes)", len(response.AnalysisResults))
+			logger.Debug().
+				Int("result_size", len(response.AnalysisResults)).
+				Str("type", "JSON string").
+				Msg("Best Practices Analysis sonucu alındı")
 		} else {
 			// Struct olarak çözümle
 			var resultStruct structpb.Struct
 			if err := result.Result.UnmarshalTo(&resultStruct); err != nil {
-				log.Printf("[ERROR] Struct çözümleme hatası: %v", err)
+				logger.Error().
+					Err(err).
+					Msg("Struct çözümleme hatası")
 				return nil, fmt.Errorf("sonuç çözümleme hatası: %v", err)
 			}
 
 			// Struct'tan JSON string oluştur
 			resultBytes, err := json.Marshal(resultStruct.AsMap())
 			if err != nil {
-				log.Printf("[ERROR] JSON dönüştürme hatası: %v", err)
+				logger.Error().
+					Err(err).
+					Msg("JSON dönüştürme hatası")
 				return nil, fmt.Errorf("JSON dönüştürme hatası: %v", err)
 			}
 
 			response.AnalysisResults = resultBytes
-			log.Printf("[DEBUG] Best Practices Analysis sonucu alındı (Struct->JSON, %d bytes)", len(response.AnalysisResults))
+			logger.Debug().
+				Int("result_size", len(response.AnalysisResults)).
+				Str("type", "Struct->JSON").
+				Msg("Best Practices Analysis sonucu alındı")
 		}
 
 		return response, nil
 
 	case <-ctx.Done():
 		// Context iptal edildi veya zaman aşımına uğradı
-		log.Printf("[ERROR] Best Practices Analysis sonucu beklerken timeout/iptal: %v", ctx.Err())
+		logger.Error().
+			Err(ctx.Err()).
+			Msg("Best Practices Analysis sonucu beklerken timeout/iptal")
 		return nil, ctx.Err()
 	}
 }
 
 // ReportProcessLogs, agent'lardan gelen işlem loglarını işler
 func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogRequest) (*pb.ProcessLogResponse, error) {
-	log.Printf("ReportProcessLogs metodu çağrıldı - Agent ID: %s, Process ID: %s, Process Type: %s",
-		req.LogUpdate.AgentId, req.LogUpdate.ProcessId, req.LogUpdate.ProcessType)
+	logger.Info().
+		Str("agent_id", req.LogUpdate.AgentId).
+		Str("process_id", req.LogUpdate.ProcessId).
+		Str("process_type", req.LogUpdate.ProcessType).
+		Msg("ReportProcessLogs metodu çağrıldı")
 
 	// Gelen log mesajlarını logla
 	for _, msg := range req.LogUpdate.LogMessages {
-		log.Printf("[Process Log] [%s] [%s] %s", req.LogUpdate.ProcessId, req.LogUpdate.Status, msg)
+		logger.Debug().
+			Str("process_id", req.LogUpdate.ProcessId).
+			Str("status", req.LogUpdate.Status).
+			Str("message", msg).
+			Msg("Process Log")
 	}
 
 	// DEBUG: Metadata içeriğini tamamen logla
 	if metadata := req.LogUpdate.Metadata; metadata != nil {
-		log.Printf("[DEBUG] ProcessLoggerHandler - Agent: %s, Metadata Count: %d", req.LogUpdate.AgentId, len(metadata))
-		for key, value := range metadata {
-			log.Printf("[DEBUG]   Metadata: %s = %s", key, value)
-		}
+		logger.Debug().
+			Str("agent_id", req.LogUpdate.AgentId).
+			Int("metadata_count", len(metadata)).
+			Interface("metadata", metadata).
+			Msg("ProcessLoggerHandler metadata içeriği")
 	} else {
-		log.Printf("[DEBUG] ProcessLoggerHandler - Agent: %s, NO METADATA", req.LogUpdate.AgentId)
+		logger.Debug().
+			Str("agent_id", req.LogUpdate.AgentId).
+			Msg("ProcessLoggerHandler - metadata yok")
 	}
 
 	// ProcessLoggerHandler'da metadata kontrolü ekle
 	if metadata := req.LogUpdate.Metadata; metadata != nil {
 		// 1. Failover Coordination Request (Yeni master'dan gelen)
 		if isFailoverRequest, exists := metadata["failover_coordination_request"]; exists && isFailoverRequest == "true" {
-			log.Printf("[COORDINATION] 🚀 Failover koordinasyon talebi algılandı: %s", req.LogUpdate.AgentId)
-			log.Printf("[COORDINATION] Metadata sayısı: %d", len(metadata))
-			for key, value := range metadata {
-				log.Printf("[COORDINATION]   %s: %s", key, value)
-			}
+			logger.Info().
+				Str("agent_id", req.LogUpdate.AgentId).
+				Str("process_id", req.LogUpdate.ProcessId).
+				Int("metadata_count", len(metadata)).
+				Msg("Failover koordinasyon talebi algılandı")
+			logger.Debug().
+				Str("agent_id", req.LogUpdate.AgentId).
+				Interface("metadata", metadata).
+				Msg("Coordination metadata detayları")
 
 			// Duplicate coordination prevention check
 			coordinationKey := fmt.Sprintf("%s_%s_%s_%s",
@@ -4557,8 +5255,10 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 			// Eğer son 60 saniye içinde işlenmişse skip et
 			if alreadyProcessed && time.Since(lastProcessed) < 60*time.Second {
 				s.coordinationMu.Unlock()
-				log.Printf("[COORDINATION] ⚠️ Duplicate coordination request skipped: %s (last processed: %v ago)",
-					coordinationKey, time.Since(lastProcessed).Round(time.Second))
+				logger.Warn().
+					Str("coordination_key", coordinationKey).
+					Dur("last_processed_ago", time.Since(lastProcessed).Round(time.Second)).
+					Msg("Duplicate coordination request skipped")
 				return &pb.ProcessLogResponse{
 					Status:  "ok",
 					Message: "Process logları başarıyla alındı (duplicate coordination skipped)",
@@ -4574,36 +5274,52 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 			s.coordinationMu.Unlock()
 
 			// Koordinasyon işlemini başlat
-			log.Printf("[COORDINATION] ✅ Coordination işlemi goroutine'de başlatılıyor... (Key: %s)", coordinationKey)
+			logger.Info().
+				Str("coordination_key", coordinationKey).
+				Str("agent_id", req.LogUpdate.AgentId).
+				Msg("Coordination işlemi goroutine'de başlatılıyor")
 			go s.handleFailoverCoordination(req.LogUpdate, req.LogUpdate.AgentId)
 		}
 
 		// 2. Coordination Completion (Eski master'dan gelen)
-		log.Printf("[DEBUG] Checking for coordination_completion metadata...")
+		logger.Debug().Msg("Checking for coordination_completion metadata...")
 		if coordinationCompletionValue, exists := metadata["coordination_completion"]; exists {
-			log.Printf("[DEBUG] coordination_completion metadata found: '%s' (exists: %t)", coordinationCompletionValue, exists)
+			logger.Debug().
+				Str("completion_value", coordinationCompletionValue).
+				Bool("exists", exists).
+				Msg("coordination_completion metadata found")
 			if coordinationCompletionValue == "true" {
-				log.Printf("[COORDINATION] 🎉 Coordination completion bildirimi algılandı: %s", req.LogUpdate.AgentId)
-				log.Printf("[COORDINATION] Completion metadata sayısı: %d", len(metadata))
-				for key, value := range metadata {
-					log.Printf("[COORDINATION]   %s: %s", key, value)
-				}
+				logger.Info().
+					Str("agent_id", req.LogUpdate.AgentId).
+					Str("process_id", req.LogUpdate.ProcessId).
+					Int("metadata_count", len(metadata)).
+					Msg("Coordination completion bildirimi algılandı")
+				logger.Debug().
+					Str("agent_id", req.LogUpdate.AgentId).
+					Interface("metadata", metadata).
+					Msg("Completion metadata detayları")
 
 				// Coordination completion işlemini handle et
-				log.Printf("[COORDINATION] handleCoordinationCompletion fonksiyonu çağrılıyor...")
+				logger.Debug().Msg("handleCoordinationCompletion fonksiyonu çağrılıyor")
 				go s.handleCoordinationCompletion(req.LogUpdate, req.LogUpdate.AgentId)
 			} else {
-				log.Printf("[DEBUG] coordination_completion metadata var ama 'true' değil: '%s'", coordinationCompletionValue)
+				logger.Debug().
+					Str("completion_value", coordinationCompletionValue).
+					Msg("coordination_completion metadata var ama 'true' değil")
 			}
 		} else {
-			log.Printf("[DEBUG] coordination_completion metadata bulunamadı")
+			logger.Debug().Msg("coordination_completion metadata bulunamadı")
 		}
 	}
 
 	// Normal process log işleme devam et...
 	err := s.saveProcessLogs(ctx, req.LogUpdate)
 	if err != nil {
-		log.Printf("Process logları veritabanına kaydedilemedi: %v", err)
+		logger.Error().
+			Err(err).
+			Str("agent_id", req.LogUpdate.AgentId).
+			Str("process_id", req.LogUpdate.ProcessId).
+			Msg("Process logları veritabanına kaydedilemedi")
 		return &pb.ProcessLogResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Veritabanı hatası: %v", err),
@@ -4650,7 +5366,10 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 
 	if !processExists {
 		// İşlem ilk kez kaydediliyor
-		log.Printf("Yeni işlem kaydı oluşturuluyor: %s", logUpdate.ProcessId)
+		logger.Info().
+			Str("process_id", logUpdate.ProcessId).
+			Str("agent_id", logUpdate.AgentId).
+			Msg("Yeni işlem kaydı oluşturuluyor")
 
 		insertQuery := `
 			INSERT INTO process_logs (
@@ -4682,7 +5401,10 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 		}
 	} else {
 		// Mevcut işlem güncelleniyor
-		log.Printf("Mevcut işlem kaydı güncelleniyor: %s", logUpdate.ProcessId)
+		logger.Debug().
+			Str("process_id", logUpdate.ProcessId).
+			Str("agent_id", logUpdate.AgentId).
+			Msg("Mevcut işlem kaydı güncelleniyor")
 
 		// Mevcut log mesajlarını al
 		var existingLogs []byte
@@ -4738,12 +5460,18 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 
 	// Eğer işlem tamamlandıysa veya başarısız olduysa, job durumunu da güncelle
 	if logUpdate.Status == "completed" || logUpdate.Status == "failed" {
-		log.Printf("Process %s tamamlandı, job durumu güncelleniyor. Status: %s", logUpdate.ProcessId, logUpdate.Status)
+		logger.Info().
+			Str("process_id", logUpdate.ProcessId).
+			Str("status", logUpdate.Status).
+			Str("agent_id", logUpdate.AgentId).
+			Msg("Process tamamlandı, job durumu güncelleniyor")
 
 		// Coordination job'ları için özel kontrol - handleCoordinationCompletion zaten hallediyor
 		if logUpdate.Metadata != nil {
 			if coordinationCompletion, exists := logUpdate.Metadata["coordination_completion"]; exists && coordinationCompletion == "true" {
-				log.Printf("[COORDINATION] 🚫 Process %s coordination job olduğu için saveProcessLogs'da job update SKIP edildi (handleCoordinationCompletion halletti)", logUpdate.ProcessId)
+				logger.Debug().
+					Str("process_id", logUpdate.ProcessId).
+					Msg("Process coordination job olduğu için saveProcessLogs'da job update SKIP edildi (handleCoordinationCompletion halletti)")
 				return nil
 			}
 		}
@@ -4760,7 +5488,9 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 
 				// Eğer bu bir coordination job ise, özel işlem yap
 				if job.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
-					log.Printf("[COORDINATION] 🎉 Coordination job tamamlandı: %s", job.JobId)
+					logger.Info().
+						Str("job_id", job.JobId).
+						Msg("Coordination job tamamlandı")
 					job.Result = "PostgreSQL convert to slave coordination completed successfully"
 				}
 			} else {
@@ -4769,7 +5499,9 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 
 				// Eğer bu bir coordination job ise, özel hata işlemi yap
 				if job.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
-					log.Printf("[COORDINATION] ❌ Coordination job başarısız: %s", job.JobId)
+					logger.Error().
+						Str("job_id", job.JobId).
+						Msg("Coordination job başarısız")
 					job.ErrorMessage = "PostgreSQL convert to slave coordination failed"
 				}
 			}
@@ -4781,27 +5513,48 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 			// Veritabanında da job durumunu güncelle
 			err = s.updateJobInDatabase(context.Background(), job)
 			if err != nil {
-				log.Printf("Job durumu veritabanında güncellenirken hata: %v", err)
+				logger.Error().
+					Err(err).
+					Str("job_id", job.JobId).
+					Str("process_id", logUpdate.ProcessId).
+					Msg("Job durumu veritabanında güncellenirken hata")
 			} else {
 				if job.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
-					log.Printf("[COORDINATION] ✅ Coordination job veritabanında güncellendi: %s -> %s", logUpdate.ProcessId, job.Status.String())
+					logger.Info().
+						Str("process_id", logUpdate.ProcessId).
+						Str("job_status", job.Status.String()).
+						Msg("Coordination job veritabanında güncellendi")
 				} else {
-					log.Printf("Job durumu başarıyla güncellendi: %s -> %s", logUpdate.ProcessId, job.Status.String())
+					logger.Info().
+						Str("process_id", logUpdate.ProcessId).
+						Str("job_status", job.Status.String()).
+						Msg("Job durumu başarıyla güncellendi")
 				}
 			}
 		} else {
 			s.jobMu.Unlock()
-			log.Printf("Process ID'ye karşılık gelen job bulunamadı: %s", logUpdate.ProcessId)
+			logger.Warn().
+				Str("process_id", logUpdate.ProcessId).
+				Str("agent_id", logUpdate.AgentId).
+				Str("status", logUpdate.Status).
+				Msg("Process ID'ye karşılık gelen job bulunamadı")
 		}
 	}
 
-	log.Printf("Process logları başarıyla kaydedildi - Process ID: %s", logUpdate.ProcessId)
+	logger.Debug().
+		Str("process_id", logUpdate.ProcessId).
+		Str("agent_id", logUpdate.AgentId).
+		Str("status", logUpdate.Status).
+		Msg("Process logları başarıyla kaydedildi")
 	return nil
 }
 
 // GetProcessStatus, belirli bir işlemin durumunu sorgular
 func (s *Server) GetProcessStatus(ctx context.Context, req *pb.ProcessStatusRequest) (*pb.ProcessStatusResponse, error) {
-	log.Printf("GetProcessStatus metodu çağrıldı - Agent ID: %s, Process ID: %s", req.AgentId, req.ProcessId)
+	logger.Info().
+		Str("agent_id", req.AgentId).
+		Str("process_id", req.ProcessId).
+		Msg("GetProcessStatus metodu çağrıldı")
 
 	// Veritabanı bağlantısını kontrol et
 	if err := s.checkDatabaseConnection(); err != nil {
@@ -4830,7 +5583,12 @@ func (s *Server) GetProcessStatus(ctx context.Context, req *pb.ProcessStatusRequ
 		args = []interface{}{req.ProcessId}
 	}
 
-	log.Printf("Process sorgusu: %s, Parametreler: %v", query, args)
+	logger.Debug().
+		Str("sql_query", query).
+		Interface("parameters", args).
+		Str("agent_id", req.AgentId).
+		Str("process_id", req.ProcessId).
+		Msg("Process sorgusu")
 
 	var (
 		processID       string
@@ -4859,29 +5617,49 @@ func (s *Server) GetProcessStatus(ctx context.Context, req *pb.ProcessStatusRequ
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			log.Printf("Process bulunamadı: %s", req.ProcessId)
+			logger.Warn().
+				Str("process_id", req.ProcessId).
+				Str("agent_id", req.AgentId).
+				Msg("Process bulunamadı")
 			return nil, fmt.Errorf("process bulunamadı: %s", req.ProcessId)
 		}
-		log.Printf("Process bilgileri alınırken hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("process_id", req.ProcessId).
+			Str("agent_id", req.AgentId).
+			Msg("Process bilgileri alınırken hata")
 		return nil, fmt.Errorf("process bilgileri alınırken hata: %v", err)
 	}
 
 	// Log mesajlarını çözümle
 	var logMessages []string
 	if err := json.Unmarshal(logMessagesJSON, &logMessages); err != nil {
-		log.Printf("Log mesajları ayrıştırılırken hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("process_id", req.ProcessId).
+			Str("agent_id", req.AgentId).
+			Msg("Log mesajları ayrıştırılırken hata")
 		return nil, fmt.Errorf("log mesajları ayrıştırılırken hata: %v", err)
 	}
 
 	// Metadata'yı çözümle
 	var metadata map[string]string
 	if err := json.Unmarshal(metadataJSON, &metadata); err != nil {
-		log.Printf("Metadata ayrıştırılırken hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("process_id", req.ProcessId).
+			Str("agent_id", req.AgentId).
+			Msg("Metadata ayrıştırılırken hata")
 		return nil, fmt.Errorf("metadata ayrıştırılırken hata: %v", err)
 	}
 
-	log.Printf("Process bilgileri başarıyla alındı - Process ID: %s, Status: %s, Log sayısı: %d",
-		processID, status, len(logMessages))
+	logger.Debug().
+		Str("process_id", processID).
+		Str("process_type", processType).
+		Str("status", status).
+		Int("log_count", len(logMessages)).
+		Str("agent_id", req.AgentId).
+		Msg("Process bilgileri başarıyla alındı")
 
 	return &pb.ProcessStatusResponse{
 		ProcessId:    processID,
@@ -4910,62 +5688,94 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 	}
 	action := metadata["action"]
 
-	log.Printf("[COORDINATION] Failover koordinasyon işlemi başlatılıyor: %s -> %s (Talep eden agent: %s)",
-		oldMasterHost, newMasterHost, requestingAgentId)
-	log.Printf("[COORDINATION] Metadata bilgileri: action=%s, data_dir=%s, repl_user=%s, repl_pass_empty=%t",
-		action, dataDirectory, replUser, replPass == "")
+	logger.Info().
+		Str("old_master_host", oldMasterHost).
+		Str("new_master_host", newMasterHost).
+		Str("requesting_agent_id", requestingAgentId).
+		Str("action", action).
+		Str("data_directory", dataDirectory).
+		Str("replication_user", replUser).
+		Bool("replication_password_provided", replPass != "").
+		Msg("Failover koordinasyon işlemi başlatılıyor")
 
 	if action != "convert_master_to_slave" || oldMasterHost == "" {
-		log.Printf("[COORDINATION] ❌ Geçersiz failover koordinasyon talebi: action=%s, oldMaster=%s", action, oldMasterHost)
+		logger.Error().
+			Str("action", action).
+			Str("old_master_host", oldMasterHost).
+			Msg("Geçersiz failover koordinasyon talebi")
 		return
 	}
 
 	// Replication bilgilerini kontrol et
 	if replUser == "" || replPass == "" {
-		log.Printf("[COORDINATION] ❌ Replication bilgileri eksik: user=%s, pass_empty=%t", replUser, replPass == "")
+		logger.Error().
+			Str("replication_user", replUser).
+			Bool("replication_password_provided", replPass != "").
+			Msg("Replication bilgileri eksik")
 		return
 	}
 
 	// Güvenlik kontrolü: Talep eden agent'ın yeni master olduğunu doğrula
 	expectedRequestingAgent := fmt.Sprintf("agent_%s", newMasterHost)
 	if requestingAgentId != expectedRequestingAgent {
-		log.Printf("[COORDINATION] ⚠️ Güvenlik uyarısı: Koordinasyon talebi beklenmeyen agent'dan geldi. Beklenen: %s, Gelen: %s",
-			expectedRequestingAgent, requestingAgentId)
+		logger.Warn().
+			Str("expected_agent", expectedRequestingAgent).
+			Str("requesting_agent_id", requestingAgentId).
+			Str("new_master_host", newMasterHost).
+			Msg("Güvenlik uyarısı: Koordinasyon talebi beklenmeyen agent'dan geldi")
 		// İsteğe bağlı: Bu durumda işlemi durdurabilirsin
 		// return
 	} else {
-		log.Printf("[COORDINATION] ✅ Güvenlik kontrolü başarılı: Talep eden agent doğru (%s)", requestingAgentId)
+		logger.Info().
+			Str("requesting_agent_id", requestingAgentId).
+			Str("expected_agent", expectedRequestingAgent).
+			Msg("Güvenlik kontrolü başarılı: Talep eden agent doğru")
 	}
 
 	// Eski master agent'ını bul
 	oldMasterAgentId := fmt.Sprintf("agent_%s", oldMasterHost)
-	log.Printf("[COORDINATION] Eski master agent aranıyor: %s", oldMasterAgentId)
+	logger.Info().
+		Str("old_master_agent_id", oldMasterAgentId).
+		Str("old_master_host", oldMasterHost).
+		Msg("Eski master agent aranıyor")
 
 	s.mu.RLock()
 	oldMasterAgent, exists := s.agents[oldMasterAgentId]
 	agentCount := len(s.agents)
+
+	// Mevcut agent'ları da al
+	var availableAgents []string
+	for agentId := range s.agents {
+		availableAgents = append(availableAgents, agentId)
+	}
 	s.mu.RUnlock()
 
-	log.Printf("[COORDINATION] Agent durumu: mevcut_agent_sayısı=%d, %s_bulundu=%t", agentCount, oldMasterAgentId, exists)
+	logger.Debug().
+		Int("total_agents", agentCount).
+		Str("old_master_agent_id", oldMasterAgentId).
+		Bool("agent_found", exists).
+		Strs("available_agents", availableAgents).
+		Msg("Agent durumu")
 
 	if !exists {
-		log.Printf("[COORDINATION] ❌ Eski master agent bulunamadı: %s", oldMasterAgentId)
-
-		// Mevcut agent'ları listele
-		s.mu.RLock()
-		log.Printf("[COORDINATION] Mevcut agent'lar:")
-		for agentId := range s.agents {
-			log.Printf("[COORDINATION]   - %s", agentId)
-		}
-		s.mu.RUnlock()
+		logger.Error().
+			Str("old_master_agent_id", oldMasterAgentId).
+			Strs("available_agents", availableAgents).
+			Int("total_agents", agentCount).
+			Msg("Eski master agent bulunamadı")
 		return
 	}
 
-	log.Printf("[COORDINATION] ✅ Eski master agent bulundu: %s", oldMasterAgentId)
+	logger.Info().
+		Str("old_master_agent_id", oldMasterAgentId).
+		Msg("Eski master agent bulundu")
 
 	// Job oluştur
 	jobID := fmt.Sprintf("coord_%d", time.Now().UnixNano())
-	log.Printf("[COORDINATION] Job oluşturuluyor: %s", jobID)
+	logger.Info().
+		Str("job_id", jobID).
+		Str("old_master_host", oldMasterHost).
+		Msg("Coordination job oluşturuluyor")
 
 	job := &pb.Job{
 		JobId:     jobID,
@@ -4988,7 +5798,9 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 	s.jobMu.Lock()
 	s.jobs[jobID] = job
 	s.jobMu.Unlock()
-	log.Printf("[COORDINATION] ✅ Job kaydedildi: %s", jobID)
+	logger.Info().
+		Str("job_id", jobID).
+		Msg("Coordination job kaydedildi")
 
 	// ConvertPostgresToSlave komutunu gönder - Agent'dan gelen replication bilgilerini kullan
 	// Format: convert_postgres_to_slave|new_master_host|port|data_dir|repl_user|repl_pass|process_id
@@ -4996,50 +5808,100 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 	command := fmt.Sprintf("convert_postgres_to_slave|%s|5432|%s|%s|%s|%s",
 		newMasterHost, dataDirectory, replUser, replPass, jobID)
 
-	log.Printf("[COORDINATION] Komut hazırlandı (process tracking ile): %s", command)
-	log.Printf("[COORDINATION] Komut %s agent'ına gönderiliyor...", oldMasterAgentId)
+	logger.Debug().
+		Str("command", command).
+		Str("old_master_agent_id", oldMasterAgentId).
+		Str("job_id", jobID).
+		Msg("Convert komutu hazırlandı")
+	logger.Info().
+		Str("old_master_agent_id", oldMasterAgentId).
+		Str("old_master_host", oldMasterHost).
+		Msg("Convert komutu agent'a gönderiliyor")
 
-	err := oldMasterAgent.Stream.Send(&pb.ServerMessage{
-		Payload: &pb.ServerMessage_Query{
-			Query: &pb.Query{
-				QueryId: jobID,
-				Command: command,
+	// 🔧 FIX: Timeout ile Stream.Send() çağrısı
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Channel kullanarak timeout kontrollü gönderme
+	sendDone := make(chan error, 1)
+	go func() {
+		err := oldMasterAgent.Stream.Send(&pb.ServerMessage{
+			Payload: &pb.ServerMessage_Query{
+				Query: &pb.Query{
+					QueryId: jobID,
+					Command: command,
+				},
 			},
-		},
-	})
+		})
+		sendDone <- err
+	}()
 
-	if err != nil {
-		log.Printf("[COORDINATION] ❌ Eski master'a convert komutu gönderilemedi (Talep eden: %s): %v", requestingAgentId, err)
+	// Timeout veya başarı durumunu bekle
+	select {
+	case err := <-sendDone:
+		if err != nil {
+			logger.Error().
+				Err(err).
+				Str("requesting_agent_id", requestingAgentId).
+				Str("old_master_agent_id", oldMasterAgentId).
+				Str("job_id", jobID).
+				Msg("Eski master'a convert komutu gönderilemedi")
+			job.Status = pb.JobStatus_JOB_STATUS_FAILED
+			job.ErrorMessage = fmt.Sprintf("Agent'a komut gönderilemedi: %v", err)
+			job.UpdatedAt = timestamppb.Now()
+		} else {
+			logger.Info().
+				Str("old_master_agent_id", oldMasterAgentId).
+				Str("old_master_host", oldMasterHost).
+				Str("new_master_host", newMasterHost).
+				Str("job_id", jobID).
+				Str("requesting_agent_id", requestingAgentId).
+				Msg("Eski master'a convert komutu başarıyla gönderildi")
+			job.Status = pb.JobStatus_JOB_STATUS_RUNNING
+			job.UpdatedAt = timestamppb.Now()
+
+			// 🌉 PROCESS LOG BRIDGE: Coordination başlatıldığını promotion process logs'una ekle
+			go s.bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHost,
+				fmt.Sprintf("[%s] Coordination başlatıldı: Eski master (%s) slave'e dönüştürülüyor...",
+					time.Now().Format("15:04:05"), oldMasterHost))
+		}
+	case <-ctx.Done():
+		logger.Error().
+			Str("old_master_agent_id", oldMasterAgentId).
+			Str("job_id", jobID).
+			Msg("Timeout: Eski master'a convert komutu gönderilemedi (10s timeout)")
 		job.Status = pb.JobStatus_JOB_STATUS_FAILED
-		job.ErrorMessage = fmt.Sprintf("Agent'a komut gönderilemedi: %v", err)
+		job.ErrorMessage = "Timeout: Agent'a komut gönderilemedi (10s timeout)"
 		job.UpdatedAt = timestamppb.Now()
-	} else {
-		log.Printf("[COORDINATION] ✅ Eski master'a convert komutu başarıyla gönderildi!")
-		log.Printf("[COORDINATION]   - Hedef Agent: %s", oldMasterAgentId)
-		log.Printf("[COORDINATION]   - Eski Master: %s", oldMasterHost)
-		log.Printf("[COORDINATION]   - Yeni Master: %s", newMasterHost)
-		log.Printf("[COORDINATION]   - Job ID: %s", jobID)
-		log.Printf("[COORDINATION]   - Talep eden: %s", requestingAgentId)
-		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
-		job.UpdatedAt = timestamppb.Now()
-
-		// 🌉 PROCESS LOG BRIDGE: Coordination başlatıldığını promotion process logs'una ekle
-		go s.bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHost,
-			fmt.Sprintf("[%s] Coordination başlatıldı: Eski master (%s) slave'e dönüştürülüyor...",
-				time.Now().Format("15:04:05"), oldMasterHost))
 	}
 
-	s.updateJobInDatabase(context.Background(), job)
-	log.Printf("[COORDINATION] Job durumu güncellendi: %s -> %s", jobID, job.Status.String())
+	// 🔧 FIX: Database update için de timeout context kullan
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer dbCancel()
+
+	if err := s.updateJobInDatabase(dbCtx, job); err != nil {
+		logger.Error().
+			Err(err).
+			Str("job_id", jobID).
+			Msg("Job veritabanında güncellenirken hata")
+	} else {
+		logger.Info().
+			Str("job_id", jobID).
+			Str("job_status", job.Status.String()).
+			Msg("Coordination job durumu güncellendi")
+	}
 }
 
 // handleCoordinationCompletion coordination completion işlemini yönetir
 func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, reportingAgentId string) {
-	log.Printf("[COORDINATION] 🎯 handleCoordinationCompletion fonksiyonu başladı!")
+	logger.Info().
+		Str("reporting_agent_id", reportingAgentId).
+		Str("process_id", update.ProcessId).
+		Msg("handleCoordinationCompletion fonksiyonu başladı")
 
 	metadata := update.Metadata
 	if metadata == nil {
-		log.Printf("[COORDINATION] ❌ Metadata nil! handleCoordinationCompletion'dan çıkılıyor")
+		logger.Error().Msg("Metadata nil! handleCoordinationCompletion'dan çıkılıyor")
 		return
 	}
 
@@ -5050,78 +5912,121 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 	status := metadata["completion_status"]              // "success" or "failed"
 	requestingAgentId := metadata["requesting_agent_id"] // Asıl requesting agent (promotion yapan)
 
-	log.Printf("[COORDINATION] 🎯 Coordination completion işlemi başlatılıyor")
-	log.Printf("[COORDINATION]   Job ID: %s", coordinationJobId)
-	log.Printf("[COORDINATION]   Old Master: %s", oldMasterHost)
-	log.Printf("[COORDINATION]   New Master: %s", newMasterHost)
-	log.Printf("[COORDINATION]   Action: %s", action)
-	log.Printf("[COORDINATION]   Status: %s", status)
-	log.Printf("[COORDINATION]   Reporting Agent: %s", reportingAgentId)
+	logger.Info().
+		Str("coordination_job_id", coordinationJobId).
+		Str("old_master_host", oldMasterHost).
+		Str("new_master_host", newMasterHost).
+		Str("action", action).
+		Str("completion_status", status).
+		Str("reporting_agent_id", reportingAgentId).
+		Str("requesting_agent_id", requestingAgentId).
+		Msg("Coordination completion işlemi başlatılıyor")
 
 	if coordinationJobId == "" {
-		log.Printf("[COORDINATION] ❌ Coordination job ID eksik, completion işlemi yapılamıyor")
+		logger.Error().Msg("Coordination job ID eksik, completion işlemi yapılamıyor")
 		return
 	}
 
 	// Coordination job'unu bul
-	log.Printf("[COORDINATION] 🔍 Job aranıyor: %s", coordinationJobId)
+	logger.Debug().
+		Str("coordination_job_id", coordinationJobId).
+		Msg("Job aranıyor")
 	s.jobMu.Lock()
 
 	// Debug: Mevcut job'ları listele
-	log.Printf("[COORDINATION] Mevcut job sayısı: %d", len(s.jobs))
+	var existingJobIds []string
+	var existingJobTypes []string
 	for jobId, job := range s.jobs {
-		log.Printf("[COORDINATION]   Job ID: %s, Type: %s, Status: %s", jobId, job.Type.String(), job.Status.String())
+		existingJobIds = append(existingJobIds, jobId)
+		existingJobTypes = append(existingJobTypes, job.Type.String())
 	}
+
+	logger.Debug().
+		Int("total_jobs", len(s.jobs)).
+		Strs("job_ids", existingJobIds).
+		Strs("job_types", existingJobTypes).
+		Msg("Mevcut job'lar")
 
 	job, exists := s.jobs[coordinationJobId]
 	if !exists {
 		s.jobMu.Unlock()
-		log.Printf("[COORDINATION] ❌ Coordination job bulunamadı: %s", coordinationJobId)
-		log.Printf("[COORDINATION] ❌ Aranan job ID tam olarak: '%s'", coordinationJobId)
+		logger.Error().
+			Str("coordination_job_id", coordinationJobId).
+			Strs("available_job_ids", existingJobIds).
+			Msg("Coordination job bulunamadı")
 		return
 	}
 
-	log.Printf("[COORDINATION] ✅ Coordination job bulundu: %s, Status: %s", coordinationJobId, job.Status.String())
+	logger.Info().
+		Str("coordination_job_id", coordinationJobId).
+		Str("job_status", job.Status.String()).
+		Msg("Coordination job bulundu")
 
 	// Job durumunu güncelle
-	log.Printf("[COORDINATION] 🔄 Job status güncelleniyor: %s (Gelen Status: %s)", coordinationJobId, status)
+	logger.Info().
+		Str("coordination_job_id", coordinationJobId).
+		Str("incoming_status", status).
+		Msg("Job status güncelleniyor")
 
 	oldStatus := job.Status.String()
 	if status == "success" || status == "completed" {
 		job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
 		job.Result = fmt.Sprintf("Coordination completed successfully: %s converted to slave by %s", oldMasterHost, reportingAgentId)
-		log.Printf("[COORDINATION] ✅ Coordination job başarıyla tamamlandı: %s", coordinationJobId)
+		logger.Info().
+			Str("coordination_job_id", coordinationJobId).
+			Str("old_master_host", oldMasterHost).
+			Str("reporting_agent_id", reportingAgentId).
+			Msg("Coordination job başarıyla tamamlandı")
 	} else {
 		job.Status = pb.JobStatus_JOB_STATUS_FAILED
 		job.ErrorMessage = fmt.Sprintf("Coordination failed: %s could not be converted to slave", oldMasterHost)
-		log.Printf("[COORDINATION] ❌ Coordination job başarısız: %s", coordinationJobId)
+		logger.Error().
+			Str("coordination_job_id", coordinationJobId).
+			Str("old_master_host", oldMasterHost).
+			Msg("Coordination job başarısız")
 	}
 
 	job.UpdatedAt = timestamppb.Now()
 	s.jobs[coordinationJobId] = job
 	s.jobMu.Unlock()
 
-	log.Printf("[COORDINATION] 📊 Job status değişimi: %s -> %s", oldStatus, job.Status.String())
+	logger.Info().
+		Str("coordination_job_id", coordinationJobId).
+		Str("old_status", oldStatus).
+		Str("new_status", job.Status.String()).
+		Msg("Job status değişimi")
 
 	// Veritabanında job durumunu güncelle
-	log.Printf("[COORDINATION] 💾 Veritabanında job güncelleniyor...")
+	logger.Debug().
+		Str("coordination_job_id", coordinationJobId).
+		Msg("Veritabanında job güncelleniyor")
 	err := s.updateJobInDatabase(context.Background(), job)
 	if err != nil {
-		log.Printf("[COORDINATION] ❌ Job veritabanında güncellenirken hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("coordination_job_id", coordinationJobId).
+			Msg("Job veritabanında güncellenirken hata")
 	} else {
-		log.Printf("[COORDINATION] ✅ Coordination job veritabanında güncellendi: %s -> %s",
-			coordinationJobId, job.Status.String())
+		logger.Info().
+			Str("coordination_job_id", coordinationJobId).
+			Str("job_status", job.Status.String()).
+			Msg("Coordination job veritabanında güncellendi")
 	}
 
 	// 🚀 BONUS: İlgili promotion job'unu da complete et
 	// Eğer coordination başarılı olduysa, requesting agent'ın promotion job'unu da tamamla
 	if status == "success" || status == "completed" {
-		log.Printf("[COORDINATION] 🔄 İlgili promotion job'u aranıyor ve complete ediliyor...")
+		logger.Info().
+			Str("coordination_job_id", coordinationJobId).
+			Str("requesting_agent_id", requestingAgentId).
+			Msg("İlgili promotion job'u aranıyor ve complete ediliyor")
 
 		// Bridge için doğru agent ID'sini belirle (requesting agent promotion yapan, reporting agent eski master)
 		bridgeAgentId := requestingAgentId
 		if bridgeAgentId == "" {
-			log.Printf("[COORDINATION] ⚠️  requesting_agent_id bulunamadı, new_master_host ile agent aranıyor...")
+			logger.Debug().
+				Str("new_master_host", newMasterHost).
+				Msg("requesting_agent_id bulunamadı, new_master_host ile agent aranıyor")
 
 			// new_master_host (skadi) ile eşleşen agent'ı bul
 			s.mu.RLock()
@@ -5132,7 +6037,10 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 					hostname := strings.TrimPrefix(agentId, "agent_")
 					if hostname == newMasterHost {
 						bridgeAgentId = agentId
-						log.Printf("[COORDINATION] ✅ new_master_host (%s) ile eşleşen agent bulundu: %s", newMasterHost, bridgeAgentId)
+						logger.Info().
+							Str("new_master_host", newMasterHost).
+							Str("bridge_agent_id", bridgeAgentId).
+							Msg("new_master_host ile eşleşen agent bulundu")
 						break
 					}
 				}
@@ -5140,7 +6048,10 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 			s.mu.RUnlock()
 
 			if bridgeAgentId == "" {
-				log.Printf("[COORDINATION] ❌ new_master_host (%s) ile eşleşen agent bulunamadı, fallback olarak reportingAgentId kullanılıyor", newMasterHost)
+				logger.Warn().
+					Str("new_master_host", newMasterHost).
+					Str("fallback_agent_id", reportingAgentId).
+					Msg("new_master_host ile eşleşen agent bulunamadı, fallback olarak reportingAgentId kullanılıyor")
 				bridgeAgentId = reportingAgentId
 			}
 		}
@@ -5165,7 +6076,9 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 		// Bridge için doğru agent ID'sini belirle
 		bridgeAgentId := requestingAgentId
 		if bridgeAgentId == "" {
-			log.Printf("[COORDINATION] ⚠️  requesting_agent_id bulunamadı (failure case), new_master_host ile agent aranıyor...")
+			logger.Debug().
+				Str("new_master_host", newMasterHost).
+				Msg("requesting_agent_id bulunamadı (failure case), new_master_host ile agent aranıyor")
 
 			// new_master_host (skadi) ile eşleşen agent'ı bul
 			s.mu.RLock()
@@ -5175,7 +6088,10 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 					hostname := strings.TrimPrefix(agentId, "agent_")
 					if hostname == newMasterHost {
 						bridgeAgentId = agentId
-						log.Printf("[COORDINATION] ✅ new_master_host (%s) ile eşleşen agent bulundu (failure case): %s", newMasterHost, bridgeAgentId)
+						logger.Info().
+							Str("new_master_host", newMasterHost).
+							Str("bridge_agent_id", bridgeAgentId).
+							Msg("new_master_host ile eşleşen agent bulundu (failure case)")
 						break
 					}
 				}
@@ -5183,7 +6099,10 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 			s.mu.RUnlock()
 
 			if bridgeAgentId == "" {
-				log.Printf("[COORDINATION] ❌ new_master_host (%s) ile eşleşen agent bulunamadı (failure case), fallback olarak reportingAgentId kullanılıyor", newMasterHost)
+				logger.Warn().
+					Str("new_master_host", newMasterHost).
+					Str("fallback_agent_id", reportingAgentId).
+					Msg("new_master_host ile eşleşen agent bulunamadı (failure case), fallback olarak reportingAgentId kullanılıyor")
 				bridgeAgentId = reportingAgentId
 			}
 		}
@@ -5194,12 +6113,18 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 		go s.bridgeCoordinationLogToPromotion(bridgeAgentId, newMasterHost, failureMessage)
 	}
 
-	log.Printf("[COORDINATION] 🎉 Coordination completion işlemi tamamlandı!")
+	logger.Info().
+		Str("coordination_job_id", coordinationJobId).
+		Str("completion_status", status).
+		Msg("Coordination completion işlemi tamamlandı")
 }
 
 // completeRelatedPromotionJob ilgili promotion job'unu complete eder
 func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost string) {
-	log.Printf("[COORDINATION] 🔍 %s agent'ının promotion job'u aranıyor (new master: %s)...", requestingAgentId, newMasterHost)
+	logger.Info().
+		Str("requesting_agent_id", requestingAgentId).
+		Str("new_master_host", newMasterHost).
+		Msg("Agent'ının promotion job'u aranıyor")
 
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
@@ -5223,31 +6148,48 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 				if nodeHostname == newMasterHost {
 					promotionJob = job
 					promotionJobId = jobId
-					log.Printf("[COORDINATION] ✅ Eşleşen promotion job bulundu: %s (node: %s)", jobId, nodeHostname)
+					logger.Info().
+						Str("job_id", jobId).
+						Str("node_hostname", nodeHostname).
+						Str("new_master_host", newMasterHost).
+						Msg("Eşleşen promotion job bulundu")
 					break
 				} else {
-					log.Printf("[COORDINATION] ⚠️  Promotion job bulundu ama node hostname eşleşmiyor: %s != %s", nodeHostname, newMasterHost)
+					logger.Debug().
+						Str("job_id", jobId).
+						Str("node_hostname", nodeHostname).
+						Str("new_master_host", newMasterHost).
+						Msg("Promotion job bulundu ama node hostname eşleşmiyor")
 				}
 			} else {
 				// Node hostname yoksa, agent ve type eşleşen ilk job'u al
 				promotionJob = job
 				promotionJobId = jobId
-				log.Printf("[COORDINATION] ✅ Promotion job bulundu (node hostname bilgisi yok): %s", jobId)
+				logger.Info().
+					Str("job_id", jobId).
+					Msg("Promotion job bulundu (node hostname bilgisi yok)")
 				break
 			}
 		}
 	}
 
 	if promotionJob == nil {
-		log.Printf("[COORDINATION] ❌ %s agent'ı için RUNNING promotion job bulunamadı", requestingAgentId)
+		logger.Warn().
+			Str("requesting_agent_id", requestingAgentId).
+			Str("new_master_host", newMasterHost).
+			Msg("Agent için RUNNING promotion job bulunamadı")
 
 		// Debug: Mevcut job'ları listele
-		log.Printf("[COORDINATION] 📊 Mevcut job'lar:")
+		var agentJobs []string
 		for jobId, job := range s.jobs {
 			if job.AgentId == requestingAgentId {
-				log.Printf("[COORDINATION]   - %s: Type=%s, Status=%s", jobId, job.Type.String(), job.Status.String())
+				agentJobs = append(agentJobs, fmt.Sprintf("%s:%s:%s", jobId, job.Type.String(), job.Status.String()))
 			}
 		}
+		logger.Debug().
+			Str("requesting_agent_id", requestingAgentId).
+			Strs("agent_jobs", agentJobs).
+			Msg("Mevcut job'lar")
 		return
 	}
 
@@ -5258,14 +6200,24 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 	promotionJob.UpdatedAt = timestamppb.Now()
 	s.jobs[promotionJobId] = promotionJob
 
-	log.Printf("[COORDINATION] 📊 Promotion job status değişimi: %s -> %s", oldStatus, promotionJob.Status.String())
+	logger.Info().
+		Str("promotion_job_id", promotionJobId).
+		Str("old_status", oldStatus).
+		Str("new_status", promotionJob.Status.String()).
+		Msg("Promotion job status değişimi")
 
 	// Veritabanında da güncelle
 	err := s.updateJobInDatabase(context.Background(), promotionJob)
 	if err != nil {
-		log.Printf("[COORDINATION] ❌ Promotion job veritabanında güncellenirken hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("promotion_job_id", promotionJobId).
+			Msg("Promotion job veritabanında güncellenirken hata")
 	} else {
-		log.Printf("[COORDINATION] ✅ Promotion job veritabanında güncellendi: %s -> %s", promotionJobId, promotionJob.Status.String())
+		logger.Info().
+			Str("promotion_job_id", promotionJobId).
+			Str("job_status", promotionJob.Status.String()).
+			Msg("Promotion job veritabanında güncellendi")
 	}
 
 	// 🔧 FIX: Process logs tablosunu da "completed" olarak güncelle
@@ -5285,17 +6237,29 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 
 	err = s.saveProcessLogs(context.Background(), completionLogUpdate)
 	if err != nil {
-		log.Printf("[COORDINATION] ❌ Promotion process logs güncellenirken hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("promotion_job_id", promotionJobId).
+			Msg("Promotion process logs güncellenirken hata")
 	} else {
-		log.Printf("[COORDINATION] ✅ Promotion process logs da 'completed' olarak güncellendi: %s", promotionJobId)
+		logger.Info().
+			Str("promotion_job_id", promotionJobId).
+			Msg("Promotion process logs da 'completed' olarak güncellendi")
 	}
 
-	log.Printf("[COORDINATION] 🎉 İlgili promotion job başarıyla complete edildi!")
+	logger.Info().
+		Str("promotion_job_id", promotionJobId).
+		Str("requesting_agent_id", requestingAgentId).
+		Msg("İlgili promotion job başarıyla complete edildi")
 }
 
 // bridgeCoordinationLogToPromotion coordination loglarını promotion process logs'una bridge eder
 func (s *Server) bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHost, logMessage string) {
-	log.Printf("[COORDINATION] 🌉 BRIDGE: %s agent'ının promotion process'ine log ekleniyor: %s", requestingAgentId, logMessage)
+	logger.Debug().
+		Str("requesting_agent_id", requestingAgentId).
+		Str("new_master_host", newMasterHost).
+		Str("log_message", logMessage).
+		Msg("BRIDGE: Agent'ının promotion process'ine log ekleniyor")
 
 	// Requesting agent'ın promotion process ID'sini bul
 	var promotionProcessId string
@@ -5310,13 +6274,19 @@ func (s *Server) bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHo
 			if nodeHostname, exists := job.Parameters["node_hostname"]; exists {
 				if nodeHostname == newMasterHost {
 					promotionProcessId = jobId
-					log.Printf("[COORDINATION] 🌉 BRIDGE: Promotion process ID bulundu: %s (node: %s)", jobId, nodeHostname)
+					logger.Debug().
+						Str("job_id", jobId).
+						Str("node_hostname", nodeHostname).
+						Str("new_master_host", newMasterHost).
+						Msg("BRIDGE: Promotion process ID bulundu")
 					break
 				}
 			} else {
 				// Node hostname yoksa ilk eşleşen job'u al
 				promotionProcessId = jobId
-				log.Printf("[COORDINATION] 🌉 BRIDGE: Promotion process ID bulundu: %s (hostname yok)", jobId)
+				logger.Debug().
+					Str("job_id", jobId).
+					Msg("BRIDGE: Promotion process ID bulundu (hostname yok)")
 				break
 			}
 		}
@@ -5324,7 +6294,10 @@ func (s *Server) bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHo
 	s.jobMu.RUnlock()
 
 	if promotionProcessId == "" {
-		log.Printf("[COORDINATION] ❌ BRIDGE: %s agent'ının promotion process'i bulunamadı", requestingAgentId)
+		logger.Warn().
+			Str("requesting_agent_id", requestingAgentId).
+			Str("new_master_host", newMasterHost).
+			Msg("BRIDGE: Agent'ının promotion process'i bulunamadı")
 		return
 	}
 
@@ -5346,9 +6319,16 @@ func (s *Server) bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHo
 	// Process logs'a kaydet
 	err := s.saveProcessLogs(context.Background(), logUpdate)
 	if err != nil {
-		log.Printf("[COORDINATION] ❌ BRIDGE: Log kaydedilirken hata: %v", err)
+		logger.Error().
+			Err(err).
+			Str("promotion_process_id", promotionProcessId).
+			Str("requesting_agent_id", requestingAgentId).
+			Msg("BRIDGE: Log kaydedilirken hata")
 	} else {
-		log.Printf("[COORDINATION] ✅ BRIDGE: Coordination log başarıyla promotion process'e eklendi!")
+		logger.Debug().
+			Str("promotion_process_id", promotionProcessId).
+			Str("requesting_agent_id", requestingAgentId).
+			Msg("BRIDGE: Coordination log başarıyla promotion process'e eklendi")
 	}
 }
 
@@ -5371,7 +6351,10 @@ func (s *Server) cleanupOldCoordinations() {
 	}
 
 	if len(keysToDelete) > 0 {
-		log.Printf("[COORDINATION] 🧹 Cleaned up %d old coordination records", len(keysToDelete))
+		logger.Info().
+			Int("cleaned_records", len(keysToDelete)).
+			Dur("older_than", 10*time.Minute).
+			Msg("Cleaned up old coordination records")
 	}
 }
 
@@ -5410,7 +6393,10 @@ func (s *Server) GetRecentAlarms(ctx context.Context, limit int, onlyUnacknowled
 	query += ` ORDER BY created_at DESC LIMIT $1`
 	queryParams = append(queryParams, limit)
 
-	log.Printf("Recent alarms sorgusu - Limit: %d, Unacknowledged: %t", limit, onlyUnacknowledged)
+	logger.Debug().
+		Int("limit", limit).
+		Bool("only_unacknowledged", onlyUnacknowledged).
+		Msg("Recent alarms sorgusu")
 
 	// Sorguyu çalıştır
 	rows, err := s.db.QueryContext(ctx, query, queryParams...)

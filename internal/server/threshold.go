@@ -3,8 +3,8 @@ package server
 import (
 	"context"
 	"database/sql"
-	"log"
 
+	"github.com/sefaphlvn/clustereye-test/internal/logger"
 	pb "github.com/sefaphlvn/clustereye-test/pkg/agent"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -12,7 +12,7 @@ import (
 
 // GetThresholdSettings, agent'ın threshold ayarlarını almasını sağlar
 func (s *Server) GetThresholdSettings(ctx context.Context, req *pb.GetThresholdSettingsRequest) (*pb.GetThresholdSettingsResponse, error) {
-	log.Printf("Threshold ayarları istendi - Agent ID: %s", req.AgentId)
+	logger.Info().Str("agent_id", req.AgentId).Msg("Threshold ayarları istendi")
 
 	// Veritabanından threshold ayarlarını al
 	var settings pb.ThresholdSettings
@@ -44,14 +44,14 @@ func (s *Server) GetThresholdSettings(ctx context.Context, req *pb.GetThresholdS
 				ReplicationLagThreshold:  300,  // 300 saniye
 				BlockingQueryThresholdMs: 1000, // 1 saniye
 			}
-			log.Printf("Threshold ayarları bulunamadı, varsayılan değerler kullanılıyor - Agent ID: %s", req.AgentId)
+			logger.Warn().Str("agent_id", req.AgentId).Msg("Threshold ayarları bulunamadı, varsayılan değerler kullanılıyor")
 		} else {
-			log.Printf("Threshold ayarları alınırken hata oluştu: %v - Agent ID: %s", err, req.AgentId)
+			logger.Error().Err(err).Str("agent_id", req.AgentId).Msg("Threshold ayarları alınırken hata oluştu")
 			return nil, status.Errorf(codes.Internal, "Threshold ayarları alınamadı: %v", err)
 		}
 	}
 
-	log.Printf("Threshold ayarları başarıyla gönderildi - Agent ID: %s", req.AgentId)
+	logger.Info().Str("agent_id", req.AgentId).Msg("Threshold ayarları başarıyla gönderildi")
 	return &pb.GetThresholdSettingsResponse{
 		Settings: &settings,
 	}, nil

@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/sefaphlvn/clustereye-test/internal/logger"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -29,6 +30,7 @@ type User struct {
 
 // JWT için gizli anahtar
 var jwtSecretKey = []byte("your-secret-key") // Güvenli bir ortamda saklanmalıdır (env değişkeni veya yapılandırma dosyası)
+
 // Login handler
 func Login(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -40,17 +42,17 @@ func Login(db *sql.DB) gin.HandlerFunc {
 
 		// Request body'yi logla
 		body, _ := io.ReadAll(c.Request.Body)
-		log.Printf("Login request body: %s", string(body))
+		logger.Debug().Str("body", string(body)).Msg("Login request received")
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(body)) // Body'yi geri yükle
 
 		if err := c.ShouldBindJSON(&loginRequest); err != nil {
-			log.Printf("Binding error: %v", err)
+			logger.Error().Err(err).Msg("Login request binding error")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 			return
 		}
 
 		// Debug için gelen bilgileri logla
-		log.Printf("Login attempt for username: %s", loginRequest.Username)
+		logger.Info().Str("username", loginRequest.Username).Msg("Login attempt")
 
 		var user User
 		var passwordHash string
@@ -62,7 +64,7 @@ func Login(db *sql.DB) gin.HandlerFunc {
 		// Sorguyu hazırla - Kullanıcı bilgilerini ve durumunu al
 		stmt, err := db.Prepare("SELECT password_hash, email, status, admin, COALESCE(totp_enabled, false) FROM users WHERE username = $1")
 		if err != nil {
-			log.Printf("Prepare error: %v", err)
+			logger.Error().Err(err).Str("username", loginRequest.Username).Msg("Database prepare error during login")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 			return
 		}
@@ -71,18 +73,18 @@ func Login(db *sql.DB) gin.HandlerFunc {
 		err = stmt.QueryRow(loginRequest.Username).Scan(&passwordHash, &email, &status, &admin, &totpEnabled)
 		if err != nil {
 			if err == sql.ErrNoRows {
-				log.Printf("User not found: %s", loginRequest.Username)
+				logger.Warn().Str("username", loginRequest.Username).Msg("Login attempt with non-existent user")
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 				return
 			}
-			log.Printf("Database error: %v", err)
+			logger.Error().Err(err).Str("username", loginRequest.Username).Msg("Database error during user lookup")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 			return
 		}
 
 		// Kullanıcı aktif mi kontrol et
 		if status != "active" {
-			log.Printf("User account not active: %s, status: %s", loginRequest.Username, status)
+			logger.Warn().Str("username", loginRequest.Username).Str("status", status).Msg("Login attempt with inactive account")
 			c.JSON(http.StatusForbidden, gin.H{"error": "Account is not active"})
 			return
 		}
@@ -94,12 +96,11 @@ func Login(db *sql.DB) gin.HandlerFunc {
 		user.Admin = admin
 
 		// Debug için hash'leri logla
-		log.Printf("Stored hash: %s", user.PasswordHash)
-		log.Printf("Attempting to compare with password: %s", loginRequest.Password)
+		logger.Debug().Str("username", loginRequest.Username).Msg("Password comparison starting")
 
 		// Şifre kontrolü
 		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(loginRequest.Password)); err != nil {
-			log.Printf("Password comparison failed: %v", err)
+			logger.Warn().Str("username", loginRequest.Username).Msg("Password comparison failed")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 			return
 		}
@@ -107,6 +108,7 @@ func Login(db *sql.DB) gin.HandlerFunc {
 		// 2FA kontrolü
 		if totpEnabled {
 			if loginRequest.TwoFACode == "" {
+				logger.Debug().Str("username", loginRequest.Username).Msg("2FA code required")
 				c.JSON(http.StatusUnauthorized, gin.H{
 					"error":        "2FA code required",
 					"requires_2fa": true,
@@ -117,12 +119,13 @@ func Login(db *sql.DB) gin.HandlerFunc {
 			// 2FA kodunu doğrula
 			valid, err := Verify2FA(db, loginRequest.Username, loginRequest.TwoFACode)
 			if err != nil {
-				log.Printf("2FA verification error: %v", err)
+				logger.Error().Err(err).Str("username", loginRequest.Username).Msg("2FA verification error")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "2FA verification failed"})
 				return
 			}
 
 			if !valid {
+				logger.Warn().Str("username", loginRequest.Username).Msg("Invalid 2FA code provided")
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid 2FA code"})
 				return
 			}
@@ -138,7 +141,7 @@ func Login(db *sql.DB) gin.HandlerFunc {
 
 		tokenString, err := token.SignedString(jwtSecretKey)
 		if err != nil {
-			log.Printf("Token generation error: %v", err)
+			logger.Error().Err(err).Str("username", loginRequest.Username).Msg("Token generation error")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
 			return
 		}
@@ -154,7 +157,7 @@ func Login(db *sql.DB) gin.HandlerFunc {
 			true,
 		)
 
-		log.Printf("Login successful for user: %s", user.Username)
+		logger.Info().Str("username", user.Username).Str("email", user.Email).Msg("Login successful")
 
 		// Frontend'in beklediği formatta yanıt dön
 		c.JSON(http.StatusOK, gin.H{
@@ -172,28 +175,30 @@ func Login(db *sql.DB) gin.HandlerFunc {
 // JWT doğrulama middleware'i
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Debug için tüm header'ları logla
-		log.Printf("Request headers: %v", c.Request.Header)
+		// Debug için request method ve path'i logla
+		logger.Debug().
+			Str("method", c.Request.Method).
+			Str("path", c.Request.URL.Path).
+			Msg("Auth middleware called")
 
 		// Token'ı cookie'den al
 		tokenString, err := c.Cookie("auth_token")
 		if err != nil {
-			log.Printf("Cookie token not found: %v", err)
+			logger.Debug().Msg("Cookie token not found, checking Authorization header")
 
 			// Cookie yoksa header'ı kontrol et
 			authHeader := c.GetHeader("Authorization")
-			log.Printf("Authorization header: %s", authHeader)
 
 			if authHeader != "" && len(authHeader) > 7 {
 				tokenString = authHeader[7:] // "Bearer " kısmını çıkar
-				log.Printf("Using token from Authorization header")
+				logger.Debug().Msg("Using token from Authorization header")
 			}
 		} else {
-			log.Printf("Using token from cookie")
+			logger.Debug().Msg("Using token from cookie")
 		}
 
 		if tokenString == "" {
-			log.Printf("No token found in request")
+			logger.Warn().Str("path", c.Request.URL.Path).Msg("No authorization token found in request")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization token is required"})
 			c.Abort()
 			return
@@ -205,14 +210,14 @@ func AuthMiddleware() gin.HandlerFunc {
 		})
 
 		if err != nil {
-			log.Printf("Token validation error: %v", err)
+			logger.Warn().Err(err).Msg("Token validation failed")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			c.Abort()
 			return
 		}
 
 		if !token.Valid {
-			log.Printf("Token is invalid")
+			logger.Warn().Msg("Token is invalid")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
@@ -221,21 +226,21 @@ func AuthMiddleware() gin.HandlerFunc {
 		// Token doğruysa, claims'i al
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
-			log.Printf("Could not get token claims")
+			logger.Error().Msg("Could not parse token claims")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token claims"})
 			c.Abort()
 			return
 		}
-
-		// Debug için claims'i logla
-		log.Printf("Token claims: %v", claims)
 
 		// Kullanıcı bilgilerini context'e ekle
 		c.Set("username", claims["username"])
 		c.Set("email", claims["email"])
 		c.Set("admin", claims["admin"])
 
-		log.Printf("Auth middleware passed successfully for user: %v", claims["username"])
+		logger.Debug().
+			Str("username", fmt.Sprintf("%v", claims["username"])).
+			Str("path", c.Request.URL.Path).
+			Msg("Auth middleware passed successfully")
 		c.Next()
 	}
 }
