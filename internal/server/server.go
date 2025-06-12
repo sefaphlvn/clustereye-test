@@ -4522,9 +4522,14 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 	// ProcessLoggerHandler'da metadata kontrolü ekle
 	if metadata := req.LogUpdate.Metadata; metadata != nil {
 		if isFailoverRequest, exists := metadata["failover_coordination_request"]; exists && isFailoverRequest == "true" {
-			log.Printf("Failover koordinasyon talebi algılandı: %s", req.LogUpdate.AgentId)
+			log.Printf("[COORDINATION] 🚀 Failover koordinasyon talebi algılandı: %s", req.LogUpdate.AgentId)
+			log.Printf("[COORDINATION] Metadata sayısı: %d", len(metadata))
+			for key, value := range metadata {
+				log.Printf("[COORDINATION]   %s: %s", key, value)
+			}
 
 			// Koordinasyon işlemini başlat
+			log.Printf("[COORDINATION] Koordinasyon işlemi goroutine'de başlatılıyor...")
 			go s.handleFailoverCoordination(req.LogUpdate, req.LogUpdate.AgentId)
 		}
 	}
@@ -4811,43 +4816,63 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 	replPass := metadata["replication_pass"]
 	action := metadata["action"]
 
-	log.Printf("Failover koordinasyon işlemi başlatılıyor: %s -> %s (Talep eden agent: %s)",
+	log.Printf("[COORDINATION] Failover koordinasyon işlemi başlatılıyor: %s -> %s (Talep eden agent: %s)",
 		oldMasterHost, newMasterHost, requestingAgentId)
+	log.Printf("[COORDINATION] Metadata bilgileri: action=%s, data_dir=%s, repl_user=%s, repl_pass_empty=%t",
+		action, dataDirectory, replUser, replPass == "")
 
 	if action != "convert_master_to_slave" || oldMasterHost == "" {
-		log.Printf("Geçersiz failover koordinasyon talebi: action=%s, oldMaster=%s", action, oldMasterHost)
+		log.Printf("[COORDINATION] ❌ Geçersiz failover koordinasyon talebi: action=%s, oldMaster=%s", action, oldMasterHost)
 		return
 	}
 
 	// Replication bilgilerini kontrol et
 	if replUser == "" || replPass == "" {
-		log.Printf("Replication bilgileri eksik: user=%s, pass_empty=%t", replUser, replPass == "")
+		log.Printf("[COORDINATION] ❌ Replication bilgileri eksik: user=%s, pass_empty=%t", replUser, replPass == "")
 		return
 	}
 
 	// Güvenlik kontrolü: Talep eden agent'ın yeni master olduğunu doğrula
 	expectedRequestingAgent := fmt.Sprintf("agent_%s", newMasterHost)
 	if requestingAgentId != expectedRequestingAgent {
-		log.Printf("Güvenlik uyarısı: Koordinasyon talebi beklenmeyen agent'dan geldi. Beklenen: %s, Gelen: %s",
+		log.Printf("[COORDINATION] ⚠️ Güvenlik uyarısı: Koordinasyon talebi beklenmeyen agent'dan geldi. Beklenen: %s, Gelen: %s",
 			expectedRequestingAgent, requestingAgentId)
 		// İsteğe bağlı: Bu durumda işlemi durdurabilirsin
 		// return
+	} else {
+		log.Printf("[COORDINATION] ✅ Güvenlik kontrolü başarılı: Talep eden agent doğru (%s)", requestingAgentId)
 	}
 
 	// Eski master agent'ını bul
 	oldMasterAgentId := fmt.Sprintf("agent_%s", oldMasterHost)
+	log.Printf("[COORDINATION] Eski master agent aranıyor: %s", oldMasterAgentId)
 
 	s.mu.RLock()
 	oldMasterAgent, exists := s.agents[oldMasterAgentId]
+	agentCount := len(s.agents)
 	s.mu.RUnlock()
 
+	log.Printf("[COORDINATION] Agent durumu: mevcut_agent_sayısı=%d, %s_bulundu=%t", agentCount, oldMasterAgentId, exists)
+
 	if !exists {
-		log.Printf("Eski master agent bulunamadı: %s", oldMasterAgentId)
+		log.Printf("[COORDINATION] ❌ Eski master agent bulunamadı: %s", oldMasterAgentId)
+
+		// Mevcut agent'ları listele
+		s.mu.RLock()
+		log.Printf("[COORDINATION] Mevcut agent'lar:")
+		for agentId := range s.agents {
+			log.Printf("[COORDINATION]   - %s", agentId)
+		}
+		s.mu.RUnlock()
 		return
 	}
 
+	log.Printf("[COORDINATION] ✅ Eski master agent bulundu: %s", oldMasterAgentId)
+
 	// Job oluştur
 	jobID := fmt.Sprintf("coord_%d", time.Now().UnixNano())
+	log.Printf("[COORDINATION] Job oluşturuluyor: %s", jobID)
+
 	job := &pb.Job{
 		JobId:     jobID,
 		Type:      pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE,
@@ -4869,11 +4894,15 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 	s.jobMu.Lock()
 	s.jobs[jobID] = job
 	s.jobMu.Unlock()
+	log.Printf("[COORDINATION] ✅ Job kaydedildi: %s", jobID)
 
 	// ConvertPostgresToSlave komutunu gönder - Agent'dan gelen replication bilgilerini kullan
 	// Format: convert_postgres_to_slave|new_master_host|port|data_dir|repl_user|repl_pass
 	command := fmt.Sprintf("convert_postgres_to_slave|%s|5432|%s|%s|%s",
 		newMasterHost, dataDirectory, replUser, replPass)
+
+	log.Printf("[COORDINATION] Komut hazırlandı: %s", command)
+	log.Printf("[COORDINATION] Komut %s agent'ına gönderiliyor...", oldMasterAgentId)
 
 	err := oldMasterAgent.Stream.Send(&pb.ServerMessage{
 		Payload: &pb.ServerMessage_Query{
@@ -4885,17 +4914,23 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 	})
 
 	if err != nil {
-		log.Printf("Eski master'a convert komutu gönderilemedi (Talep eden: %s): %v", requestingAgentId, err)
+		log.Printf("[COORDINATION] ❌ Eski master'a convert komutu gönderilemedi (Talep eden: %s): %v", requestingAgentId, err)
 		job.Status = pb.JobStatus_JOB_STATUS_FAILED
 		job.ErrorMessage = fmt.Sprintf("Agent'a komut gönderilemedi: %v", err)
 		job.UpdatedAt = timestamppb.Now()
 	} else {
-		log.Printf("Eski master'a convert komutu gönderildi: %s (Talep eden: %s)", oldMasterHost, requestingAgentId)
+		log.Printf("[COORDINATION] ✅ Eski master'a convert komutu başarıyla gönderildi!")
+		log.Printf("[COORDINATION]   - Hedef Agent: %s", oldMasterAgentId)
+		log.Printf("[COORDINATION]   - Eski Master: %s", oldMasterHost)
+		log.Printf("[COORDINATION]   - Yeni Master: %s", newMasterHost)
+		log.Printf("[COORDINATION]   - Job ID: %s", jobID)
+		log.Printf("[COORDINATION]   - Talep eden: %s", requestingAgentId)
 		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
 		job.UpdatedAt = timestamppb.Now()
 	}
 
 	s.updateJobInDatabase(context.Background(), job)
+	log.Printf("[COORDINATION] Job durumu güncellendi: %s -> %s", jobID, job.Status.String())
 }
 
 // GetRecentAlarms, dashboard için optimize edilmiş son alarmları getirir
