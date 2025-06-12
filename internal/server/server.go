@@ -5146,8 +5146,12 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 		}
 
 		// 🌉 BRIDGE: Coordination completion logunu promotion process'e ekle
+		displayOldMaster := oldMasterHost
+		if displayOldMaster == "" {
+			displayOldMaster = reportingAgentId // veya "bilinmeyen"
+		}
 		completionMessage := fmt.Sprintf("[%s] ✅ Coordination tamamlandı: Eski master (%s) başarıyla slave'e dönüştürüldü!",
-			time.Now().Format("15:04:05"), oldMasterHost)
+			time.Now().Format("15:04:05"), displayOldMaster)
 		go s.bridgeCoordinationLogToPromotion(bridgeAgentId, newMasterHost, completionMessage)
 
 		// Final completion message
@@ -5262,6 +5266,28 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 		log.Printf("[COORDINATION] ❌ Promotion job veritabanında güncellenirken hata: %v", err)
 	} else {
 		log.Printf("[COORDINATION] ✅ Promotion job veritabanında güncellendi: %s -> %s", promotionJobId, promotionJob.Status.String())
+	}
+
+	// 🔧 FIX: Process logs tablosunu da "completed" olarak güncelle
+	completionLogUpdate := &pb.ProcessLogUpdate{
+		AgentId:      requestingAgentId,
+		ProcessId:    promotionJobId,
+		ProcessType:  "postgresql_promotion",
+		Status:       "completed", // Running'den completed'e güncelle
+		LogMessages:  []string{fmt.Sprintf("[%s] 🎉 PostgreSQL promotion başarıyla tamamlandı! (Auto-completed by coordination system)", time.Now().Format("15:04:05"))},
+		ElapsedTimeS: 0,
+		UpdatedAt:    time.Now().Format(time.RFC3339),
+		Metadata: map[string]string{
+			"auto_completed":    "true",
+			"completion_source": "coordination_system",
+		},
+	}
+
+	err = s.saveProcessLogs(context.Background(), completionLogUpdate)
+	if err != nil {
+		log.Printf("[COORDINATION] ❌ Promotion process logs güncellenirken hata: %v", err)
+	} else {
+		log.Printf("[COORDINATION] ✅ Promotion process logs da 'completed' olarak güncellendi: %s", promotionJobId)
 	}
 
 	log.Printf("[COORDINATION] 🎉 İlgili promotion job başarıyla complete edildi!")
