@@ -5022,6 +5022,11 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 		log.Printf("[COORDINATION]   - Talep eden: %s", requestingAgentId)
 		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
 		job.UpdatedAt = timestamppb.Now()
+
+		// 🌉 PROCESS LOG BRIDGE: Coordination başlatıldığını promotion process logs'una ekle
+		go s.bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHost,
+			fmt.Sprintf("[%s] Coordination başlatıldı: Eski master (%s) slave'e dönüştürülüyor...",
+				time.Now().Format("15:04:05"), oldMasterHost))
 	}
 
 	s.updateJobInDatabase(context.Background(), job)
@@ -5042,7 +5047,8 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 	oldMasterHost := metadata["old_master_host"]
 	newMasterHost := metadata["new_master_host"]
 	action := metadata["action"]
-	status := metadata["completion_status"] // "success" or "failed"
+	status := metadata["completion_status"]              // "success" or "failed"
+	requestingAgentId := metadata["requesting_agent_id"] // Asıl requesting agent (promotion yapan)
 
 	log.Printf("[COORDINATION] 🎯 Coordination completion işlemi başlatılıyor")
 	log.Printf("[COORDINATION]   Job ID: %s", coordinationJobId)
@@ -5111,7 +5117,77 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 	// Eğer coordination başarılı olduysa, requesting agent'ın promotion job'unu da tamamla
 	if status == "success" || status == "completed" {
 		log.Printf("[COORDINATION] 🔄 İlgili promotion job'u aranıyor ve complete ediliyor...")
-		s.completeRelatedPromotionJob(reportingAgentId, newMasterHost)
+
+		// Bridge için doğru agent ID'sini belirle (requesting agent promotion yapan, reporting agent eski master)
+		bridgeAgentId := requestingAgentId
+		if bridgeAgentId == "" {
+			log.Printf("[COORDINATION] ⚠️  requesting_agent_id bulunamadı, new_master_host ile agent aranıyor...")
+
+			// new_master_host (skadi) ile eşleşen agent'ı bul
+			s.mu.RLock()
+			for agentId := range s.agents {
+				// Agent ID formatı genellikle "agent_hostname" şeklinde
+				// agent_skadi -> skadi çıkar
+				if strings.HasPrefix(agentId, "agent_") {
+					hostname := strings.TrimPrefix(agentId, "agent_")
+					if hostname == newMasterHost {
+						bridgeAgentId = agentId
+						log.Printf("[COORDINATION] ✅ new_master_host (%s) ile eşleşen agent bulundu: %s", newMasterHost, bridgeAgentId)
+						break
+					}
+				}
+			}
+			s.mu.RUnlock()
+
+			if bridgeAgentId == "" {
+				log.Printf("[COORDINATION] ❌ new_master_host (%s) ile eşleşen agent bulunamadı, fallback olarak reportingAgentId kullanılıyor", newMasterHost)
+				bridgeAgentId = reportingAgentId
+			}
+		}
+
+		// 🌉 BRIDGE: Coordination completion logunu promotion process'e ekle
+		completionMessage := fmt.Sprintf("[%s] ✅ Coordination tamamlandı: Eski master (%s) başarıyla slave'e dönüştürüldü!",
+			time.Now().Format("15:04:05"), oldMasterHost)
+		go s.bridgeCoordinationLogToPromotion(bridgeAgentId, newMasterHost, completionMessage)
+
+		// Final completion message
+		finalMessage := fmt.Sprintf("[%s] 🎉 PostgreSQL Failover başarıyla tamamlandı! (%s -> %s)",
+			time.Now().Format("15:04:05"), oldMasterHost, newMasterHost)
+		go s.bridgeCoordinationLogToPromotion(bridgeAgentId, newMasterHost, finalMessage)
+
+		// Auto-complete related promotion job
+		s.completeRelatedPromotionJob(bridgeAgentId, newMasterHost)
+	} else {
+		// Bridge için doğru agent ID'sini belirle
+		bridgeAgentId := requestingAgentId
+		if bridgeAgentId == "" {
+			log.Printf("[COORDINATION] ⚠️  requesting_agent_id bulunamadı (failure case), new_master_host ile agent aranıyor...")
+
+			// new_master_host (skadi) ile eşleşen agent'ı bul
+			s.mu.RLock()
+			for agentId := range s.agents {
+				// Agent ID formatı genellikle "agent_hostname" şeklinde
+				if strings.HasPrefix(agentId, "agent_") {
+					hostname := strings.TrimPrefix(agentId, "agent_")
+					if hostname == newMasterHost {
+						bridgeAgentId = agentId
+						log.Printf("[COORDINATION] ✅ new_master_host (%s) ile eşleşen agent bulundu (failure case): %s", newMasterHost, bridgeAgentId)
+						break
+					}
+				}
+			}
+			s.mu.RUnlock()
+
+			if bridgeAgentId == "" {
+				log.Printf("[COORDINATION] ❌ new_master_host (%s) ile eşleşen agent bulunamadı (failure case), fallback olarak reportingAgentId kullanılıyor", newMasterHost)
+				bridgeAgentId = reportingAgentId
+			}
+		}
+
+		// 🌉 BRIDGE: Coordination failure logunu promotion process'e ekle
+		failureMessage := fmt.Sprintf("[%s] ❌ Coordination başarısız: Eski master (%s) slave'e dönüştürülemedi!",
+			time.Now().Format("15:04:05"), oldMasterHost)
+		go s.bridgeCoordinationLogToPromotion(bridgeAgentId, newMasterHost, failureMessage)
 	}
 
 	log.Printf("[COORDINATION] 🎉 Coordination completion işlemi tamamlandı!")
@@ -5189,6 +5265,65 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 	}
 
 	log.Printf("[COORDINATION] 🎉 İlgili promotion job başarıyla complete edildi!")
+}
+
+// bridgeCoordinationLogToPromotion coordination loglarını promotion process logs'una bridge eder
+func (s *Server) bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHost, logMessage string) {
+	log.Printf("[COORDINATION] 🌉 BRIDGE: %s agent'ının promotion process'ine log ekleniyor: %s", requestingAgentId, logMessage)
+
+	// Requesting agent'ın promotion process ID'sini bul
+	var promotionProcessId string
+
+	s.jobMu.RLock()
+	for jobId, job := range s.jobs {
+		if job.AgentId == requestingAgentId &&
+			job.Type == pb.JobType_JOB_TYPE_POSTGRES_PROMOTE_MASTER &&
+			(job.Status == pb.JobStatus_JOB_STATUS_RUNNING || job.Status == pb.JobStatus_JOB_STATUS_COMPLETED) {
+
+			// Node hostname kontrolü (opsiyonel)
+			if nodeHostname, exists := job.Parameters["node_hostname"]; exists {
+				if nodeHostname == newMasterHost {
+					promotionProcessId = jobId
+					log.Printf("[COORDINATION] 🌉 BRIDGE: Promotion process ID bulundu: %s (node: %s)", jobId, nodeHostname)
+					break
+				}
+			} else {
+				// Node hostname yoksa ilk eşleşen job'u al
+				promotionProcessId = jobId
+				log.Printf("[COORDINATION] 🌉 BRIDGE: Promotion process ID bulundu: %s (hostname yok)", jobId)
+				break
+			}
+		}
+	}
+	s.jobMu.RUnlock()
+
+	if promotionProcessId == "" {
+		log.Printf("[COORDINATION] ❌ BRIDGE: %s agent'ının promotion process'i bulunamadı", requestingAgentId)
+		return
+	}
+
+	// Process log update oluştur
+	logUpdate := &pb.ProcessLogUpdate{
+		AgentId:      requestingAgentId,
+		ProcessId:    promotionProcessId,
+		ProcessType:  "postgresql_promotion",
+		Status:       "running", // Hala devam ediyor
+		LogMessages:  []string{logMessage},
+		ElapsedTimeS: 0,
+		UpdatedAt:    time.Now().Format(time.RFC3339),
+		Metadata: map[string]string{
+			"bridge_source": "coordination",
+			"bridge_type":   "coordination_update",
+		},
+	}
+
+	// Process logs'a kaydet
+	err := s.saveProcessLogs(context.Background(), logUpdate)
+	if err != nil {
+		log.Printf("[COORDINATION] ❌ BRIDGE: Log kaydedilirken hata: %v", err)
+	} else {
+		log.Printf("[COORDINATION] ✅ BRIDGE: Coordination log başarıyla promotion process'e eklendi!")
+	}
 }
 
 // cleanupOldCoordinations, eski coordination kayıtlarını temizler (memory leak prevention)
