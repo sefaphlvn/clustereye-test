@@ -3268,18 +3268,54 @@ func getMSSQLTransactionsRateMetrics(server *server.Server) gin.HandlerFunc {
 // getCoordinationStatus, mevcut coordination state'ini gösterir (debug amaçlı)
 func getCoordinationStatus(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Coordination state'ini al
-		coordinationKeys, activeJobs := server.GetCoordinationStatus()
+		// Context timeout ekle (deadlock durumunda timeout olsun)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
 
-		c.JSON(http.StatusOK, gin.H{
-			"status": "success",
-			"data": gin.H{
-				"processed_coordinations":  coordinationKeys,
-				"active_coordination_jobs": activeJobs,
-				"total_processed_keys":     len(coordinationKeys),
-				"total_active_jobs":        len(activeJobs),
-			},
-		})
+		// Channel ile coordination state'ini asenkron al
+		resultChan := make(chan struct {
+			coordinationKeys map[string]time.Time
+			activeJobs       map[string]*pb.Job
+		}, 1)
+		errChan := make(chan error, 1)
+
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					errChan <- fmt.Errorf("panic during coordination status retrieval: %v", r)
+				}
+			}()
+
+			// Coordination state'ini al
+			coordinationKeys, activeJobs := server.GetCoordinationStatus()
+			resultChan <- struct {
+				coordinationKeys map[string]time.Time
+				activeJobs       map[string]*pb.Job
+			}{coordinationKeys, activeJobs}
+		}()
+
+		select {
+		case result := <-resultChan:
+			c.JSON(http.StatusOK, gin.H{
+				"status": "success",
+				"data": gin.H{
+					"processed_coordinations":  result.coordinationKeys,
+					"active_coordination_jobs": result.activeJobs,
+					"total_processed_keys":     len(result.coordinationKeys),
+					"total_active_jobs":        len(result.activeJobs),
+				},
+			})
+		case err := <-errChan:
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Coordination status alınırken hata: " + err.Error(),
+			})
+		case <-ctx.Done():
+			c.JSON(http.StatusRequestTimeout, gin.H{
+				"status": "error",
+				"error":  "Coordination status isteği timeout oldu (10 saniye)",
+			})
+		}
 	}
 }
 

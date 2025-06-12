@@ -5242,7 +5242,7 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 				Interface("metadata", metadata).
 				Msg("Coordination metadata detayları")
 
-			// Duplicate coordination prevention check
+			// 🔧 FIX: Akıllı duplicate coordination prevention check
 			coordinationKey := fmt.Sprintf("%s_%s_%s_%s",
 				req.LogUpdate.ProcessId,
 				metadata["old_master_host"],
@@ -5252,13 +5252,13 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 			s.coordinationMu.Lock()
 			lastProcessed, alreadyProcessed := s.processedCoordinations[coordinationKey]
 
-			// Eğer son 5 dakika içinde işlenmişse skip et (timeout'u artırdık)
-			if alreadyProcessed && time.Since(lastProcessed) < 5*time.Minute {
+			// Eğer son 2 dakika içinde işlenmişse skip et (timeout'u düşürdük, ikinci promotion'a izin vermek için)
+			if alreadyProcessed && time.Since(lastProcessed) < 2*time.Minute {
 				s.coordinationMu.Unlock()
 				logger.Warn().
 					Str("coordination_key", coordinationKey).
 					Dur("last_processed_ago", time.Since(lastProcessed).Round(time.Second)).
-					Msg("Duplicate coordination request skipped")
+					Msg("Duplicate coordination request skipped (within 2 minutes)")
 				return &pb.ProcessLogResponse{
 					Status:  "ok",
 					Message: "Process logları başarıyla alındı (duplicate coordination skipped)",
@@ -5268,10 +5268,15 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 			// Bu coordination'ı işlenmiş olarak işaretle
 			s.processedCoordinations[coordinationKey] = time.Now()
 
-			// Eski kayıtları temizle (10 dakikadan eski olanları)
+			// Eski kayıtları temizle (5 dakikadan eski olanları, daha agresif cleanup)
 			go s.cleanupOldCoordinations()
 
 			s.coordinationMu.Unlock()
+
+			logger.Info().
+				Str("coordination_key", coordinationKey).
+				Bool("was_previously_processed", alreadyProcessed).
+				Msg("Coordination request accepted")
 
 			// Koordinasyon işlemini başlat
 			logger.Info().
@@ -5732,6 +5737,7 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 			Msg("Güvenlik kontrolü başarılı: Talep eden agent doğru")
 	}
 
+	// 🔧 FIX: Lock sırasını tutarlı hale getir - ÖNCE agents, SONRA jobs
 	// Eski master agent'ını bul
 	oldMasterAgentId := fmt.Sprintf("agent_%s", oldMasterHost)
 	logger.Info().
@@ -5747,6 +5753,11 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 	var availableAgents []string
 	for agentId := range s.agents {
 		availableAgents = append(availableAgents, agentId)
+	}
+	// Agent bilgisini kopyala (lock'u erken bırakmak için)
+	var agentStreamCopy pb.AgentService_ConnectServer
+	if exists {
+		agentStreamCopy = oldMasterAgent.Stream
 	}
 	s.mu.RUnlock()
 
@@ -5794,7 +5805,7 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 		},
 	}
 
-	// Job'ı kaydet
+	// Job'ı kaydet (lock sequence: agents -> jobs)
 	s.jobMu.Lock()
 	s.jobs[jobID] = job
 	s.jobMu.Unlock()
@@ -5825,7 +5836,7 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 	// Channel kullanarak timeout kontrollü gönderme
 	sendDone := make(chan error, 1)
 	go func() {
-		err := oldMasterAgent.Stream.Send(&pb.ServerMessage{
+		err := agentStreamCopy.Send(&pb.ServerMessage{
 			Payload: &pb.ServerMessage_Query{
 				Query: &pb.Query{
 					QueryId: jobID,
@@ -5927,12 +5938,12 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 		return
 	}
 
-	// Coordination job'unu bul
+	// 🔧 FIX: Job'u ayrı scope'da bul ve güncelle (deadlock'u önlemek için)
 	logger.Debug().
 		Str("coordination_job_id", coordinationJobId).
 		Msg("Job aranıyor")
-	s.jobMu.Lock()
 
+	s.jobMu.Lock()
 	// Debug: Mevcut job'ları listele
 	var existingJobIds []string
 	var existingJobTypes []string
@@ -6021,14 +6032,15 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 			Str("requesting_agent_id", requestingAgentId).
 			Msg("İlgili promotion job'u aranıyor ve complete ediliyor")
 
-		// Bridge için doğru agent ID'sini belirle (requesting agent promotion yapan, reporting agent eski master)
+		// 🔧 FIX: Bridge için doğru agent ID'sini belirle (deadlock'u önlemek için)
 		bridgeAgentId := requestingAgentId
 		if bridgeAgentId == "" {
 			logger.Debug().
 				Str("new_master_host", newMasterHost).
 				Msg("requesting_agent_id bulunamadı, new_master_host ile agent aranıyor")
 
-			// new_master_host (skadi) ile eşleşen agent'ı bul
+			// Agent'ları ayrı scope'da ara (deadlock'u önlemek için)
+			foundAgentId := ""
 			s.mu.RLock()
 			for agentId := range s.agents {
 				// Agent ID formatı genellikle "agent_hostname" şeklinde
@@ -6036,18 +6048,20 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 				if strings.HasPrefix(agentId, "agent_") {
 					hostname := strings.TrimPrefix(agentId, "agent_")
 					if hostname == newMasterHost {
-						bridgeAgentId = agentId
-						logger.Info().
-							Str("new_master_host", newMasterHost).
-							Str("bridge_agent_id", bridgeAgentId).
-							Msg("new_master_host ile eşleşen agent bulundu")
+						foundAgentId = agentId
 						break
 					}
 				}
 			}
 			s.mu.RUnlock()
 
-			if bridgeAgentId == "" {
+			if foundAgentId != "" {
+				bridgeAgentId = foundAgentId
+				logger.Info().
+					Str("new_master_host", newMasterHost).
+					Str("bridge_agent_id", bridgeAgentId).
+					Msg("new_master_host ile eşleşen agent bulundu")
+			} else {
 				logger.Warn().
 					Str("new_master_host", newMasterHost).
 					Str("fallback_agent_id", reportingAgentId).
@@ -6073,32 +6087,35 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 		// Auto-complete related promotion job
 		s.completeRelatedPromotionJob(bridgeAgentId, newMasterHost)
 	} else {
-		// Bridge için doğru agent ID'sini belirle
+		// 🔧 FIX: Bridge için doğru agent ID'sini belirle (failure case - deadlock'u önlemek için)
 		bridgeAgentId := requestingAgentId
 		if bridgeAgentId == "" {
 			logger.Debug().
 				Str("new_master_host", newMasterHost).
 				Msg("requesting_agent_id bulunamadı (failure case), new_master_host ile agent aranıyor")
 
-			// new_master_host (skadi) ile eşleşen agent'ı bul
+			// Agent'ları ayrı scope'da ara (deadlock'u önlemek için)
+			foundAgentId := ""
 			s.mu.RLock()
 			for agentId := range s.agents {
 				// Agent ID formatı genellikle "agent_hostname" şeklinde
 				if strings.HasPrefix(agentId, "agent_") {
 					hostname := strings.TrimPrefix(agentId, "agent_")
 					if hostname == newMasterHost {
-						bridgeAgentId = agentId
-						logger.Info().
-							Str("new_master_host", newMasterHost).
-							Str("bridge_agent_id", bridgeAgentId).
-							Msg("new_master_host ile eşleşen agent bulundu (failure case)")
+						foundAgentId = agentId
 						break
 					}
 				}
 			}
 			s.mu.RUnlock()
 
-			if bridgeAgentId == "" {
+			if foundAgentId != "" {
+				bridgeAgentId = foundAgentId
+				logger.Info().
+					Str("new_master_host", newMasterHost).
+					Str("bridge_agent_id", bridgeAgentId).
+					Msg("new_master_host ile eşleşen agent bulundu (failure case)")
+			} else {
 				logger.Warn().
 					Str("new_master_host", newMasterHost).
 					Str("fallback_agent_id", reportingAgentId).
@@ -6340,7 +6357,7 @@ func (s *Server) cleanupOldCoordinations() {
 	s.coordinationMu.Lock()
 	defer s.coordinationMu.Unlock()
 
-	cutoff := time.Now().Add(-10 * time.Minute) // 10 dakikadan eski olanları temizle
+	cutoff := time.Now().Add(-5 * time.Minute) // 🔧 FIX: 5 dakikadan eski olanları temizle (daha agresif)
 	keysToDelete := make([]string, 0)
 
 	for key, timestamp := range s.processedCoordinations {
@@ -6356,8 +6373,8 @@ func (s *Server) cleanupOldCoordinations() {
 	if len(keysToDelete) > 0 {
 		logger.Info().
 			Int("cleaned_records", len(keysToDelete)).
-			Dur("older_than", 10*time.Minute).
-			Msg("Cleaned up old coordination records")
+			Dur("older_than", 5*time.Minute).
+			Msg("Cleaned up old coordination records (aggressive cleanup)")
 	}
 }
 
@@ -6401,21 +6418,36 @@ func (s *Server) cleanupCompletedCoordination(coordinationJobId, oldMasterHost, 
 
 // GetCoordinationStatus, mevcut coordination state'ini döndürür
 func (s *Server) GetCoordinationStatus() (map[string]time.Time, map[string]*pb.Job) {
-	s.coordinationMu.RLock()
-	defer s.coordinationMu.RUnlock()
-
-	// Processed coordinations map'inin kopyasını oluştur
+	// Coordination keys'i ayrı lock ile al
 	coordinationKeys := make(map[string]time.Time)
+	s.coordinationMu.RLock()
 	for k, v := range s.processedCoordinations {
 		coordinationKeys[k] = v
 	}
+	s.coordinationMu.RUnlock()
 
-	// Active coordination jobs'ları bul
-	s.jobMu.RLock()
+	// Active coordination jobs'ları ayrı lock ile al (deadlock'u önlemek için)
 	activeJobs := make(map[string]*pb.Job)
+	s.jobMu.RLock()
 	for jobId, job := range s.jobs {
 		if job.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
-			activeJobs[jobId] = job
+			// Job'un kopyasını oluştur (pointer referansından kaçınmak için)
+			jobCopy := &pb.Job{
+				JobId:        job.JobId,
+				AgentId:      job.AgentId,
+				Type:         job.Type,
+				Status:       job.Status,
+				Result:       job.Result,
+				ErrorMessage: job.ErrorMessage,
+				CreatedAt:    job.CreatedAt,
+				UpdatedAt:    job.UpdatedAt,
+				Parameters:   make(map[string]string),
+			}
+			// Parameters'ı kopyala
+			for k, v := range job.Parameters {
+				jobCopy.Parameters[k] = v
+			}
+			activeJobs[jobId] = jobCopy
 		}
 	}
 	s.jobMu.RUnlock()
@@ -6443,7 +6475,7 @@ func (s *Server) CleanupOldCoordination() int {
 	s.coordinationMu.Lock()
 	defer s.coordinationMu.Unlock()
 
-	cutoff := time.Now().Add(-10 * time.Minute)
+	cutoff := time.Now().Add(-5 * time.Minute) // 🔧 FIX: Tutarlı 5 dakika timeout
 	keysToDelete := make([]string, 0)
 
 	for key, timestamp := range s.processedCoordinations {
@@ -6459,8 +6491,8 @@ func (s *Server) CleanupOldCoordination() int {
 	if len(keysToDelete) > 0 {
 		logger.Info().
 			Int("cleaned_count", len(keysToDelete)).
-			Dur("older_than", 10*time.Minute).
-			Msg("Old coordination records cleaned up")
+			Dur("older_than", 5*time.Minute).
+			Msg("Old coordination records cleaned up (API request)")
 	}
 
 	return len(keysToDelete)
