@@ -4814,6 +4814,10 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 	dataDirectory := metadata["data_directory"]
 	replUser := metadata["replication_user"]
 	replPass := metadata["replication_pass"]
+	if replPass == "" {
+		// Agent'ın gönderdiği alternatif anahtar adını kontrol et
+		replPass = metadata["replication_password"]
+	}
 	action := metadata["action"]
 
 	log.Printf("[COORDINATION] Failover koordinasyon işlemi başlatılıyor: %s -> %s (Talep eden agent: %s)",
