@@ -3058,12 +3058,10 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 
 	// Process log takibi için metadata oluştur
 	metadata := map[string]string{
-		"node_hostname":        req.NodeHostname,
-		"data_directory":       req.DataDirectory,
-		"job_id":               req.JobId,
-		"current_master_host":  req.CurrentMasterHost,   // Eski master bilgisini ekle
-		"replication_user":     req.ReplicationUser,     // Replication kullanıcı adı
-		"replication_password": req.ReplicationPassword, // Replication şifresi
+		"node_hostname":       req.NodeHostname,
+		"data_directory":      req.DataDirectory,
+		"job_id":              req.JobId,
+		"current_master_host": req.CurrentMasterHost, // Eski master bilgisini ekle
 	}
 
 	// Job oluştur
@@ -3164,12 +3162,12 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 		job.UpdatedAt = timestamppb.Now()
 		s.updateJobInDatabase(context.Background(), job)
 
-		// Yeni komut formatı: "postgres_promote|data_dir|process_id|old_master_host|repl_user|repl_pass"
+		// Yeni komut formatı: "postgres_promote|data_dir|process_id|old_master_host"
 		// Agent tarafındaki ProcessLogger'ı etkinleştirmek için process_id gönderiyoruz
-		// Eski master bilgisini ve replication bilgilerini de gönderiyoruz (koordinasyon için)
-		command := fmt.Sprintf("postgres_promote|%s|%s|%s|%s|%s",
-			req.DataDirectory, req.JobId, req.CurrentMasterHost,
-			req.ReplicationUser, req.ReplicationPassword)
+		// Eski master bilgisini de gönderiyoruz (koordinasyon için)
+		// Agent kendi config'inden replication bilgilerini alacak
+		command := fmt.Sprintf("postgres_promote|%s|%s|%s",
+			req.DataDirectory, req.JobId, req.CurrentMasterHost)
 
 		// Agent'a promote isteği gönder
 		err := agent.Stream.Send(&pb.ServerMessage{
