@@ -86,10 +86,11 @@ func (JobStatus) EnumDescriptor() ([]byte, []int) {
 type JobType int32
 
 const (
-	JobType_JOB_TYPE_UNKNOWN                 JobType = 0
-	JobType_JOB_TYPE_MONGO_PROMOTE_PRIMARY   JobType = 1
-	JobType_JOB_TYPE_POSTGRES_PROMOTE_MASTER JobType = 2
-	JobType_JOB_TYPE_MONGO_FREEZE_SECONDARY  JobType = 3
+	JobType_JOB_TYPE_UNKNOWN                   JobType = 0
+	JobType_JOB_TYPE_MONGO_PROMOTE_PRIMARY     JobType = 1
+	JobType_JOB_TYPE_POSTGRES_PROMOTE_MASTER   JobType = 2
+	JobType_JOB_TYPE_MONGO_FREEZE_SECONDARY    JobType = 3
+	JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE JobType = 4
 )
 
 // Enum value maps for JobType.
@@ -99,12 +100,14 @@ var (
 		1: "JOB_TYPE_MONGO_PROMOTE_PRIMARY",
 		2: "JOB_TYPE_POSTGRES_PROMOTE_MASTER",
 		3: "JOB_TYPE_MONGO_FREEZE_SECONDARY",
+		4: "JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE",
 	}
 	JobType_value = map[string]int32{
-		"JOB_TYPE_UNKNOWN":                 0,
-		"JOB_TYPE_MONGO_PROMOTE_PRIMARY":   1,
-		"JOB_TYPE_POSTGRES_PROMOTE_MASTER": 2,
-		"JOB_TYPE_MONGO_FREEZE_SECONDARY":  3,
+		"JOB_TYPE_UNKNOWN":                   0,
+		"JOB_TYPE_MONGO_PROMOTE_PRIMARY":     1,
+		"JOB_TYPE_POSTGRES_PROMOTE_MASTER":   2,
+		"JOB_TYPE_MONGO_FREEZE_SECONDARY":    3,
+		"JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE": 4,
 	}
 )
 
@@ -4796,6 +4799,175 @@ func (x *PostgresPromoteMasterResponse) GetResult() string {
 	return ""
 }
 
+// PostgreSQL Convert to Slave
+type ConvertPostgresToSlaveRequest struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	JobId               string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	AgentId             string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	NodeHostname        string                 `protobuf:"bytes,3,opt,name=node_hostname,json=nodeHostname,proto3" json:"node_hostname,omitempty"`
+	NewMasterHost       string                 `protobuf:"bytes,4,opt,name=new_master_host,json=newMasterHost,proto3" json:"new_master_host,omitempty"`
+	NewMasterPort       int32                  `protobuf:"varint,5,opt,name=new_master_port,json=newMasterPort,proto3" json:"new_master_port,omitempty"`
+	DataDirectory       string                 `protobuf:"bytes,6,opt,name=data_directory,json=dataDirectory,proto3" json:"data_directory,omitempty"`
+	ReplicationUser     string                 `protobuf:"bytes,7,opt,name=replication_user,json=replicationUser,proto3" json:"replication_user,omitempty"`
+	ReplicationPassword string                 `protobuf:"bytes,8,opt,name=replication_password,json=replicationPassword,proto3" json:"replication_password,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *ConvertPostgresToSlaveRequest) Reset() {
+	*x = ConvertPostgresToSlaveRequest{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[64]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConvertPostgresToSlaveRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConvertPostgresToSlaveRequest) ProtoMessage() {}
+
+func (x *ConvertPostgresToSlaveRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[64]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConvertPostgresToSlaveRequest.ProtoReflect.Descriptor instead.
+func (*ConvertPostgresToSlaveRequest) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{64}
+}
+
+func (x *ConvertPostgresToSlaveRequest) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *ConvertPostgresToSlaveRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *ConvertPostgresToSlaveRequest) GetNodeHostname() string {
+	if x != nil {
+		return x.NodeHostname
+	}
+	return ""
+}
+
+func (x *ConvertPostgresToSlaveRequest) GetNewMasterHost() string {
+	if x != nil {
+		return x.NewMasterHost
+	}
+	return ""
+}
+
+func (x *ConvertPostgresToSlaveRequest) GetNewMasterPort() int32 {
+	if x != nil {
+		return x.NewMasterPort
+	}
+	return 0
+}
+
+func (x *ConvertPostgresToSlaveRequest) GetDataDirectory() string {
+	if x != nil {
+		return x.DataDirectory
+	}
+	return ""
+}
+
+func (x *ConvertPostgresToSlaveRequest) GetReplicationUser() string {
+	if x != nil {
+		return x.ReplicationUser
+	}
+	return ""
+}
+
+func (x *ConvertPostgresToSlaveRequest) GetReplicationPassword() string {
+	if x != nil {
+		return x.ReplicationPassword
+	}
+	return ""
+}
+
+type ConvertPostgresToSlaveResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	Status        JobStatus              `protobuf:"varint,2,opt,name=status,proto3,enum=agent.JobStatus" json:"status,omitempty"`
+	Result        string                 `protobuf:"bytes,3,opt,name=result,proto3" json:"result,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,4,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConvertPostgresToSlaveResponse) Reset() {
+	*x = ConvertPostgresToSlaveResponse{}
+	mi := &file_pkg_agent_agent_proto_msgTypes[65]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConvertPostgresToSlaveResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConvertPostgresToSlaveResponse) ProtoMessage() {}
+
+func (x *ConvertPostgresToSlaveResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_agent_agent_proto_msgTypes[65]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConvertPostgresToSlaveResponse.ProtoReflect.Descriptor instead.
+func (*ConvertPostgresToSlaveResponse) Descriptor() ([]byte, []int) {
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{65}
+}
+
+func (x *ConvertPostgresToSlaveResponse) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *ConvertPostgresToSlaveResponse) GetStatus() JobStatus {
+	if x != nil {
+		return x.Status
+	}
+	return JobStatus_JOB_STATUS_UNKNOWN
+}
+
+func (x *ConvertPostgresToSlaveResponse) GetResult() string {
+	if x != nil {
+		return x.Result
+	}
+	return ""
+}
+
+func (x *ConvertPostgresToSlaveResponse) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
 // Job Status Request/Response
 type GetJobRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -4806,7 +4978,7 @@ type GetJobRequest struct {
 
 func (x *GetJobRequest) Reset() {
 	*x = GetJobRequest{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[64]
+	mi := &file_pkg_agent_agent_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4818,7 +4990,7 @@ func (x *GetJobRequest) String() string {
 func (*GetJobRequest) ProtoMessage() {}
 
 func (x *GetJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[64]
+	mi := &file_pkg_agent_agent_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4831,7 +5003,7 @@ func (x *GetJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetJobRequest.ProtoReflect.Descriptor instead.
 func (*GetJobRequest) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{64}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *GetJobRequest) GetJobId() string {
@@ -4850,7 +5022,7 @@ type GetJobResponse struct {
 
 func (x *GetJobResponse) Reset() {
 	*x = GetJobResponse{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[65]
+	mi := &file_pkg_agent_agent_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4862,7 +5034,7 @@ func (x *GetJobResponse) String() string {
 func (*GetJobResponse) ProtoMessage() {}
 
 func (x *GetJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[65]
+	mi := &file_pkg_agent_agent_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4875,7 +5047,7 @@ func (x *GetJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetJobResponse.ProtoReflect.Descriptor instead.
 func (*GetJobResponse) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{65}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *GetJobResponse) GetJob() *Job {
@@ -4898,7 +5070,7 @@ type ListJobsRequest struct {
 
 func (x *ListJobsRequest) Reset() {
 	*x = ListJobsRequest{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[66]
+	mi := &file_pkg_agent_agent_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4910,7 +5082,7 @@ func (x *ListJobsRequest) String() string {
 func (*ListJobsRequest) ProtoMessage() {}
 
 func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[66]
+	mi := &file_pkg_agent_agent_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4923,7 +5095,7 @@ func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListJobsRequest.ProtoReflect.Descriptor instead.
 func (*ListJobsRequest) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{66}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *ListJobsRequest) GetAgentId() string {
@@ -4971,7 +5143,7 @@ type ListJobsResponse struct {
 
 func (x *ListJobsResponse) Reset() {
 	*x = ListJobsResponse{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[67]
+	mi := &file_pkg_agent_agent_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4983,7 +5155,7 @@ func (x *ListJobsResponse) String() string {
 func (*ListJobsResponse) ProtoMessage() {}
 
 func (x *ListJobsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[67]
+	mi := &file_pkg_agent_agent_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4996,7 +5168,7 @@ func (x *ListJobsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListJobsResponse.ProtoReflect.Descriptor instead.
 func (*ListJobsResponse) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{67}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *ListJobsResponse) GetJobs() []*Job {
@@ -5028,7 +5200,7 @@ type MongoFreezeSecondaryRequest struct {
 
 func (x *MongoFreezeSecondaryRequest) Reset() {
 	*x = MongoFreezeSecondaryRequest{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[68]
+	mi := &file_pkg_agent_agent_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5040,7 +5212,7 @@ func (x *MongoFreezeSecondaryRequest) String() string {
 func (*MongoFreezeSecondaryRequest) ProtoMessage() {}
 
 func (x *MongoFreezeSecondaryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[68]
+	mi := &file_pkg_agent_agent_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5053,7 +5225,7 @@ func (x *MongoFreezeSecondaryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MongoFreezeSecondaryRequest.ProtoReflect.Descriptor instead.
 func (*MongoFreezeSecondaryRequest) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{68}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *MongoFreezeSecondaryRequest) GetJobId() string {
@@ -5110,7 +5282,7 @@ type MongoFreezeSecondaryResponse struct {
 
 func (x *MongoFreezeSecondaryResponse) Reset() {
 	*x = MongoFreezeSecondaryResponse{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[69]
+	mi := &file_pkg_agent_agent_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5122,7 +5294,7 @@ func (x *MongoFreezeSecondaryResponse) String() string {
 func (*MongoFreezeSecondaryResponse) ProtoMessage() {}
 
 func (x *MongoFreezeSecondaryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[69]
+	mi := &file_pkg_agent_agent_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5135,7 +5307,7 @@ func (x *MongoFreezeSecondaryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MongoFreezeSecondaryResponse.ProtoReflect.Descriptor instead.
 func (*MongoFreezeSecondaryResponse) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{69}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *MongoFreezeSecondaryResponse) GetJobId() string {
@@ -5178,7 +5350,7 @@ type ExplainQueryRequest struct {
 
 func (x *ExplainQueryRequest) Reset() {
 	*x = ExplainQueryRequest{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[70]
+	mi := &file_pkg_agent_agent_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5190,7 +5362,7 @@ func (x *ExplainQueryRequest) String() string {
 func (*ExplainQueryRequest) ProtoMessage() {}
 
 func (x *ExplainQueryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[70]
+	mi := &file_pkg_agent_agent_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5203,7 +5375,7 @@ func (x *ExplainQueryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainQueryRequest.ProtoReflect.Descriptor instead.
 func (*ExplainQueryRequest) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{70}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *ExplainQueryRequest) GetAgentId() string {
@@ -5239,7 +5411,7 @@ type ExplainQueryResponse struct {
 
 func (x *ExplainQueryResponse) Reset() {
 	*x = ExplainQueryResponse{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[71]
+	mi := &file_pkg_agent_agent_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5251,7 +5423,7 @@ func (x *ExplainQueryResponse) String() string {
 func (*ExplainQueryResponse) ProtoMessage() {}
 
 func (x *ExplainQueryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[71]
+	mi := &file_pkg_agent_agent_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5264,7 +5436,7 @@ func (x *ExplainQueryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainQueryResponse.ProtoReflect.Descriptor instead.
 func (*ExplainQueryResponse) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{71}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *ExplainQueryResponse) GetPlan() string {
@@ -5300,7 +5472,7 @@ type BestPracticesAnalysisRequest struct {
 
 func (x *BestPracticesAnalysisRequest) Reset() {
 	*x = BestPracticesAnalysisRequest{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[72]
+	mi := &file_pkg_agent_agent_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5312,7 +5484,7 @@ func (x *BestPracticesAnalysisRequest) String() string {
 func (*BestPracticesAnalysisRequest) ProtoMessage() {}
 
 func (x *BestPracticesAnalysisRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[72]
+	mi := &file_pkg_agent_agent_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5325,7 +5497,7 @@ func (x *BestPracticesAnalysisRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BestPracticesAnalysisRequest.ProtoReflect.Descriptor instead.
 func (*BestPracticesAnalysisRequest) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{72}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *BestPracticesAnalysisRequest) GetAgentId() string {
@@ -5362,7 +5534,7 @@ type BestPracticesAnalysisResponse struct {
 
 func (x *BestPracticesAnalysisResponse) Reset() {
 	*x = BestPracticesAnalysisResponse{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[73]
+	mi := &file_pkg_agent_agent_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5374,7 +5546,7 @@ func (x *BestPracticesAnalysisResponse) String() string {
 func (*BestPracticesAnalysisResponse) ProtoMessage() {}
 
 func (x *BestPracticesAnalysisResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[73]
+	mi := &file_pkg_agent_agent_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5387,7 +5559,7 @@ func (x *BestPracticesAnalysisResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BestPracticesAnalysisResponse.ProtoReflect.Descriptor instead.
 func (*BestPracticesAnalysisResponse) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{73}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *BestPracticesAnalysisResponse) GetStatus() string {
@@ -5441,7 +5613,7 @@ type AlwaysOnMetrics struct {
 
 func (x *AlwaysOnMetrics) Reset() {
 	*x = AlwaysOnMetrics{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[74]
+	mi := &file_pkg_agent_agent_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5453,7 +5625,7 @@ func (x *AlwaysOnMetrics) String() string {
 func (*AlwaysOnMetrics) ProtoMessage() {}
 
 func (x *AlwaysOnMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[74]
+	mi := &file_pkg_agent_agent_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5466,7 +5638,7 @@ func (x *AlwaysOnMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AlwaysOnMetrics.ProtoReflect.Descriptor instead.
 func (*AlwaysOnMetrics) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{74}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *AlwaysOnMetrics) GetClusterName() string {
@@ -5585,7 +5757,7 @@ type ReplicaMetrics struct {
 
 func (x *ReplicaMetrics) Reset() {
 	*x = ReplicaMetrics{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[75]
+	mi := &file_pkg_agent_agent_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5597,7 +5769,7 @@ func (x *ReplicaMetrics) String() string {
 func (*ReplicaMetrics) ProtoMessage() {}
 
 func (x *ReplicaMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[75]
+	mi := &file_pkg_agent_agent_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5610,7 +5782,7 @@ func (x *ReplicaMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicaMetrics.ProtoReflect.Descriptor instead.
 func (*ReplicaMetrics) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{75}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *ReplicaMetrics) GetReplicaName() string {
@@ -5702,7 +5874,7 @@ type DatabaseReplicaStatus struct {
 
 func (x *DatabaseReplicaStatus) Reset() {
 	*x = DatabaseReplicaStatus{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[76]
+	mi := &file_pkg_agent_agent_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5714,7 +5886,7 @@ func (x *DatabaseReplicaStatus) String() string {
 func (*DatabaseReplicaStatus) ProtoMessage() {}
 
 func (x *DatabaseReplicaStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[76]
+	mi := &file_pkg_agent_agent_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5727,7 +5899,7 @@ func (x *DatabaseReplicaStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DatabaseReplicaStatus.ProtoReflect.Descriptor instead.
 func (*DatabaseReplicaStatus) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{76}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *DatabaseReplicaStatus) GetDatabaseName() string {
@@ -5864,7 +6036,7 @@ type ListenerInfo struct {
 
 func (x *ListenerInfo) Reset() {
 	*x = ListenerInfo{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[77]
+	mi := &file_pkg_agent_agent_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5876,7 +6048,7 @@ func (x *ListenerInfo) String() string {
 func (*ListenerInfo) ProtoMessage() {}
 
 func (x *ListenerInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[77]
+	mi := &file_pkg_agent_agent_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5889,7 +6061,7 @@ func (x *ListenerInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListenerInfo.ProtoReflect.Descriptor instead.
 func (*ListenerInfo) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{77}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *ListenerInfo) GetListenerName() string {
@@ -5950,7 +6122,7 @@ type MetricValue struct {
 
 func (x *MetricValue) Reset() {
 	*x = MetricValue{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[78]
+	mi := &file_pkg_agent_agent_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5962,7 +6134,7 @@ func (x *MetricValue) String() string {
 func (*MetricValue) ProtoMessage() {}
 
 func (x *MetricValue) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[78]
+	mi := &file_pkg_agent_agent_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5975,7 +6147,7 @@ func (x *MetricValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetricValue.ProtoReflect.Descriptor instead.
 func (*MetricValue) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{78}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *MetricValue) GetValue() isMetricValue_Value {
@@ -6059,7 +6231,7 @@ type MetricTag struct {
 
 func (x *MetricTag) Reset() {
 	*x = MetricTag{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[79]
+	mi := &file_pkg_agent_agent_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6071,7 +6243,7 @@ func (x *MetricTag) String() string {
 func (*MetricTag) ProtoMessage() {}
 
 func (x *MetricTag) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[79]
+	mi := &file_pkg_agent_agent_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6084,7 +6256,7 @@ func (x *MetricTag) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetricTag.ProtoReflect.Descriptor instead.
 func (*MetricTag) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{79}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *MetricTag) GetKey() string {
@@ -6115,7 +6287,7 @@ type Metric struct {
 
 func (x *Metric) Reset() {
 	*x = Metric{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[80]
+	mi := &file_pkg_agent_agent_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6127,7 +6299,7 @@ func (x *Metric) String() string {
 func (*Metric) ProtoMessage() {}
 
 func (x *Metric) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[80]
+	mi := &file_pkg_agent_agent_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6140,7 +6312,7 @@ func (x *Metric) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Metric.ProtoReflect.Descriptor instead.
 func (*Metric) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{80}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *Metric) GetName() string {
@@ -6198,7 +6370,7 @@ type MetricBatch struct {
 
 func (x *MetricBatch) Reset() {
 	*x = MetricBatch{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[81]
+	mi := &file_pkg_agent_agent_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6210,7 +6382,7 @@ func (x *MetricBatch) String() string {
 func (*MetricBatch) ProtoMessage() {}
 
 func (x *MetricBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[81]
+	mi := &file_pkg_agent_agent_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6223,7 +6395,7 @@ func (x *MetricBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetricBatch.ProtoReflect.Descriptor instead.
 func (*MetricBatch) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{81}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *MetricBatch) GetAgentId() string {
@@ -6271,7 +6443,7 @@ type SendMetricsRequest struct {
 
 func (x *SendMetricsRequest) Reset() {
 	*x = SendMetricsRequest{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[82]
+	mi := &file_pkg_agent_agent_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6283,7 +6455,7 @@ func (x *SendMetricsRequest) String() string {
 func (*SendMetricsRequest) ProtoMessage() {}
 
 func (x *SendMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[82]
+	mi := &file_pkg_agent_agent_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6296,7 +6468,7 @@ func (x *SendMetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMetricsRequest.ProtoReflect.Descriptor instead.
 func (*SendMetricsRequest) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{82}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *SendMetricsRequest) GetBatch() *MetricBatch {
@@ -6318,7 +6490,7 @@ type SendMetricsResponse struct {
 
 func (x *SendMetricsResponse) Reset() {
 	*x = SendMetricsResponse{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[83]
+	mi := &file_pkg_agent_agent_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6330,7 +6502,7 @@ func (x *SendMetricsResponse) String() string {
 func (*SendMetricsResponse) ProtoMessage() {}
 
 func (x *SendMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[83]
+	mi := &file_pkg_agent_agent_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6343,7 +6515,7 @@ func (x *SendMetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMetricsResponse.ProtoReflect.Descriptor instead.
 func (*SendMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{83}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *SendMetricsResponse) GetStatus() string {
@@ -6387,7 +6559,7 @@ type CollectMetricsRequest struct {
 
 func (x *CollectMetricsRequest) Reset() {
 	*x = CollectMetricsRequest{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[84]
+	mi := &file_pkg_agent_agent_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6399,7 +6571,7 @@ func (x *CollectMetricsRequest) String() string {
 func (*CollectMetricsRequest) ProtoMessage() {}
 
 func (x *CollectMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[84]
+	mi := &file_pkg_agent_agent_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6412,7 +6584,7 @@ func (x *CollectMetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectMetricsRequest.ProtoReflect.Descriptor instead.
 func (*CollectMetricsRequest) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{84}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *CollectMetricsRequest) GetAgentId() string {
@@ -6453,7 +6625,7 @@ type CollectMetricsResponse struct {
 
 func (x *CollectMetricsResponse) Reset() {
 	*x = CollectMetricsResponse{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[85]
+	mi := &file_pkg_agent_agent_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6465,7 +6637,7 @@ func (x *CollectMetricsResponse) String() string {
 func (*CollectMetricsResponse) ProtoMessage() {}
 
 func (x *CollectMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[85]
+	mi := &file_pkg_agent_agent_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6478,7 +6650,7 @@ func (x *CollectMetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectMetricsResponse.ProtoReflect.Descriptor instead.
 func (*CollectMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{85}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *CollectMetricsResponse) GetStatus() string {
@@ -6514,7 +6686,7 @@ type MongoOperationMetrics struct {
 
 func (x *MongoOperationMetrics) Reset() {
 	*x = MongoOperationMetrics{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[86]
+	mi := &file_pkg_agent_agent_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6526,7 +6698,7 @@ func (x *MongoOperationMetrics) String() string {
 func (*MongoOperationMetrics) ProtoMessage() {}
 
 func (x *MongoOperationMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[86]
+	mi := &file_pkg_agent_agent_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6539,7 +6711,7 @@ func (x *MongoOperationMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MongoOperationMetrics.ProtoReflect.Descriptor instead.
 func (*MongoOperationMetrics) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{86}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *MongoOperationMetrics) GetDatabase() string {
@@ -6632,7 +6804,7 @@ type PostgresActivityMetrics struct {
 
 func (x *PostgresActivityMetrics) Reset() {
 	*x = PostgresActivityMetrics{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[87]
+	mi := &file_pkg_agent_agent_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6644,7 +6816,7 @@ func (x *PostgresActivityMetrics) String() string {
 func (*PostgresActivityMetrics) ProtoMessage() {}
 
 func (x *PostgresActivityMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[87]
+	mi := &file_pkg_agent_agent_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6657,7 +6829,7 @@ func (x *PostgresActivityMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PostgresActivityMetrics.ProtoReflect.Descriptor instead.
 func (*PostgresActivityMetrics) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{87}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *PostgresActivityMetrics) GetDatabase() string {
@@ -6757,7 +6929,7 @@ type MSSQLPerformanceMetrics struct {
 
 func (x *MSSQLPerformanceMetrics) Reset() {
 	*x = MSSQLPerformanceMetrics{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[88]
+	mi := &file_pkg_agent_agent_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6769,7 +6941,7 @@ func (x *MSSQLPerformanceMetrics) String() string {
 func (*MSSQLPerformanceMetrics) ProtoMessage() {}
 
 func (x *MSSQLPerformanceMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[88]
+	mi := &file_pkg_agent_agent_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6782,7 +6954,7 @@ func (x *MSSQLPerformanceMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MSSQLPerformanceMetrics.ProtoReflect.Descriptor instead.
 func (*MSSQLPerformanceMetrics) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{88}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *MSSQLPerformanceMetrics) GetDatabase() string {
@@ -6881,7 +7053,7 @@ type DiskIOMetrics struct {
 
 func (x *DiskIOMetrics) Reset() {
 	*x = DiskIOMetrics{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[89]
+	mi := &file_pkg_agent_agent_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6893,7 +7065,7 @@ func (x *DiskIOMetrics) String() string {
 func (*DiskIOMetrics) ProtoMessage() {}
 
 func (x *DiskIOMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[89]
+	mi := &file_pkg_agent_agent_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6906,7 +7078,7 @@ func (x *DiskIOMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiskIOMetrics.ProtoReflect.Descriptor instead.
 func (*DiskIOMetrics) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{89}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *DiskIOMetrics) GetDevice() string {
@@ -6998,7 +7170,7 @@ type NetworkMetrics struct {
 
 func (x *NetworkMetrics) Reset() {
 	*x = NetworkMetrics{}
-	mi := &file_pkg_agent_agent_proto_msgTypes[90]
+	mi := &file_pkg_agent_agent_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7010,7 +7182,7 @@ func (x *NetworkMetrics) String() string {
 func (*NetworkMetrics) ProtoMessage() {}
 
 func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_agent_agent_proto_msgTypes[90]
+	mi := &file_pkg_agent_agent_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7023,7 +7195,7 @@ func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkMetrics.ProtoReflect.Descriptor instead.
 func (*NetworkMetrics) Descriptor() ([]byte, []int) {
-	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{90}
+	return file_pkg_agent_agent_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *NetworkMetrics) GetInterface() string {
@@ -7510,7 +7682,21 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12(\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x10.agent.JobStatusR\x06status\x12#\n" +
 	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\x12\x16\n" +
-	"\x06result\x18\x04 \x01(\tR\x06result\"&\n" +
+	"\x06result\x18\x04 \x01(\tR\x06result\"\xcb\x02\n" +
+	"\x1dConvertPostgresToSlaveRequest\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x19\n" +
+	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12#\n" +
+	"\rnode_hostname\x18\x03 \x01(\tR\fnodeHostname\x12&\n" +
+	"\x0fnew_master_host\x18\x04 \x01(\tR\rnewMasterHost\x12&\n" +
+	"\x0fnew_master_port\x18\x05 \x01(\x05R\rnewMasterPort\x12%\n" +
+	"\x0edata_directory\x18\x06 \x01(\tR\rdataDirectory\x12)\n" +
+	"\x10replication_user\x18\a \x01(\tR\x0freplicationUser\x121\n" +
+	"\x14replication_password\x18\b \x01(\tR\x13replicationPassword\"\x9e\x01\n" +
+	"\x1eConvertPostgresToSlaveResponse\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12(\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x10.agent.JobStatusR\x06status\x12\x16\n" +
+	"\x06result\x18\x03 \x01(\tR\x06result\x12#\n" +
+	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage\"&\n" +
 	"\rGetJobRequest\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\".\n" +
 	"\x0eGetJobResponse\x12\x1c\n" +
@@ -7735,12 +7921,13 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x12JOB_STATUS_RUNNING\x10\x02\x12\x18\n" +
 	"\x14JOB_STATUS_COMPLETED\x10\x03\x12\x15\n" +
 	"\x11JOB_STATUS_FAILED\x10\x04\x12\x18\n" +
-	"\x14JOB_STATUS_CANCELLED\x10\x05*\x8e\x01\n" +
+	"\x14JOB_STATUS_CANCELLED\x10\x05*\xb6\x01\n" +
 	"\aJobType\x12\x14\n" +
 	"\x10JOB_TYPE_UNKNOWN\x10\x00\x12\"\n" +
 	"\x1eJOB_TYPE_MONGO_PROMOTE_PRIMARY\x10\x01\x12$\n" +
 	" JOB_TYPE_POSTGRES_PROMOTE_MASTER\x10\x02\x12#\n" +
-	"\x1fJOB_TYPE_MONGO_FREEZE_SECONDARY\x10\x032\xe0\x11\n" +
+	"\x1fJOB_TYPE_MONGO_FREEZE_SECONDARY\x10\x03\x12&\n" +
+	"\"JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE\x10\x042\xc7\x12\n" +
 	"\fAgentService\x128\n" +
 	"\aConnect\x12\x13.agent.AgentMessage\x1a\x14.agent.ServerMessage(\x010\x01\x12;\n" +
 	"\bRegister\x12\x16.agent.RegisterRequest\x1a\x17.agent.RegisterResponse\x129\n" +
@@ -7761,7 +7948,8 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\rReportVersion\x12\x1b.agent.ReportVersionRequest\x1a\x1c.agent.ReportVersionResponse\x12^\n" +
 	"\x15PromoteMongoToPrimary\x12!.agent.MongoPromotePrimaryRequest\x1a\".agent.MongoPromotePrimaryResponse\x12_\n" +
 	"\x14FreezeMongoSecondary\x12\".agent.MongoFreezeSecondaryRequest\x1a#.agent.MongoFreezeSecondaryResponse\x12d\n" +
-	"\x17PromotePostgresToMaster\x12#.agent.PostgresPromoteMasterRequest\x1a$.agent.PostgresPromoteMasterResponse\x125\n" +
+	"\x17PromotePostgresToMaster\x12#.agent.PostgresPromoteMasterRequest\x1a$.agent.PostgresPromoteMasterResponse\x12e\n" +
+	"\x16ConvertPostgresToSlave\x12$.agent.ConvertPostgresToSlaveRequest\x1a%.agent.ConvertPostgresToSlaveResponse\x125\n" +
 	"\x06GetJob\x12\x14.agent.GetJobRequest\x1a\x15.agent.GetJobResponse\x12;\n" +
 	"\bListJobs\x12\x16.agent.ListJobsRequest\x1a\x17.agent.ListJobsResponse\x12G\n" +
 	"\fExplainQuery\x12\x1a.agent.ExplainQueryRequest\x1a\x1b.agent.ExplainQueryResponse\x12B\n" +
@@ -7785,118 +7973,120 @@ func file_pkg_agent_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_pkg_agent_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 96)
+var file_pkg_agent_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 98)
 var file_pkg_agent_agent_proto_goTypes = []any{
-	(JobStatus)(0),                        // 0: agent.JobStatus
-	(JobType)(0),                          // 1: agent.JobType
-	(*AgentInfo)(nil),                     // 2: agent.AgentInfo
-	(*PostgresInfo)(nil),                  // 3: agent.PostgresInfo
-	(*ProcessLogUpdate)(nil),              // 4: agent.ProcessLogUpdate
-	(*ProcessLogRequest)(nil),             // 5: agent.ProcessLogRequest
-	(*ProcessLogResponse)(nil),            // 6: agent.ProcessLogResponse
-	(*ProcessStatusRequest)(nil),          // 7: agent.ProcessStatusRequest
-	(*ProcessStatusResponse)(nil),         // 8: agent.ProcessStatusResponse
-	(*MongoInfo)(nil),                     // 9: agent.MongoInfo
-	(*MongoLogListRequest)(nil),           // 10: agent.MongoLogListRequest
-	(*MongoLogFile)(nil),                  // 11: agent.MongoLogFile
-	(*MongoLogListResponse)(nil),          // 12: agent.MongoLogListResponse
-	(*MongoLogAnalyzeRequest)(nil),        // 13: agent.MongoLogAnalyzeRequest
-	(*MongoLogEntry)(nil),                 // 14: agent.MongoLogEntry
-	(*MongoLogAnalyzeResponse)(nil),       // 15: agent.MongoLogAnalyzeResponse
-	(*AlarmCondition)(nil),                // 16: agent.AlarmCondition
-	(*AlarmConfiguration)(nil),            // 17: agent.AlarmConfiguration
-	(*AlarmEvent)(nil),                    // 18: agent.AlarmEvent
-	(*Query)(nil),                         // 19: agent.Query
-	(*QueryResult)(nil),                   // 20: agent.QueryResult
-	(*Error)(nil),                         // 21: agent.Error
-	(*RegistrationResult)(nil),            // 22: agent.RegistrationResult
-	(*ReportAlarmRequest)(nil),            // 23: agent.ReportAlarmRequest
-	(*ReportAlarmResponse)(nil),           // 24: agent.ReportAlarmResponse
-	(*RegisterRequest)(nil),               // 25: agent.RegisterRequest
-	(*RegisterResponse)(nil),              // 26: agent.RegisterResponse
-	(*QueryRequest)(nil),                  // 27: agent.QueryRequest
-	(*QueryResponse)(nil),                 // 28: agent.QueryResponse
-	(*PostgresInfoRequest)(nil),           // 29: agent.PostgresInfoRequest
-	(*MongoInfoRequest)(nil),              // 30: agent.MongoInfoRequest
-	(*PostgresInfoResponse)(nil),          // 31: agent.PostgresInfoResponse
-	(*MongoInfoResponse)(nil),             // 32: agent.MongoInfoResponse
-	(*ErrorResponse)(nil),                 // 33: agent.ErrorResponse
-	(*ServerMessage)(nil),                 // 34: agent.ServerMessage
-	(*AgentMessage)(nil),                  // 35: agent.AgentMessage
-	(*MSSQLInfoRequest)(nil),              // 36: agent.MSSQLInfoRequest
-	(*MSSQLInfoResponse)(nil),             // 37: agent.MSSQLInfoResponse
-	(*SystemMetrics)(nil),                 // 38: agent.SystemMetrics
-	(*SystemMetricsRequest)(nil),          // 39: agent.SystemMetricsRequest
-	(*SystemMetricsResponse)(nil),         // 40: agent.SystemMetricsResponse
-	(*AlarmConfigRequest)(nil),            // 41: agent.AlarmConfigRequest
-	(*AlarmConfigResponse)(nil),           // 42: agent.AlarmConfigResponse
-	(*PostgresLogFile)(nil),               // 43: agent.PostgresLogFile
-	(*PostgresLogListRequest)(nil),        // 44: agent.PostgresLogListRequest
-	(*PostgresLogListResponse)(nil),       // 45: agent.PostgresLogListResponse
-	(*PostgresLogAnalyzeRequest)(nil),     // 46: agent.PostgresLogAnalyzeRequest
-	(*PostgresLogEntry)(nil),              // 47: agent.PostgresLogEntry
-	(*PostgresLogAnalyzeResponse)(nil),    // 48: agent.PostgresLogAnalyzeResponse
-	(*PostgresConfigRequest)(nil),         // 49: agent.PostgresConfigRequest
-	(*PostgresConfigEntry)(nil),           // 50: agent.PostgresConfigEntry
-	(*PostgresConfigResponse)(nil),        // 51: agent.PostgresConfigResponse
-	(*MSSQLInfo)(nil),                     // 52: agent.MSSQLInfo
-	(*SlowQuery)(nil),                     // 53: agent.SlowQuery
-	(*MSSQLLogFile)(nil),                  // 54: agent.MSSQLLogFile
-	(*ThresholdSettings)(nil),             // 55: agent.ThresholdSettings
-	(*GetThresholdSettingsRequest)(nil),   // 56: agent.GetThresholdSettingsRequest
-	(*GetThresholdSettingsResponse)(nil),  // 57: agent.GetThresholdSettingsResponse
-	(*AgentVersionInfo)(nil),              // 58: agent.AgentVersionInfo
-	(*ReportVersionRequest)(nil),          // 59: agent.ReportVersionRequest
-	(*ReportVersionResponse)(nil),         // 60: agent.ReportVersionResponse
-	(*Job)(nil),                           // 61: agent.Job
-	(*MongoPromotePrimaryRequest)(nil),    // 62: agent.MongoPromotePrimaryRequest
-	(*MongoPromotePrimaryResponse)(nil),   // 63: agent.MongoPromotePrimaryResponse
-	(*PostgresPromoteMasterRequest)(nil),  // 64: agent.PostgresPromoteMasterRequest
-	(*PostgresPromoteMasterResponse)(nil), // 65: agent.PostgresPromoteMasterResponse
-	(*GetJobRequest)(nil),                 // 66: agent.GetJobRequest
-	(*GetJobResponse)(nil),                // 67: agent.GetJobResponse
-	(*ListJobsRequest)(nil),               // 68: agent.ListJobsRequest
-	(*ListJobsResponse)(nil),              // 69: agent.ListJobsResponse
-	(*MongoFreezeSecondaryRequest)(nil),   // 70: agent.MongoFreezeSecondaryRequest
-	(*MongoFreezeSecondaryResponse)(nil),  // 71: agent.MongoFreezeSecondaryResponse
-	(*ExplainQueryRequest)(nil),           // 72: agent.ExplainQueryRequest
-	(*ExplainQueryResponse)(nil),          // 73: agent.ExplainQueryResponse
-	(*BestPracticesAnalysisRequest)(nil),  // 74: agent.BestPracticesAnalysisRequest
-	(*BestPracticesAnalysisResponse)(nil), // 75: agent.BestPracticesAnalysisResponse
-	(*AlwaysOnMetrics)(nil),               // 76: agent.AlwaysOnMetrics
-	(*ReplicaMetrics)(nil),                // 77: agent.ReplicaMetrics
-	(*DatabaseReplicaStatus)(nil),         // 78: agent.DatabaseReplicaStatus
-	(*ListenerInfo)(nil),                  // 79: agent.ListenerInfo
-	(*MetricValue)(nil),                   // 80: agent.MetricValue
-	(*MetricTag)(nil),                     // 81: agent.MetricTag
-	(*Metric)(nil),                        // 82: agent.Metric
-	(*MetricBatch)(nil),                   // 83: agent.MetricBatch
-	(*SendMetricsRequest)(nil),            // 84: agent.SendMetricsRequest
-	(*SendMetricsResponse)(nil),           // 85: agent.SendMetricsResponse
-	(*CollectMetricsRequest)(nil),         // 86: agent.CollectMetricsRequest
-	(*CollectMetricsResponse)(nil),        // 87: agent.CollectMetricsResponse
-	(*MongoOperationMetrics)(nil),         // 88: agent.MongoOperationMetrics
-	(*PostgresActivityMetrics)(nil),       // 89: agent.PostgresActivityMetrics
-	(*MSSQLPerformanceMetrics)(nil),       // 90: agent.MSSQLPerformanceMetrics
-	(*DiskIOMetrics)(nil),                 // 91: agent.DiskIOMetrics
-	(*NetworkMetrics)(nil),                // 92: agent.NetworkMetrics
-	nil,                                   // 93: agent.ProcessLogUpdate.MetadataEntry
-	nil,                                   // 94: agent.ProcessStatusResponse.MetadataEntry
-	nil,                                   // 95: agent.Job.ParametersEntry
-	nil,                                   // 96: agent.MetricBatch.MetadataEntry
-	nil,                                   // 97: agent.CollectMetricsRequest.ConfigEntry
-	(*anypb.Any)(nil),                     // 98: google.protobuf.Any
-	(*structpb.Struct)(nil),               // 99: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),         // 100: google.protobuf.Timestamp
+	(JobStatus)(0),                         // 0: agent.JobStatus
+	(JobType)(0),                           // 1: agent.JobType
+	(*AgentInfo)(nil),                      // 2: agent.AgentInfo
+	(*PostgresInfo)(nil),                   // 3: agent.PostgresInfo
+	(*ProcessLogUpdate)(nil),               // 4: agent.ProcessLogUpdate
+	(*ProcessLogRequest)(nil),              // 5: agent.ProcessLogRequest
+	(*ProcessLogResponse)(nil),             // 6: agent.ProcessLogResponse
+	(*ProcessStatusRequest)(nil),           // 7: agent.ProcessStatusRequest
+	(*ProcessStatusResponse)(nil),          // 8: agent.ProcessStatusResponse
+	(*MongoInfo)(nil),                      // 9: agent.MongoInfo
+	(*MongoLogListRequest)(nil),            // 10: agent.MongoLogListRequest
+	(*MongoLogFile)(nil),                   // 11: agent.MongoLogFile
+	(*MongoLogListResponse)(nil),           // 12: agent.MongoLogListResponse
+	(*MongoLogAnalyzeRequest)(nil),         // 13: agent.MongoLogAnalyzeRequest
+	(*MongoLogEntry)(nil),                  // 14: agent.MongoLogEntry
+	(*MongoLogAnalyzeResponse)(nil),        // 15: agent.MongoLogAnalyzeResponse
+	(*AlarmCondition)(nil),                 // 16: agent.AlarmCondition
+	(*AlarmConfiguration)(nil),             // 17: agent.AlarmConfiguration
+	(*AlarmEvent)(nil),                     // 18: agent.AlarmEvent
+	(*Query)(nil),                          // 19: agent.Query
+	(*QueryResult)(nil),                    // 20: agent.QueryResult
+	(*Error)(nil),                          // 21: agent.Error
+	(*RegistrationResult)(nil),             // 22: agent.RegistrationResult
+	(*ReportAlarmRequest)(nil),             // 23: agent.ReportAlarmRequest
+	(*ReportAlarmResponse)(nil),            // 24: agent.ReportAlarmResponse
+	(*RegisterRequest)(nil),                // 25: agent.RegisterRequest
+	(*RegisterResponse)(nil),               // 26: agent.RegisterResponse
+	(*QueryRequest)(nil),                   // 27: agent.QueryRequest
+	(*QueryResponse)(nil),                  // 28: agent.QueryResponse
+	(*PostgresInfoRequest)(nil),            // 29: agent.PostgresInfoRequest
+	(*MongoInfoRequest)(nil),               // 30: agent.MongoInfoRequest
+	(*PostgresInfoResponse)(nil),           // 31: agent.PostgresInfoResponse
+	(*MongoInfoResponse)(nil),              // 32: agent.MongoInfoResponse
+	(*ErrorResponse)(nil),                  // 33: agent.ErrorResponse
+	(*ServerMessage)(nil),                  // 34: agent.ServerMessage
+	(*AgentMessage)(nil),                   // 35: agent.AgentMessage
+	(*MSSQLInfoRequest)(nil),               // 36: agent.MSSQLInfoRequest
+	(*MSSQLInfoResponse)(nil),              // 37: agent.MSSQLInfoResponse
+	(*SystemMetrics)(nil),                  // 38: agent.SystemMetrics
+	(*SystemMetricsRequest)(nil),           // 39: agent.SystemMetricsRequest
+	(*SystemMetricsResponse)(nil),          // 40: agent.SystemMetricsResponse
+	(*AlarmConfigRequest)(nil),             // 41: agent.AlarmConfigRequest
+	(*AlarmConfigResponse)(nil),            // 42: agent.AlarmConfigResponse
+	(*PostgresLogFile)(nil),                // 43: agent.PostgresLogFile
+	(*PostgresLogListRequest)(nil),         // 44: agent.PostgresLogListRequest
+	(*PostgresLogListResponse)(nil),        // 45: agent.PostgresLogListResponse
+	(*PostgresLogAnalyzeRequest)(nil),      // 46: agent.PostgresLogAnalyzeRequest
+	(*PostgresLogEntry)(nil),               // 47: agent.PostgresLogEntry
+	(*PostgresLogAnalyzeResponse)(nil),     // 48: agent.PostgresLogAnalyzeResponse
+	(*PostgresConfigRequest)(nil),          // 49: agent.PostgresConfigRequest
+	(*PostgresConfigEntry)(nil),            // 50: agent.PostgresConfigEntry
+	(*PostgresConfigResponse)(nil),         // 51: agent.PostgresConfigResponse
+	(*MSSQLInfo)(nil),                      // 52: agent.MSSQLInfo
+	(*SlowQuery)(nil),                      // 53: agent.SlowQuery
+	(*MSSQLLogFile)(nil),                   // 54: agent.MSSQLLogFile
+	(*ThresholdSettings)(nil),              // 55: agent.ThresholdSettings
+	(*GetThresholdSettingsRequest)(nil),    // 56: agent.GetThresholdSettingsRequest
+	(*GetThresholdSettingsResponse)(nil),   // 57: agent.GetThresholdSettingsResponse
+	(*AgentVersionInfo)(nil),               // 58: agent.AgentVersionInfo
+	(*ReportVersionRequest)(nil),           // 59: agent.ReportVersionRequest
+	(*ReportVersionResponse)(nil),          // 60: agent.ReportVersionResponse
+	(*Job)(nil),                            // 61: agent.Job
+	(*MongoPromotePrimaryRequest)(nil),     // 62: agent.MongoPromotePrimaryRequest
+	(*MongoPromotePrimaryResponse)(nil),    // 63: agent.MongoPromotePrimaryResponse
+	(*PostgresPromoteMasterRequest)(nil),   // 64: agent.PostgresPromoteMasterRequest
+	(*PostgresPromoteMasterResponse)(nil),  // 65: agent.PostgresPromoteMasterResponse
+	(*ConvertPostgresToSlaveRequest)(nil),  // 66: agent.ConvertPostgresToSlaveRequest
+	(*ConvertPostgresToSlaveResponse)(nil), // 67: agent.ConvertPostgresToSlaveResponse
+	(*GetJobRequest)(nil),                  // 68: agent.GetJobRequest
+	(*GetJobResponse)(nil),                 // 69: agent.GetJobResponse
+	(*ListJobsRequest)(nil),                // 70: agent.ListJobsRequest
+	(*ListJobsResponse)(nil),               // 71: agent.ListJobsResponse
+	(*MongoFreezeSecondaryRequest)(nil),    // 72: agent.MongoFreezeSecondaryRequest
+	(*MongoFreezeSecondaryResponse)(nil),   // 73: agent.MongoFreezeSecondaryResponse
+	(*ExplainQueryRequest)(nil),            // 74: agent.ExplainQueryRequest
+	(*ExplainQueryResponse)(nil),           // 75: agent.ExplainQueryResponse
+	(*BestPracticesAnalysisRequest)(nil),   // 76: agent.BestPracticesAnalysisRequest
+	(*BestPracticesAnalysisResponse)(nil),  // 77: agent.BestPracticesAnalysisResponse
+	(*AlwaysOnMetrics)(nil),                // 78: agent.AlwaysOnMetrics
+	(*ReplicaMetrics)(nil),                 // 79: agent.ReplicaMetrics
+	(*DatabaseReplicaStatus)(nil),          // 80: agent.DatabaseReplicaStatus
+	(*ListenerInfo)(nil),                   // 81: agent.ListenerInfo
+	(*MetricValue)(nil),                    // 82: agent.MetricValue
+	(*MetricTag)(nil),                      // 83: agent.MetricTag
+	(*Metric)(nil),                         // 84: agent.Metric
+	(*MetricBatch)(nil),                    // 85: agent.MetricBatch
+	(*SendMetricsRequest)(nil),             // 86: agent.SendMetricsRequest
+	(*SendMetricsResponse)(nil),            // 87: agent.SendMetricsResponse
+	(*CollectMetricsRequest)(nil),          // 88: agent.CollectMetricsRequest
+	(*CollectMetricsResponse)(nil),         // 89: agent.CollectMetricsResponse
+	(*MongoOperationMetrics)(nil),          // 90: agent.MongoOperationMetrics
+	(*PostgresActivityMetrics)(nil),        // 91: agent.PostgresActivityMetrics
+	(*MSSQLPerformanceMetrics)(nil),        // 92: agent.MSSQLPerformanceMetrics
+	(*DiskIOMetrics)(nil),                  // 93: agent.DiskIOMetrics
+	(*NetworkMetrics)(nil),                 // 94: agent.NetworkMetrics
+	nil,                                    // 95: agent.ProcessLogUpdate.MetadataEntry
+	nil,                                    // 96: agent.ProcessStatusResponse.MetadataEntry
+	nil,                                    // 97: agent.Job.ParametersEntry
+	nil,                                    // 98: agent.MetricBatch.MetadataEntry
+	nil,                                    // 99: agent.CollectMetricsRequest.ConfigEntry
+	(*anypb.Any)(nil),                      // 100: google.protobuf.Any
+	(*structpb.Struct)(nil),                // 101: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),          // 102: google.protobuf.Timestamp
 }
 var file_pkg_agent_agent_proto_depIdxs = []int32{
-	93,  // 0: agent.ProcessLogUpdate.metadata:type_name -> agent.ProcessLogUpdate.MetadataEntry
+	95,  // 0: agent.ProcessLogUpdate.metadata:type_name -> agent.ProcessLogUpdate.MetadataEntry
 	4,   // 1: agent.ProcessLogRequest.log_update:type_name -> agent.ProcessLogUpdate
-	94,  // 2: agent.ProcessStatusResponse.metadata:type_name -> agent.ProcessStatusResponse.MetadataEntry
+	96,  // 2: agent.ProcessStatusResponse.metadata:type_name -> agent.ProcessStatusResponse.MetadataEntry
 	11,  // 3: agent.MongoLogListResponse.log_files:type_name -> agent.MongoLogFile
 	14,  // 4: agent.MongoLogAnalyzeResponse.log_entries:type_name -> agent.MongoLogEntry
 	16,  // 5: agent.AlarmConfiguration.condition:type_name -> agent.AlarmCondition
-	98,  // 6: agent.QueryResult.result:type_name -> google.protobuf.Any
+	100, // 6: agent.QueryResult.result:type_name -> google.protobuf.Any
 	18,  // 7: agent.ReportAlarmRequest.events:type_name -> agent.AlarmEvent
 	2,   // 8: agent.RegisterRequest.agent_info:type_name -> agent.AgentInfo
 	22,  // 9: agent.RegisterResponse.registration:type_name -> agent.RegistrationResult
@@ -7916,99 +8106,102 @@ var file_pkg_agent_agent_proto_depIdxs = []int32{
 	9,   // 23: agent.AgentMessage.mongo_info:type_name -> agent.MongoInfo
 	52,  // 24: agent.AgentMessage.mssql_info:type_name -> agent.MSSQLInfo
 	52,  // 25: agent.MSSQLInfoRequest.mssql_info:type_name -> agent.MSSQLInfo
-	99,  // 26: agent.SystemMetricsResponse.data:type_name -> google.protobuf.Struct
+	101, // 26: agent.SystemMetricsResponse.data:type_name -> google.protobuf.Struct
 	38,  // 27: agent.SystemMetricsResponse.metrics:type_name -> agent.SystemMetrics
 	17,  // 28: agent.AlarmConfigResponse.configurations:type_name -> agent.AlarmConfiguration
 	43,  // 29: agent.PostgresLogListResponse.log_files:type_name -> agent.PostgresLogFile
 	47,  // 30: agent.PostgresLogAnalyzeResponse.log_entries:type_name -> agent.PostgresLogEntry
 	50,  // 31: agent.PostgresConfigResponse.configurations:type_name -> agent.PostgresConfigEntry
-	76,  // 32: agent.MSSQLInfo.always_on_metrics:type_name -> agent.AlwaysOnMetrics
+	78,  // 32: agent.MSSQLInfo.always_on_metrics:type_name -> agent.AlwaysOnMetrics
 	55,  // 33: agent.GetThresholdSettingsResponse.settings:type_name -> agent.ThresholdSettings
 	58,  // 34: agent.ReportVersionRequest.version_info:type_name -> agent.AgentVersionInfo
 	1,   // 35: agent.Job.type:type_name -> agent.JobType
 	0,   // 36: agent.Job.status:type_name -> agent.JobStatus
-	100, // 37: agent.Job.created_at:type_name -> google.protobuf.Timestamp
-	100, // 38: agent.Job.updated_at:type_name -> google.protobuf.Timestamp
-	95,  // 39: agent.Job.parameters:type_name -> agent.Job.ParametersEntry
+	102, // 37: agent.Job.created_at:type_name -> google.protobuf.Timestamp
+	102, // 38: agent.Job.updated_at:type_name -> google.protobuf.Timestamp
+	97,  // 39: agent.Job.parameters:type_name -> agent.Job.ParametersEntry
 	0,   // 40: agent.MongoPromotePrimaryResponse.status:type_name -> agent.JobStatus
 	0,   // 41: agent.PostgresPromoteMasterResponse.status:type_name -> agent.JobStatus
-	61,  // 42: agent.GetJobResponse.job:type_name -> agent.Job
-	0,   // 43: agent.ListJobsRequest.status:type_name -> agent.JobStatus
-	1,   // 44: agent.ListJobsRequest.type:type_name -> agent.JobType
-	61,  // 45: agent.ListJobsResponse.jobs:type_name -> agent.Job
-	0,   // 46: agent.MongoFreezeSecondaryResponse.status:type_name -> agent.JobStatus
-	77,  // 47: agent.AlwaysOnMetrics.replicas:type_name -> agent.ReplicaMetrics
-	78,  // 48: agent.AlwaysOnMetrics.databases:type_name -> agent.DatabaseReplicaStatus
-	79,  // 49: agent.AlwaysOnMetrics.listeners:type_name -> agent.ListenerInfo
-	80,  // 50: agent.Metric.value:type_name -> agent.MetricValue
-	81,  // 51: agent.Metric.tags:type_name -> agent.MetricTag
-	82,  // 52: agent.MetricBatch.metrics:type_name -> agent.Metric
-	96,  // 53: agent.MetricBatch.metadata:type_name -> agent.MetricBatch.MetadataEntry
-	83,  // 54: agent.SendMetricsRequest.batch:type_name -> agent.MetricBatch
-	97,  // 55: agent.CollectMetricsRequest.config:type_name -> agent.CollectMetricsRequest.ConfigEntry
-	35,  // 56: agent.AgentService.Connect:input_type -> agent.AgentMessage
-	25,  // 57: agent.AgentService.Register:input_type -> agent.RegisterRequest
-	27,  // 58: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
-	29,  // 59: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
-	27,  // 60: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
-	29,  // 61: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
-	39,  // 62: agent.AgentService.SendSystemMetrics:input_type -> agent.SystemMetricsRequest
-	41,  // 63: agent.AgentService.GetAlarmConfigurations:input_type -> agent.AlarmConfigRequest
-	23,  // 64: agent.AgentService.ReportAlarm:input_type -> agent.ReportAlarmRequest
-	30,  // 65: agent.AgentService.SendMongoInfo:input_type -> agent.MongoInfoRequest
-	10,  // 66: agent.AgentService.ListMongoLogs:input_type -> agent.MongoLogListRequest
-	13,  // 67: agent.AgentService.AnalyzeMongoLog:input_type -> agent.MongoLogAnalyzeRequest
-	44,  // 68: agent.AgentService.ListPostgresLogs:input_type -> agent.PostgresLogListRequest
-	46,  // 69: agent.AgentService.AnalyzePostgresLog:input_type -> agent.PostgresLogAnalyzeRequest
-	49,  // 70: agent.AgentService.ReadPostgresConfig:input_type -> agent.PostgresConfigRequest
-	56,  // 71: agent.AgentService.GetThresholdSettings:input_type -> agent.GetThresholdSettingsRequest
-	59,  // 72: agent.AgentService.ReportVersion:input_type -> agent.ReportVersionRequest
-	62,  // 73: agent.AgentService.PromoteMongoToPrimary:input_type -> agent.MongoPromotePrimaryRequest
-	70,  // 74: agent.AgentService.FreezeMongoSecondary:input_type -> agent.MongoFreezeSecondaryRequest
-	64,  // 75: agent.AgentService.PromotePostgresToMaster:input_type -> agent.PostgresPromoteMasterRequest
-	66,  // 76: agent.AgentService.GetJob:input_type -> agent.GetJobRequest
-	68,  // 77: agent.AgentService.ListJobs:input_type -> agent.ListJobsRequest
-	72,  // 78: agent.AgentService.ExplainQuery:input_type -> agent.ExplainQueryRequest
-	36,  // 79: agent.AgentService.SendMSSQLInfo:input_type -> agent.MSSQLInfoRequest
-	74,  // 80: agent.AgentService.GetBestPracticesAnalysis:input_type -> agent.BestPracticesAnalysisRequest
-	5,   // 81: agent.AgentService.ReportProcessLogs:input_type -> agent.ProcessLogRequest
-	7,   // 82: agent.AgentService.GetProcessStatus:input_type -> agent.ProcessStatusRequest
-	84,  // 83: agent.AgentService.SendMetrics:input_type -> agent.SendMetricsRequest
-	86,  // 84: agent.AgentService.CollectMetrics:input_type -> agent.CollectMetricsRequest
-	34,  // 85: agent.AgentService.Connect:output_type -> agent.ServerMessage
-	26,  // 86: agent.AgentService.Register:output_type -> agent.RegisterResponse
-	28,  // 87: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
-	31,  // 88: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
-	28,  // 89: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
-	31,  // 90: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
-	40,  // 91: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
-	42,  // 92: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
-	24,  // 93: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
-	32,  // 94: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
-	12,  // 95: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
-	15,  // 96: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
-	45,  // 97: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
-	48,  // 98: agent.AgentService.AnalyzePostgresLog:output_type -> agent.PostgresLogAnalyzeResponse
-	51,  // 99: agent.AgentService.ReadPostgresConfig:output_type -> agent.PostgresConfigResponse
-	57,  // 100: agent.AgentService.GetThresholdSettings:output_type -> agent.GetThresholdSettingsResponse
-	60,  // 101: agent.AgentService.ReportVersion:output_type -> agent.ReportVersionResponse
-	63,  // 102: agent.AgentService.PromoteMongoToPrimary:output_type -> agent.MongoPromotePrimaryResponse
-	71,  // 103: agent.AgentService.FreezeMongoSecondary:output_type -> agent.MongoFreezeSecondaryResponse
-	65,  // 104: agent.AgentService.PromotePostgresToMaster:output_type -> agent.PostgresPromoteMasterResponse
-	67,  // 105: agent.AgentService.GetJob:output_type -> agent.GetJobResponse
-	69,  // 106: agent.AgentService.ListJobs:output_type -> agent.ListJobsResponse
-	73,  // 107: agent.AgentService.ExplainQuery:output_type -> agent.ExplainQueryResponse
-	37,  // 108: agent.AgentService.SendMSSQLInfo:output_type -> agent.MSSQLInfoResponse
-	75,  // 109: agent.AgentService.GetBestPracticesAnalysis:output_type -> agent.BestPracticesAnalysisResponse
-	6,   // 110: agent.AgentService.ReportProcessLogs:output_type -> agent.ProcessLogResponse
-	8,   // 111: agent.AgentService.GetProcessStatus:output_type -> agent.ProcessStatusResponse
-	85,  // 112: agent.AgentService.SendMetrics:output_type -> agent.SendMetricsResponse
-	87,  // 113: agent.AgentService.CollectMetrics:output_type -> agent.CollectMetricsResponse
-	85,  // [85:114] is the sub-list for method output_type
-	56,  // [56:85] is the sub-list for method input_type
-	56,  // [56:56] is the sub-list for extension type_name
-	56,  // [56:56] is the sub-list for extension extendee
-	0,   // [0:56] is the sub-list for field type_name
+	0,   // 42: agent.ConvertPostgresToSlaveResponse.status:type_name -> agent.JobStatus
+	61,  // 43: agent.GetJobResponse.job:type_name -> agent.Job
+	0,   // 44: agent.ListJobsRequest.status:type_name -> agent.JobStatus
+	1,   // 45: agent.ListJobsRequest.type:type_name -> agent.JobType
+	61,  // 46: agent.ListJobsResponse.jobs:type_name -> agent.Job
+	0,   // 47: agent.MongoFreezeSecondaryResponse.status:type_name -> agent.JobStatus
+	79,  // 48: agent.AlwaysOnMetrics.replicas:type_name -> agent.ReplicaMetrics
+	80,  // 49: agent.AlwaysOnMetrics.databases:type_name -> agent.DatabaseReplicaStatus
+	81,  // 50: agent.AlwaysOnMetrics.listeners:type_name -> agent.ListenerInfo
+	82,  // 51: agent.Metric.value:type_name -> agent.MetricValue
+	83,  // 52: agent.Metric.tags:type_name -> agent.MetricTag
+	84,  // 53: agent.MetricBatch.metrics:type_name -> agent.Metric
+	98,  // 54: agent.MetricBatch.metadata:type_name -> agent.MetricBatch.MetadataEntry
+	85,  // 55: agent.SendMetricsRequest.batch:type_name -> agent.MetricBatch
+	99,  // 56: agent.CollectMetricsRequest.config:type_name -> agent.CollectMetricsRequest.ConfigEntry
+	35,  // 57: agent.AgentService.Connect:input_type -> agent.AgentMessage
+	25,  // 58: agent.AgentService.Register:input_type -> agent.RegisterRequest
+	27,  // 59: agent.AgentService.ExecuteQuery:input_type -> agent.QueryRequest
+	29,  // 60: agent.AgentService.SendPostgresInfo:input_type -> agent.PostgresInfoRequest
+	27,  // 61: agent.AgentService.StreamQueries:input_type -> agent.QueryRequest
+	29,  // 62: agent.AgentService.StreamPostgresInfo:input_type -> agent.PostgresInfoRequest
+	39,  // 63: agent.AgentService.SendSystemMetrics:input_type -> agent.SystemMetricsRequest
+	41,  // 64: agent.AgentService.GetAlarmConfigurations:input_type -> agent.AlarmConfigRequest
+	23,  // 65: agent.AgentService.ReportAlarm:input_type -> agent.ReportAlarmRequest
+	30,  // 66: agent.AgentService.SendMongoInfo:input_type -> agent.MongoInfoRequest
+	10,  // 67: agent.AgentService.ListMongoLogs:input_type -> agent.MongoLogListRequest
+	13,  // 68: agent.AgentService.AnalyzeMongoLog:input_type -> agent.MongoLogAnalyzeRequest
+	44,  // 69: agent.AgentService.ListPostgresLogs:input_type -> agent.PostgresLogListRequest
+	46,  // 70: agent.AgentService.AnalyzePostgresLog:input_type -> agent.PostgresLogAnalyzeRequest
+	49,  // 71: agent.AgentService.ReadPostgresConfig:input_type -> agent.PostgresConfigRequest
+	56,  // 72: agent.AgentService.GetThresholdSettings:input_type -> agent.GetThresholdSettingsRequest
+	59,  // 73: agent.AgentService.ReportVersion:input_type -> agent.ReportVersionRequest
+	62,  // 74: agent.AgentService.PromoteMongoToPrimary:input_type -> agent.MongoPromotePrimaryRequest
+	72,  // 75: agent.AgentService.FreezeMongoSecondary:input_type -> agent.MongoFreezeSecondaryRequest
+	64,  // 76: agent.AgentService.PromotePostgresToMaster:input_type -> agent.PostgresPromoteMasterRequest
+	66,  // 77: agent.AgentService.ConvertPostgresToSlave:input_type -> agent.ConvertPostgresToSlaveRequest
+	68,  // 78: agent.AgentService.GetJob:input_type -> agent.GetJobRequest
+	70,  // 79: agent.AgentService.ListJobs:input_type -> agent.ListJobsRequest
+	74,  // 80: agent.AgentService.ExplainQuery:input_type -> agent.ExplainQueryRequest
+	36,  // 81: agent.AgentService.SendMSSQLInfo:input_type -> agent.MSSQLInfoRequest
+	76,  // 82: agent.AgentService.GetBestPracticesAnalysis:input_type -> agent.BestPracticesAnalysisRequest
+	5,   // 83: agent.AgentService.ReportProcessLogs:input_type -> agent.ProcessLogRequest
+	7,   // 84: agent.AgentService.GetProcessStatus:input_type -> agent.ProcessStatusRequest
+	86,  // 85: agent.AgentService.SendMetrics:input_type -> agent.SendMetricsRequest
+	88,  // 86: agent.AgentService.CollectMetrics:input_type -> agent.CollectMetricsRequest
+	34,  // 87: agent.AgentService.Connect:output_type -> agent.ServerMessage
+	26,  // 88: agent.AgentService.Register:output_type -> agent.RegisterResponse
+	28,  // 89: agent.AgentService.ExecuteQuery:output_type -> agent.QueryResponse
+	31,  // 90: agent.AgentService.SendPostgresInfo:output_type -> agent.PostgresInfoResponse
+	28,  // 91: agent.AgentService.StreamQueries:output_type -> agent.QueryResponse
+	31,  // 92: agent.AgentService.StreamPostgresInfo:output_type -> agent.PostgresInfoResponse
+	40,  // 93: agent.AgentService.SendSystemMetrics:output_type -> agent.SystemMetricsResponse
+	42,  // 94: agent.AgentService.GetAlarmConfigurations:output_type -> agent.AlarmConfigResponse
+	24,  // 95: agent.AgentService.ReportAlarm:output_type -> agent.ReportAlarmResponse
+	32,  // 96: agent.AgentService.SendMongoInfo:output_type -> agent.MongoInfoResponse
+	12,  // 97: agent.AgentService.ListMongoLogs:output_type -> agent.MongoLogListResponse
+	15,  // 98: agent.AgentService.AnalyzeMongoLog:output_type -> agent.MongoLogAnalyzeResponse
+	45,  // 99: agent.AgentService.ListPostgresLogs:output_type -> agent.PostgresLogListResponse
+	48,  // 100: agent.AgentService.AnalyzePostgresLog:output_type -> agent.PostgresLogAnalyzeResponse
+	51,  // 101: agent.AgentService.ReadPostgresConfig:output_type -> agent.PostgresConfigResponse
+	57,  // 102: agent.AgentService.GetThresholdSettings:output_type -> agent.GetThresholdSettingsResponse
+	60,  // 103: agent.AgentService.ReportVersion:output_type -> agent.ReportVersionResponse
+	63,  // 104: agent.AgentService.PromoteMongoToPrimary:output_type -> agent.MongoPromotePrimaryResponse
+	73,  // 105: agent.AgentService.FreezeMongoSecondary:output_type -> agent.MongoFreezeSecondaryResponse
+	65,  // 106: agent.AgentService.PromotePostgresToMaster:output_type -> agent.PostgresPromoteMasterResponse
+	67,  // 107: agent.AgentService.ConvertPostgresToSlave:output_type -> agent.ConvertPostgresToSlaveResponse
+	69,  // 108: agent.AgentService.GetJob:output_type -> agent.GetJobResponse
+	71,  // 109: agent.AgentService.ListJobs:output_type -> agent.ListJobsResponse
+	75,  // 110: agent.AgentService.ExplainQuery:output_type -> agent.ExplainQueryResponse
+	37,  // 111: agent.AgentService.SendMSSQLInfo:output_type -> agent.MSSQLInfoResponse
+	77,  // 112: agent.AgentService.GetBestPracticesAnalysis:output_type -> agent.BestPracticesAnalysisResponse
+	6,   // 113: agent.AgentService.ReportProcessLogs:output_type -> agent.ProcessLogResponse
+	8,   // 114: agent.AgentService.GetProcessStatus:output_type -> agent.ProcessStatusResponse
+	87,  // 115: agent.AgentService.SendMetrics:output_type -> agent.SendMetricsResponse
+	89,  // 116: agent.AgentService.CollectMetrics:output_type -> agent.CollectMetricsResponse
+	87,  // [87:117] is the sub-list for method output_type
+	57,  // [57:87] is the sub-list for method input_type
+	57,  // [57:57] is the sub-list for extension type_name
+	57,  // [57:57] is the sub-list for extension extendee
+	0,   // [0:57] is the sub-list for field type_name
 }
 
 func init() { file_pkg_agent_agent_proto_init() }
@@ -8030,7 +8223,7 @@ func file_pkg_agent_agent_proto_init() {
 		(*AgentMessage_MongoInfo)(nil),
 		(*AgentMessage_MssqlInfo)(nil),
 	}
-	file_pkg_agent_agent_proto_msgTypes[78].OneofWrappers = []any{
+	file_pkg_agent_agent_proto_msgTypes[80].OneofWrappers = []any{
 		(*MetricValue_DoubleValue)(nil),
 		(*MetricValue_IntValue)(nil),
 		(*MetricValue_StringValue)(nil),
@@ -8042,7 +8235,7 @@ func file_pkg_agent_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_agent_agent_proto_rawDesc), len(file_pkg_agent_agent_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   96,
+			NumMessages:   98,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

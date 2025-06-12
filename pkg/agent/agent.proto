@@ -493,6 +493,7 @@ enum JobType {
   JOB_TYPE_MONGO_PROMOTE_PRIMARY = 1;
   JOB_TYPE_POSTGRES_PROMOTE_MASTER = 2;
   JOB_TYPE_MONGO_FREEZE_SECONDARY = 3;
+  JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE = 4;
 }
 
 message Job {
@@ -537,6 +538,25 @@ message PostgresPromoteMasterResponse {
   JobStatus status = 2;
   string error_message = 3;
   string result = 4;
+}
+
+// PostgreSQL Convert to Slave
+message ConvertPostgresToSlaveRequest {
+  string job_id = 1;
+  string agent_id = 2;
+  string node_hostname = 3;
+  string new_master_host = 4;
+  int32 new_master_port = 5;
+  string data_directory = 6;
+  string replication_user = 7;
+  string replication_password = 8;
+}
+
+message ConvertPostgresToSlaveResponse {
+  string job_id = 1;
+  JobStatus status = 2;
+  string result = 3;
+  string error_message = 4;
 }
 
 // Job Status Request/Response
@@ -850,6 +870,7 @@ service AgentService {
   rpc PromoteMongoToPrimary(MongoPromotePrimaryRequest) returns (MongoPromotePrimaryResponse);
   rpc FreezeMongoSecondary(MongoFreezeSecondaryRequest) returns (MongoFreezeSecondaryResponse);
   rpc PromotePostgresToMaster(PostgresPromoteMasterRequest) returns (PostgresPromoteMasterResponse);
+  rpc ConvertPostgresToSlave(ConvertPostgresToSlaveRequest) returns (ConvertPostgresToSlaveResponse);
   rpc GetJob(GetJobRequest) returns (GetJobResponse);
   rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
 

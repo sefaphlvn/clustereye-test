@@ -160,6 +160,8 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		jobs.POST("/mongo/freeze-secondary", freezeMongoSecondary(server))
 		// PostgreSQL master promotion
 		jobs.POST("/postgres/promote-master", promotePostgresToMaster(server))
+		// PostgreSQL convert to slave
+		jobs.POST("/postgres/convert-to-slave", convertPostgresToSlave(server))
 		// Job durumunu sorgula
 		jobs.GET("/:job_id", getJob(server))
 		// Job listesini getir
@@ -1303,6 +1305,78 @@ func promotePostgresToMaster(server *server.Server) gin.HandlerFunc {
 			"data": gin.H{
 				"job_id": response.JobId,
 				"status": response.Status.String(),
+			},
+		})
+	}
+}
+
+// convertPostgresToSlave, PostgreSQL master'ı slave'e dönüştürür
+func convertPostgresToSlave(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			AgentID             string `json:"agent_id" binding:"required"`
+			NodeHostname        string `json:"node_hostname" binding:"required"`
+			NewMasterHost       string `json:"new_master_host" binding:"required"`
+			NewMasterPort       int32  `json:"new_master_port"`
+			DataDirectory       string `json:"data_directory" binding:"required"`
+			ReplicationUser     string `json:"replication_user" binding:"required"`
+			ReplicationPassword string `json:"replication_password" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz istek formatı: " + err.Error(),
+			})
+			return
+		}
+
+		// Varsayılan port ayarla
+		if req.NewMasterPort == 0 {
+			req.NewMasterPort = 5432
+		}
+
+		// Job ID oluştur
+		jobID := uuid.New().String()
+
+		// İlk protobuf message'ları henüz generate edilmediği için geçici olarak normal job oluştur
+		// gRPC isteği simüle et
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		// Job'ı oluştur
+		job := &pb.Job{
+			JobId:     jobID,
+			Type:      pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE,
+			Status:    pb.JobStatus_JOB_STATUS_PENDING,
+			AgentId:   req.AgentID,
+			CreatedAt: timestamppb.Now(),
+			UpdatedAt: timestamppb.Now(),
+			Parameters: map[string]string{
+				"node_hostname":        req.NodeHostname,
+				"new_master_host":      req.NewMasterHost,
+				"new_master_port":      fmt.Sprintf("%d", req.NewMasterPort),
+				"data_directory":       req.DataDirectory,
+				"replication_user":     req.ReplicationUser,
+				"replication_password": req.ReplicationPassword,
+			},
+		}
+
+		// Job'ı server'a kaydet
+		err := server.CreateJob(ctx, job)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "PostgreSQL slave dönüştürme işlemi başlatılamadı: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusAccepted, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"job_id": jobID,
+				"status": pb.JobStatus_JOB_STATUS_PENDING.String(),
 			},
 		})
 	}

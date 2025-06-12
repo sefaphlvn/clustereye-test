@@ -3208,6 +3208,74 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 	}, nil
 }
 
+// ConvertPostgresToSlave PostgreSQL master'ı slave'e dönüştürür
+func (s *Server) ConvertPostgresToSlave(ctx context.Context, req *pb.ConvertPostgresToSlaveRequest) (*pb.ConvertPostgresToSlaveResponse, error) {
+	log.Printf("ConvertPostgresToSlave çağrıldı - Agent ID: %s, Node: %s",
+		req.AgentId, req.NodeHostname)
+
+	// Job oluştur
+	job := &pb.Job{
+		JobId:     req.JobId,
+		Type:      pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE,
+		Status:    pb.JobStatus_JOB_STATUS_PENDING,
+		AgentId:   req.AgentId,
+		CreatedAt: timestamppb.Now(),
+		UpdatedAt: timestamppb.Now(),
+		Parameters: map[string]string{
+			"node_hostname":    req.NodeHostname,
+			"new_master_host":  req.NewMasterHost,
+			"new_master_port":  fmt.Sprintf("%d", req.NewMasterPort),
+			"data_directory":   req.DataDirectory,
+			"replication_user": req.ReplicationUser,
+		},
+	}
+
+	// Agent'ı bul ve komut gönder
+	s.mu.RLock()
+	agent, exists := s.agents[req.AgentId]
+	s.mu.RUnlock()
+
+	if !exists {
+		return &pb.ConvertPostgresToSlaveResponse{
+			JobId:        req.JobId,
+			Status:       pb.JobStatus_JOB_STATUS_FAILED,
+			ErrorMessage: "Agent bulunamadı",
+		}, fmt.Errorf("agent bulunamadı: %s", req.AgentId)
+	}
+
+	// Komutu oluştur ve gönder
+	command := fmt.Sprintf("convert_postgres_to_slave|%s|%d|%s|%s|%s",
+		req.NewMasterHost, req.NewMasterPort, req.DataDirectory,
+		req.ReplicationUser, req.ReplicationPassword)
+
+	err := agent.Stream.Send(&pb.ServerMessage{
+		Payload: &pb.ServerMessage_Query{
+			Query: &pb.Query{
+				QueryId: req.JobId,
+				Command: command,
+			},
+		},
+	})
+
+	if err != nil {
+		job.Status = pb.JobStatus_JOB_STATUS_FAILED
+		job.ErrorMessage = fmt.Sprintf("Agent'a komut gönderilemedi: %v", err)
+	} else {
+		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
+	}
+
+	job.UpdatedAt = timestamppb.Now()
+	s.jobMu.Lock()
+	s.jobs[job.JobId] = job
+	s.jobMu.Unlock()
+
+	return &pb.ConvertPostgresToSlaveResponse{
+		JobId:        job.JobId,
+		Status:       job.Status,
+		ErrorMessage: job.ErrorMessage,
+	}, nil
+}
+
 // GetJob, belirli bir job'ın detaylarını getirir
 func (s *Server) GetJob(ctx context.Context, req *pb.GetJobRequest) (*pb.GetJobResponse, error) {
 	s.jobMu.RLock()
@@ -3518,13 +3586,59 @@ func (s *Server) CreateJob(ctx context.Context, job *pb.Job) error {
 			}
 
 		case pb.JobType_JOB_TYPE_POSTGRES_PROMOTE_MASTER:
+			// Operation type kontrol et - convert_to_slave ise farklı işlem
+			operationType := job.Parameters["operation_type"]
+			if operationType == "convert_to_slave" {
+				// PostgreSQL convert to slave işlemi
+				newMasterHost := job.Parameters["new_master_host"]
+				newMasterPort := job.Parameters["new_master_port"]
+				dataDir := job.Parameters["data_directory"]
+				replUser := job.Parameters["replication_user"]
+				replPass := job.Parameters["replication_password"]
+
+				if newMasterHost == "" || dataDir == "" || replUser == "" {
+					job.Status = pb.JobStatus_JOB_STATUS_FAILED
+					job.ErrorMessage = "Eksik parametreler: new_master_host, data_directory veya replication_user"
+					break
+				}
+
+				if newMasterPort == "" {
+					newMasterPort = "5432" // Varsayılan port
+				}
+
+				command = fmt.Sprintf("convert_postgres_to_slave|%s|%s|%s|%s|%s",
+					newMasterHost, newMasterPort, dataDir, replUser, replPass)
+			} else {
+				// Normal promotion işlemi
+				dataDir := job.Parameters["data_directory"]
+				if dataDir == "" {
+					job.Status = pb.JobStatus_JOB_STATUS_FAILED
+					job.ErrorMessage = "Eksik parametre: data_directory"
+					break
+				}
+				command = fmt.Sprintf("pg_ctl promote -D %s", dataDir)
+			}
+
+		case pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE:
+			// PostgreSQL convert to slave işlemi
+			newMasterHost := job.Parameters["new_master_host"]
+			newMasterPort := job.Parameters["new_master_port"]
 			dataDir := job.Parameters["data_directory"]
-			if dataDir == "" {
+			replUser := job.Parameters["replication_user"]
+			replPass := job.Parameters["replication_password"]
+
+			if newMasterHost == "" || dataDir == "" || replUser == "" {
 				job.Status = pb.JobStatus_JOB_STATUS_FAILED
-				job.ErrorMessage = "Eksik parametre: data_directory"
+				job.ErrorMessage = "Eksik parametreler: new_master_host, data_directory veya replication_user"
 				break
 			}
-			command = fmt.Sprintf("pg_ctl promote -D %s", dataDir)
+
+			if newMasterPort == "" {
+				newMasterPort = "5432" // Varsayılan port
+			}
+
+			command = fmt.Sprintf("convert_postgres_to_slave|%s|%s|%s|%s|%s",
+				newMasterHost, newMasterPort, dataDir, replUser, replPass)
 
 		default:
 			job.Status = pb.JobStatus_JOB_STATUS_FAILED
@@ -4398,7 +4512,17 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 		log.Printf("[Process Log] [%s] [%s] %s", req.LogUpdate.ProcessId, req.LogUpdate.Status, msg)
 	}
 
-	// Veritabanına kaydet
+	// ProcessLoggerHandler'da metadata kontrolü ekle
+	if metadata := req.LogUpdate.Metadata; metadata != nil {
+		if isFailoverRequest, exists := metadata["failover_coordination_request"]; exists && isFailoverRequest == "true" {
+			log.Printf("Failover koordinasyon talebi algılandı: %s", req.LogUpdate.AgentId)
+
+			// Koordinasyon işlemini başlat
+			go s.handleFailoverCoordination(req.LogUpdate, req.LogUpdate.AgentId)
+		}
+	}
+
+	// Normal process log işleme devam et...
 	err := s.saveProcessLogs(ctx, req.LogUpdate)
 	if err != nil {
 		log.Printf("Process logları veritabanına kaydedilemedi: %v", err)
@@ -4667,6 +4791,104 @@ func (s *Server) GetProcessStatus(ctx context.Context, req *pb.ProcessStatusRequ
 		UpdatedAt:    updatedAt.Format(time.RFC3339),
 		Metadata:     metadata,
 	}, nil
+}
+
+// handleFailoverCoordination failover koordinasyon işlemini yönetir
+func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, requestingAgentId string) {
+	metadata := update.Metadata
+
+	oldMasterHost := metadata["old_master_host"]
+	newMasterHost := metadata["new_master_host"]
+	dataDirectory := metadata["data_directory"]
+	replUser := metadata["replication_user"]
+	replPass := metadata["replication_pass"]
+	action := metadata["action"]
+
+	log.Printf("Failover koordinasyon işlemi başlatılıyor: %s -> %s (Talep eden agent: %s)",
+		oldMasterHost, newMasterHost, requestingAgentId)
+
+	if action != "convert_master_to_slave" || oldMasterHost == "" {
+		log.Printf("Geçersiz failover koordinasyon talebi: action=%s, oldMaster=%s", action, oldMasterHost)
+		return
+	}
+
+	// Replication bilgilerini kontrol et
+	if replUser == "" || replPass == "" {
+		log.Printf("Replication bilgileri eksik: user=%s, pass_empty=%t", replUser, replPass == "")
+		return
+	}
+
+	// Güvenlik kontrolü: Talep eden agent'ın yeni master olduğunu doğrula
+	expectedRequestingAgent := fmt.Sprintf("agent_%s", newMasterHost)
+	if requestingAgentId != expectedRequestingAgent {
+		log.Printf("Güvenlik uyarısı: Koordinasyon talebi beklenmeyen agent'dan geldi. Beklenen: %s, Gelen: %s",
+			expectedRequestingAgent, requestingAgentId)
+		// İsteğe bağlı: Bu durumda işlemi durdurabilirsin
+		// return
+	}
+
+	// Eski master agent'ını bul
+	oldMasterAgentId := fmt.Sprintf("agent_%s", oldMasterHost)
+
+	s.mu.RLock()
+	oldMasterAgent, exists := s.agents[oldMasterAgentId]
+	s.mu.RUnlock()
+
+	if !exists {
+		log.Printf("Eski master agent bulunamadı: %s", oldMasterAgentId)
+		return
+	}
+
+	// Job oluştur
+	jobID := fmt.Sprintf("coord_%d", time.Now().UnixNano())
+	job := &pb.Job{
+		JobId:     jobID,
+		Type:      pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE,
+		Status:    pb.JobStatus_JOB_STATUS_PENDING,
+		AgentId:   oldMasterAgentId,
+		CreatedAt: timestamppb.Now(),
+		UpdatedAt: timestamppb.Now(),
+		Parameters: map[string]string{
+			"old_master_host":      oldMasterHost,
+			"new_master_host":      newMasterHost,
+			"data_directory":       dataDirectory,
+			"replication_user":     replUser,
+			"replication_password": replPass,
+			"requesting_agent_id":  requestingAgentId, // Koordinasyon talep eden agent
+		},
+	}
+
+	// Job'ı kaydet
+	s.jobMu.Lock()
+	s.jobs[jobID] = job
+	s.jobMu.Unlock()
+
+	// ConvertPostgresToSlave komutunu gönder - Agent'dan gelen replication bilgilerini kullan
+	// Format: convert_postgres_to_slave|new_master_host|port|data_dir|repl_user|repl_pass
+	command := fmt.Sprintf("convert_postgres_to_slave|%s|5432|%s|%s|%s",
+		newMasterHost, dataDirectory, replUser, replPass)
+
+	err := oldMasterAgent.Stream.Send(&pb.ServerMessage{
+		Payload: &pb.ServerMessage_Query{
+			Query: &pb.Query{
+				QueryId: jobID,
+				Command: command,
+			},
+		},
+	})
+
+	if err != nil {
+		log.Printf("Eski master'a convert komutu gönderilemedi (Talep eden: %s): %v", requestingAgentId, err)
+		job.Status = pb.JobStatus_JOB_STATUS_FAILED
+		job.ErrorMessage = fmt.Sprintf("Agent'a komut gönderilemedi: %v", err)
+		job.UpdatedAt = timestamppb.Now()
+	} else {
+		log.Printf("Eski master'a convert komutu gönderildi: %s (Talep eden: %s)", oldMasterHost, requestingAgentId)
+		job.Status = pb.JobStatus_JOB_STATUS_RUNNING
+		job.UpdatedAt = timestamppb.Now()
+	}
+
+	s.updateJobInDatabase(context.Background(), job)
 }
 
 // GetRecentAlarms, dashboard için optimize edilmiş son alarmları getirir

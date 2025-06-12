@@ -39,6 +39,7 @@ const (
 	AgentService_PromoteMongoToPrimary_FullMethodName    = "/agent.AgentService/PromoteMongoToPrimary"
 	AgentService_FreezeMongoSecondary_FullMethodName     = "/agent.AgentService/FreezeMongoSecondary"
 	AgentService_PromotePostgresToMaster_FullMethodName  = "/agent.AgentService/PromotePostgresToMaster"
+	AgentService_ConvertPostgresToSlave_FullMethodName   = "/agent.AgentService/ConvertPostgresToSlave"
 	AgentService_GetJob_FullMethodName                   = "/agent.AgentService/GetJob"
 	AgentService_ListJobs_FullMethodName                 = "/agent.AgentService/ListJobs"
 	AgentService_ExplainQuery_FullMethodName             = "/agent.AgentService/ExplainQuery"
@@ -90,6 +91,7 @@ type AgentServiceClient interface {
 	PromoteMongoToPrimary(ctx context.Context, in *MongoPromotePrimaryRequest, opts ...grpc.CallOption) (*MongoPromotePrimaryResponse, error)
 	FreezeMongoSecondary(ctx context.Context, in *MongoFreezeSecondaryRequest, opts ...grpc.CallOption) (*MongoFreezeSecondaryResponse, error)
 	PromotePostgresToMaster(ctx context.Context, in *PostgresPromoteMasterRequest, opts ...grpc.CallOption) (*PostgresPromoteMasterResponse, error)
+	ConvertPostgresToSlave(ctx context.Context, in *ConvertPostgresToSlaveRequest, opts ...grpc.CallOption) (*ConvertPostgresToSlaveResponse, error)
 	GetJob(ctx context.Context, in *GetJobRequest, opts ...grpc.CallOption) (*GetJobResponse, error)
 	ListJobs(ctx context.Context, in *ListJobsRequest, opts ...grpc.CallOption) (*ListJobsResponse, error)
 	// Sorgu planı için yeni endpoint
@@ -325,6 +327,16 @@ func (c *agentServiceClient) PromotePostgresToMaster(ctx context.Context, in *Po
 	return out, nil
 }
 
+func (c *agentServiceClient) ConvertPostgresToSlave(ctx context.Context, in *ConvertPostgresToSlaveRequest, opts ...grpc.CallOption) (*ConvertPostgresToSlaveResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConvertPostgresToSlaveResponse)
+	err := c.cc.Invoke(ctx, AgentService_ConvertPostgresToSlave_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *agentServiceClient) GetJob(ctx context.Context, in *GetJobRequest, opts ...grpc.CallOption) (*GetJobResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetJobResponse)
@@ -455,6 +467,7 @@ type AgentServiceServer interface {
 	PromoteMongoToPrimary(context.Context, *MongoPromotePrimaryRequest) (*MongoPromotePrimaryResponse, error)
 	FreezeMongoSecondary(context.Context, *MongoFreezeSecondaryRequest) (*MongoFreezeSecondaryResponse, error)
 	PromotePostgresToMaster(context.Context, *PostgresPromoteMasterRequest) (*PostgresPromoteMasterResponse, error)
+	ConvertPostgresToSlave(context.Context, *ConvertPostgresToSlaveRequest) (*ConvertPostgresToSlaveResponse, error)
 	GetJob(context.Context, *GetJobRequest) (*GetJobResponse, error)
 	ListJobs(context.Context, *ListJobsRequest) (*ListJobsResponse, error)
 	// Sorgu planı için yeni endpoint
@@ -540,6 +553,9 @@ func (UnimplementedAgentServiceServer) FreezeMongoSecondary(context.Context, *Mo
 }
 func (UnimplementedAgentServiceServer) PromotePostgresToMaster(context.Context, *PostgresPromoteMasterRequest) (*PostgresPromoteMasterResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PromotePostgresToMaster not implemented")
+}
+func (UnimplementedAgentServiceServer) ConvertPostgresToSlave(context.Context, *ConvertPostgresToSlaveRequest) (*ConvertPostgresToSlaveResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ConvertPostgresToSlave not implemented")
 }
 func (UnimplementedAgentServiceServer) GetJob(context.Context, *GetJobRequest) (*GetJobResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetJob not implemented")
@@ -916,6 +932,24 @@ func _AgentService_PromotePostgresToMaster_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_ConvertPostgresToSlave_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConvertPostgresToSlaveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ConvertPostgresToSlave(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ConvertPostgresToSlave_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ConvertPostgresToSlave(ctx, req.(*ConvertPostgresToSlaveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AgentService_GetJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetJobRequest)
 	if err := dec(in); err != nil {
@@ -1152,6 +1186,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PromotePostgresToMaster",
 			Handler:    _AgentService_PromotePostgresToMaster_Handler,
+		},
+		{
+			MethodName: "ConvertPostgresToSlave",
+			Handler:    _AgentService_ConvertPostgresToSlave_Handler,
 		},
 		{
 			MethodName: "GetJob",
