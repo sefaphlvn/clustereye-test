@@ -6046,11 +6046,18 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 		   s.jobMu.Lock()
 		   delete(s.jobs, coordinationJobId)
 		   s.jobMu.Unlock()
+
+		   // FIX: Completed job'ın processed coordination key'ini de temizle
+		   s.coordinationMu.Lock()
+		   coordinationKey := fmt.Sprintf("%s_%s_%s_convert_master_to_slave", coordinationJobId, oldMasterHost, newMasterHost)
+		   delete(s.processedCoordinations, coordinationKey)
+		   s.coordinationMu.Unlock()
+
 		logger.Info().
 			Str("coordination_job_id", coordinationJobId).
 			Str("old_master_host", oldMasterHost).
 			Str("reporting_agent_id", reportingAgentId).
-			Msg("Coordination job başarıyla tamamlandı")
+			Msg("Coordination job başarıyla tamamlandı ve temizlendi")
 	} else {
 		jobCopy.Status = pb.JobStatus_JOB_STATUS_FAILED
 		jobCopy.ErrorMessage = fmt.Sprintf("Coordination failed: %s could not be converted to slave", oldMasterHost)
@@ -6062,16 +6069,18 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 
 	jobCopy.UpdatedAt = timestamppb.Now()
 
-	// Update in memory (short lock)
-	s.jobMu.Lock()
-	s.jobs[coordinationJobId] = jobCopy
-	s.jobMu.Unlock()
+	// Update in memory (short lock) - only if not completed
+	if jobCopy.Status != pb.JobStatus_JOB_STATUS_COMPLETED {
+		s.jobMu.Lock()
+		s.jobs[coordinationJobId] = jobCopy
+		s.jobMu.Unlock()
 
-	logger.Info().
-		Str("coordination_job_id", coordinationJobId).
-		Str("old_status", oldStatus).
-		Str("new_status", jobCopy.Status.String()).
-		Msg("Job status değişimi")
+		logger.Info().
+			Str("coordination_job_id", coordinationJobId).
+			Str("old_status", oldStatus).
+			Str("new_status", jobCopy.Status.String()).
+			Msg("Job status değişimi")
+	}
 
 	// 🔧 FIX: Database update without holding any locks
 	logger.Debug().
@@ -6533,7 +6542,9 @@ func (s *Server) GetCoordinationStatus() (map[string]time.Time, map[string]*pb.J
 	activeJobs := make(map[string]*pb.Job)
 	s.jobMu.RLock()
 	for jobId, job := range s.jobs {
-		if job.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
+		// Sadece CONVERT_TO_SLAVE tipindeki ve COMPLETED olmayan job'ları al
+		if job.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE &&
+			job.Status != pb.JobStatus_JOB_STATUS_COMPLETED {
 			// Job'un kopyasını oluştur (pointer referansından kaçınmak için)
 			jobCopy := &pb.Job{
 				JobId:        job.JobId,
