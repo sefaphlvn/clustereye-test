@@ -5413,16 +5413,30 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 			Str("agent_id", logUpdate.AgentId).
 			Msg("Mevcut işlem kaydı güncelleniyor")
 
-		// Mevcut log mesajlarını al
-		var existingLogs []byte
-		err = s.db.QueryRowContext(ctx, `
-			SELECT log_messages FROM process_logs 
-			WHERE process_id = $1 AND agent_id = $2
-		`, logUpdate.ProcessId, logUpdate.AgentId).Scan(&existingLogs)
+		
+// Mevcut log mesajlarını ve status'u al
+var existingLogs []byte
+var currentStatus string
+err = s.db.QueryRowContext(ctx, `
+    SELECT log_messages, status FROM process_logs 
+    WHERE process_id = $1 AND agent_id = $2
+`, logUpdate.ProcessId, logUpdate.AgentId).Scan(&existingLogs, &currentStatus)
 
-		if err != nil {
-			return fmt.Errorf("mevcut log mesajları alınırken hata: %v", err)
-		}
+if err != nil {
+    return fmt.Errorf("mevcut log mesajları alınırken hata: %v", err)
+}
+
+// 🔧 FIX: Eğer process zaten 'completed' veya 'failed' durumundaysa,
+// sadece log mesajlarını ekle, status'u değiştirme (race condition koruması)
+finalStatus := logUpdate.Status
+if currentStatus == "completed" || currentStatus == "failed" {
+    logger.Debug().
+        Str("process_id", logUpdate.ProcessId).
+        Str("current_status", currentStatus).
+        Str("incoming_status", logUpdate.Status).
+        Msg("Process zaten final durumda, status korunuyor")
+    finalStatus = currentStatus // Mevcut final status'u koru
+}
 
 		// Mevcut log mesajlarını çözümle
 		var existingLogMessages []string
@@ -5451,7 +5465,7 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 		`
 
 		_, err = s.db.ExecContext(ctx, updateQuery,
-			logUpdate.Status,
+			finalStatus
 			combinedLogsJSON,
 			logUpdate.ElapsedTimeS,
 			metadataJSON,
@@ -6028,6 +6042,10 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 	if status == "success" || status == "completed" {
 		jobCopy.Status = pb.JobStatus_JOB_STATUS_COMPLETED
 		jobCopy.Result = fmt.Sprintf("Coordination completed successfully: %s converted to slave by %s", oldMasterHost, reportingAgentId)
+		   // FIX: Completed job'ı active coordination jobs map'inden sil
+		   s.jobMu.Lock()
+		   delete(s.jobs, coordinationJobId)
+		   s.jobMu.Unlock()
 		logger.Info().
 			Str("coordination_job_id", coordinationJobId).
 			Str("old_master_host", oldMasterHost).
