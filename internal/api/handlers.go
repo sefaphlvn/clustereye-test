@@ -3337,10 +3337,25 @@ func cleanupCoordinationState(server *server.Server) gin.HandlerFunc {
 			allCleanedCount := server.CleanupAllCoordination()
 			stuckJobsCount := server.CleanupStuckCoordinationJobs()
 			cleanedCount = allCleanedCount + stuckJobsCount
+		case "cleanup_emergency":
+			// 🚨 EMERGENCY: Break deadlocks and clean everything aggressively
+			result := server.CleanupEmergencyDeadlock()
+			cleanedCount = result["coordination_keys"] + result["stuck_jobs"] + result["stuck_promotions"]
+
+			c.JSON(http.StatusOK, gin.H{
+				"status": "success",
+				"data": gin.H{
+					"action":              req.Action,
+					"emergency_result":    result,
+					"total_cleaned_count": cleanedCount,
+					"message":             fmt.Sprintf("🚨 EMERGENCY CLEANUP: %d items cleaned", cleanedCount),
+				},
+			})
+			return
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{
 				"status": "error",
-				"error":  "Geçersiz action. Kullanılabilir: cleanup_all, cleanup_old, cleanup_key, cleanup_stuck_jobs, cleanup_aggressive",
+				"error":  "Geçersiz action. Kullanılabilir: cleanup_all, cleanup_old, cleanup_key, cleanup_stuck_jobs, cleanup_aggressive, cleanup_emergency",
 			})
 			return
 		}

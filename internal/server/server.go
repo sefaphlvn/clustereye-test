@@ -5483,63 +5483,86 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 			}
 		}
 
-		// Process ID ile job'ı bul (job_id olarak process_id kullanılıyor)
-		s.jobMu.Lock()
+		// 🔧 FIX: Find and update job without holding lock while calling updateJobInDatabase
+		s.jobMu.RLock()
 		job, exists := s.jobs[logUpdate.ProcessId]
+
+		// Create a copy if job exists
+		var jobCopy *pb.Job
+		if exists {
+			jobCopy = &pb.Job{
+				JobId:        job.JobId,
+				AgentId:      job.AgentId,
+				Type:         job.Type,
+				Status:       job.Status,
+				Result:       job.Result,
+				ErrorMessage: job.ErrorMessage,
+				CreatedAt:    job.CreatedAt,
+				UpdatedAt:    job.UpdatedAt,
+				Parameters:   make(map[string]string),
+			}
+			// Copy parameters
+			for k, v := range job.Parameters {
+				jobCopy.Parameters[k] = v
+			}
+		}
+		s.jobMu.RUnlock()
 
 		if exists {
 			// Job durumunu güncelle
 			if logUpdate.Status == "completed" {
-				job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
-				job.Result = "Job completed successfully by agent process logger"
+				jobCopy.Status = pb.JobStatus_JOB_STATUS_COMPLETED
+				jobCopy.Result = "Job completed successfully by agent process logger"
 
 				// Eğer bu bir coordination job ise, özel işlem yap
-				if job.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
+				if jobCopy.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
 					logger.Info().
-						Str("job_id", job.JobId).
+						Str("job_id", jobCopy.JobId).
 						Msg("Coordination job tamamlandı")
-					job.Result = "PostgreSQL convert to slave coordination completed successfully"
+					jobCopy.Result = "PostgreSQL convert to slave coordination completed successfully"
 				}
 			} else {
-				job.Status = pb.JobStatus_JOB_STATUS_FAILED
-				job.ErrorMessage = "Job failed as reported by agent process logger"
+				jobCopy.Status = pb.JobStatus_JOB_STATUS_FAILED
+				jobCopy.ErrorMessage = "Job failed as reported by agent process logger"
 
 				// Eğer bu bir coordination job ise, özel hata işlemi yap
-				if job.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
+				if jobCopy.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
 					logger.Error().
-						Str("job_id", job.JobId).
+						Str("job_id", jobCopy.JobId).
 						Msg("Coordination job başarısız")
-					job.ErrorMessage = "PostgreSQL convert to slave coordination failed"
+					jobCopy.ErrorMessage = "PostgreSQL convert to slave coordination failed"
 				}
 			}
 
-			job.UpdatedAt = timestamppb.Now()
-			s.jobs[logUpdate.ProcessId] = job
+			jobCopy.UpdatedAt = timestamppb.Now()
+
+			// Update in memory (short lock)
+			s.jobMu.Lock()
+			s.jobs[logUpdate.ProcessId] = jobCopy
 			s.jobMu.Unlock()
 
-			// Veritabanında da job durumunu güncelle
-			err = s.updateJobInDatabase(context.Background(), job)
+			// 🔧 FIX: Database update without holding any locks
+			err = s.updateJobInDatabase(context.Background(), jobCopy)
 			if err != nil {
 				logger.Error().
 					Err(err).
-					Str("job_id", job.JobId).
+					Str("job_id", jobCopy.JobId).
 					Str("process_id", logUpdate.ProcessId).
 					Msg("Job durumu veritabanında güncellenirken hata")
 			} else {
-				if job.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
+				if jobCopy.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
 					logger.Info().
 						Str("process_id", logUpdate.ProcessId).
-						Str("job_status", job.Status.String()).
+						Str("job_status", jobCopy.Status.String()).
 						Msg("Coordination job veritabanında güncellendi")
 				} else {
 					logger.Info().
 						Str("process_id", logUpdate.ProcessId).
-						Str("job_status", job.Status.String()).
+						Str("job_status", jobCopy.Status.String()).
 						Msg("Job durumu başarıyla güncellendi")
 				}
 			}
 		} else {
-			s.jobMu.Unlock()
 			logger.Warn().
 				Str("process_id", logUpdate.ProcessId).
 				Str("agent_id", logUpdate.AgentId).
@@ -5940,13 +5963,13 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 		return
 	}
 
-	// 🔧 FIX: Job'u ayrı scope'da bul ve güncelle (deadlock'u önlemek için)
+	// 🔧 FIX: Find and update job without holding lock while calling other functions
 	logger.Debug().
 		Str("coordination_job_id", coordinationJobId).
 		Msg("Job aranıyor")
 
-	s.jobMu.Lock()
-	// Debug: Mevcut job'ları listele
+	// First find the job
+	s.jobMu.RLock()
 	var existingJobIds []string
 	var existingJobTypes []string
 	for jobId, job := range s.jobs {
@@ -5961,8 +5984,28 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 		Msg("Mevcut job'lar")
 
 	job, exists := s.jobs[coordinationJobId]
+	// Create a copy to avoid pointer sharing
+	var jobCopy *pb.Job
+	if exists {
+		jobCopy = &pb.Job{
+			JobId:        job.JobId,
+			AgentId:      job.AgentId,
+			Type:         job.Type,
+			Status:       job.Status,
+			Result:       job.Result,
+			ErrorMessage: job.ErrorMessage,
+			CreatedAt:    job.CreatedAt,
+			UpdatedAt:    job.UpdatedAt,
+			Parameters:   make(map[string]string),
+		}
+		// Copy parameters
+		for k, v := range job.Parameters {
+			jobCopy.Parameters[k] = v
+		}
+	}
+	s.jobMu.RUnlock()
+
 	if !exists {
-		s.jobMu.Unlock()
 		logger.Error().
 			Str("coordination_job_id", coordinationJobId).
 			Strs("available_job_ids", existingJobIds).
@@ -5972,7 +6015,7 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 
 	logger.Info().
 		Str("coordination_job_id", coordinationJobId).
-		Str("job_status", job.Status.String()).
+		Str("job_status", jobCopy.Status.String()).
 		Msg("Coordination job bulundu")
 
 	// Job durumunu güncelle
@@ -5981,39 +6024,42 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 		Str("incoming_status", status).
 		Msg("Job status güncelleniyor")
 
-	oldStatus := job.Status.String()
+	oldStatus := jobCopy.Status.String()
 	if status == "success" || status == "completed" {
-		job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
-		job.Result = fmt.Sprintf("Coordination completed successfully: %s converted to slave by %s", oldMasterHost, reportingAgentId)
+		jobCopy.Status = pb.JobStatus_JOB_STATUS_COMPLETED
+		jobCopy.Result = fmt.Sprintf("Coordination completed successfully: %s converted to slave by %s", oldMasterHost, reportingAgentId)
 		logger.Info().
 			Str("coordination_job_id", coordinationJobId).
 			Str("old_master_host", oldMasterHost).
 			Str("reporting_agent_id", reportingAgentId).
 			Msg("Coordination job başarıyla tamamlandı")
 	} else {
-		job.Status = pb.JobStatus_JOB_STATUS_FAILED
-		job.ErrorMessage = fmt.Sprintf("Coordination failed: %s could not be converted to slave", oldMasterHost)
+		jobCopy.Status = pb.JobStatus_JOB_STATUS_FAILED
+		jobCopy.ErrorMessage = fmt.Sprintf("Coordination failed: %s could not be converted to slave", oldMasterHost)
 		logger.Error().
 			Str("coordination_job_id", coordinationJobId).
 			Str("old_master_host", oldMasterHost).
 			Msg("Coordination job başarısız")
 	}
 
-	job.UpdatedAt = timestamppb.Now()
-	s.jobs[coordinationJobId] = job
+	jobCopy.UpdatedAt = timestamppb.Now()
+
+	// Update in memory (short lock)
+	s.jobMu.Lock()
+	s.jobs[coordinationJobId] = jobCopy
 	s.jobMu.Unlock()
 
 	logger.Info().
 		Str("coordination_job_id", coordinationJobId).
 		Str("old_status", oldStatus).
-		Str("new_status", job.Status.String()).
+		Str("new_status", jobCopy.Status.String()).
 		Msg("Job status değişimi")
 
-	// Veritabanında job durumunu güncelle
+	// 🔧 FIX: Database update without holding any locks
 	logger.Debug().
 		Str("coordination_job_id", coordinationJobId).
 		Msg("Veritabanında job güncelleniyor")
-	err := s.updateJobInDatabase(context.Background(), job)
+	err := s.updateJobInDatabase(context.Background(), jobCopy)
 	if err != nil {
 		logger.Error().
 			Err(err).
@@ -6022,7 +6068,7 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 	} else {
 		logger.Info().
 			Str("coordination_job_id", coordinationJobId).
-			Str("job_status", job.Status.String()).
+			Str("job_status", jobCopy.Status.String()).
 			Msg("Coordination job veritabanında güncellendi")
 	}
 
@@ -6148,13 +6194,12 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 		Str("new_master_host", newMasterHost).
 		Msg("Agent'ının promotion job'u aranıyor")
 
-	s.jobMu.Lock()
-	defer s.jobMu.Unlock()
-
-	// Requesting agent'a ait RUNNING promotion job'larını ara
+	// 🔧 FIX: Find the job first without holding the lock for too long
 	var promotionJob *pb.Job
 	var promotionJobId string
 
+	s.jobMu.RLock()
+	// Requesting agent'a ait RUNNING promotion job'larını ara
 	for jobId, job := range s.jobs {
 		// Promotion job kriterleri:
 		// 1. Agent ID eşleşmeli
@@ -6168,7 +6213,22 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 			// Node hostname kontrolü (eğer varsa)
 			if nodeHostname, exists := job.Parameters["node_hostname"]; exists {
 				if nodeHostname == newMasterHost {
-					promotionJob = job
+					// Job'un kopyasını oluştur (pointer paylaşımından kaçınmak için)
+					promotionJob = &pb.Job{
+						JobId:        job.JobId,
+						AgentId:      job.AgentId,
+						Type:         job.Type,
+						Status:       job.Status,
+						Result:       job.Result,
+						ErrorMessage: job.ErrorMessage,
+						CreatedAt:    job.CreatedAt,
+						UpdatedAt:    job.UpdatedAt,
+						Parameters:   make(map[string]string),
+					}
+					// Parameters'ı kopyala
+					for k, v := range job.Parameters {
+						promotionJob.Parameters[k] = v
+					}
 					promotionJobId = jobId
 					logger.Info().
 						Str("job_id", jobId).
@@ -6185,7 +6245,21 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 				}
 			} else {
 				// Node hostname yoksa, agent ve type eşleşen ilk job'u al
-				promotionJob = job
+				promotionJob = &pb.Job{
+					JobId:        job.JobId,
+					AgentId:      job.AgentId,
+					Type:         job.Type,
+					Status:       job.Status,
+					Result:       job.Result,
+					ErrorMessage: job.ErrorMessage,
+					CreatedAt:    job.CreatedAt,
+					UpdatedAt:    job.UpdatedAt,
+					Parameters:   make(map[string]string),
+				}
+				// Parameters'ı kopyala
+				for k, v := range job.Parameters {
+					promotionJob.Parameters[k] = v
+				}
 				promotionJobId = jobId
 				logger.Info().
 					Str("job_id", jobId).
@@ -6194,6 +6268,7 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 			}
 		}
 	}
+	s.jobMu.RUnlock()
 
 	if promotionJob == nil {
 		logger.Warn().
@@ -6201,13 +6276,16 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 			Str("new_master_host", newMasterHost).
 			Msg("Agent için RUNNING promotion job bulunamadı")
 
-		// Debug: Mevcut job'ları listele
+		// Debug: Mevcut job'ları listele (ayrı lock ile)
+		s.jobMu.RLock()
 		var agentJobs []string
 		for jobId, job := range s.jobs {
 			if job.AgentId == requestingAgentId {
 				agentJobs = append(agentJobs, fmt.Sprintf("%s:%s:%s", jobId, job.Type.String(), job.Status.String()))
 			}
 		}
+		s.jobMu.RUnlock()
+
 		logger.Debug().
 			Str("requesting_agent_id", requestingAgentId).
 			Strs("agent_jobs", agentJobs).
@@ -6215,12 +6293,16 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 		return
 	}
 
-	// Promotion job'unu complete et
+	// 🔧 FIX: Update the job without holding lock for too long
 	oldStatus := promotionJob.Status.String()
 	promotionJob.Status = pb.JobStatus_JOB_STATUS_COMPLETED
 	promotionJob.Result = fmt.Sprintf("PostgreSQL promotion completed successfully. Coordination also completed for old master conversion.")
 	promotionJob.UpdatedAt = timestamppb.Now()
+
+	// Now update in memory (short lock)
+	s.jobMu.Lock()
 	s.jobs[promotionJobId] = promotionJob
+	s.jobMu.Unlock()
 
 	logger.Info().
 		Str("promotion_job_id", promotionJobId).
@@ -6228,7 +6310,8 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 		Str("new_status", promotionJob.Status.String()).
 		Msg("Promotion job status değişimi")
 
-	// Veritabanında da güncelle
+	// 🔧 FIX: Database and process logs updates without holding any locks
+	// Veritabanında da güncelle (no locks held)
 	err := s.updateJobInDatabase(context.Background(), promotionJob)
 	if err != nil {
 		logger.Error().
@@ -6242,7 +6325,7 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 			Msg("Promotion job veritabanında güncellendi")
 	}
 
-	// 🔧 FIX: Process logs tablosunu da "completed" olarak güncelle
+	// 🔧 FIX: Process logs tablosunu da "completed" olarak güncelle (no locks held)
 	completionLogUpdate := &pb.ProcessLogUpdate{
 		AgentId:      requestingAgentId,
 		ProcessId:    promotionJobId,
@@ -6283,7 +6366,7 @@ func (s *Server) bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHo
 		Str("log_message", logMessage).
 		Msg("BRIDGE: Agent'ının promotion process'ine log ekleniyor")
 
-	// Requesting agent'ın promotion process ID'sini bul
+	// 🔧 FIX: Find promotion process ID without holding lock while calling saveProcessLogs
 	var promotionProcessId string
 
 	s.jobMu.RLock()
@@ -6323,7 +6406,7 @@ func (s *Server) bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHo
 		return
 	}
 
-	// Process log update oluştur
+	// 🔧 FIX: Process log update oluştur ve kaydet (hiç lock tutmadan)
 	logUpdate := &pb.ProcessLogUpdate{
 		AgentId:      requestingAgentId,
 		ProcessId:    promotionProcessId,
@@ -6338,7 +6421,7 @@ func (s *Server) bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHo
 		},
 	}
 
-	// Process logs'a kaydet
+	// Process logs'a kaydet (no locks held - prevents deadlock)
 	err := s.saveProcessLogs(context.Background(), logUpdate)
 	if err != nil {
 		logger.Error().
@@ -6566,6 +6649,56 @@ func (s *Server) CleanupStuckCoordinationJobs() int {
 	}
 
 	return stuckJobsCount
+}
+
+// 🚨 EMERGENCY: CleanupEmergencyDeadlock cleans up any potential deadlock situation
+func (s *Server) CleanupEmergencyDeadlock() map[string]int {
+	logger.Warn().Msg("🚨 EMERGENCY DEADLOCK CLEANUP BAŞLADI")
+
+	result := make(map[string]int)
+
+	// 1. Clean all coordination state
+	result["coordination_keys"] = s.CleanupAllCoordination()
+
+	// 2. Clean stuck coordination jobs
+	result["stuck_jobs"] = s.CleanupStuckCoordinationJobs()
+
+	// 3. Clean ALL promotion jobs that are stuck (more aggressive)
+	s.jobMu.Lock()
+	promotionStuckCount := 0
+	cutoff := time.Now().Add(-5 * time.Minute) // More aggressive - 5 minutes
+
+	for jobId, job := range s.jobs {
+		if job.Type == pb.JobType_JOB_TYPE_POSTGRES_PROMOTE_MASTER {
+			if (job.Status == pb.JobStatus_JOB_STATUS_PENDING || job.Status == pb.JobStatus_JOB_STATUS_RUNNING) &&
+				job.CreatedAt.AsTime().Before(cutoff) {
+
+				logger.Warn().
+					Str("job_id", jobId).
+					Str("job_type", job.Type.String()).
+					Str("job_status", job.Status.String()).
+					Dur("age", time.Since(job.CreatedAt.AsTime())).
+					Msg("🚨 EMERGENCY: Cleaning up stuck promotion job")
+
+				job.Status = pb.JobStatus_JOB_STATUS_FAILED
+				job.ErrorMessage = "Emergency cleanup: Job was stuck and cleaned up"
+				job.UpdatedAt = timestamppb.Now()
+				s.jobs[jobId] = job
+				promotionStuckCount++
+			}
+		}
+	}
+	s.jobMu.Unlock()
+
+	result["stuck_promotions"] = promotionStuckCount
+
+	logger.Warn().
+		Int("coordination_keys", result["coordination_keys"]).
+		Int("stuck_jobs", result["stuck_jobs"]).
+		Int("stuck_promotions", result["stuck_promotions"]).
+		Msg("🚨 EMERGENCY CLEANUP TAMAMLANDI")
+
+	return result
 }
 
 // GetRecentAlarms, dashboard için optimize edilmiş son alarmları getirir
