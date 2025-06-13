@@ -3268,54 +3268,19 @@ func getMSSQLTransactionsRateMetrics(server *server.Server) gin.HandlerFunc {
 // getCoordinationStatus, mevcut coordination state'ini gösterir (debug amaçlı)
 func getCoordinationStatus(server *server.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Context timeout ekle (deadlock durumunda timeout olsun)
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
-		defer cancel()
+		// 🔧 FIX: Simple direct call instead of complex goroutine with timeout
+		// This avoids potential deadlocks and makes it more reliable
+		coordinationKeys, activeJobs := server.GetCoordinationStatus()
 
-		// Channel ile coordination state'ini asenkron al
-		resultChan := make(chan struct {
-			coordinationKeys map[string]time.Time
-			activeJobs       map[string]*pb.Job
-		}, 1)
-		errChan := make(chan error, 1)
-
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					errChan <- fmt.Errorf("panic during coordination status retrieval: %v", r)
-				}
-			}()
-
-			// Coordination state'ini al
-			coordinationKeys, activeJobs := server.GetCoordinationStatus()
-			resultChan <- struct {
-				coordinationKeys map[string]time.Time
-				activeJobs       map[string]*pb.Job
-			}{coordinationKeys, activeJobs}
-		}()
-
-		select {
-		case result := <-resultChan:
-			c.JSON(http.StatusOK, gin.H{
-				"status": "success",
-				"data": gin.H{
-					"processed_coordinations":  result.coordinationKeys,
-					"active_coordination_jobs": result.activeJobs,
-					"total_processed_keys":     len(result.coordinationKeys),
-					"total_active_jobs":        len(result.activeJobs),
-				},
-			})
-		case err := <-errChan:
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status": "error",
-				"error":  "Coordination status alınırken hata: " + err.Error(),
-			})
-		case <-ctx.Done():
-			c.JSON(http.StatusRequestTimeout, gin.H{
-				"status": "error",
-				"error":  "Coordination status isteği timeout oldu (10 saniye)",
-			})
-		}
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"processed_coordinations":  coordinationKeys,
+				"active_coordination_jobs": activeJobs,
+				"total_processed_keys":     len(coordinationKeys),
+				"total_active_jobs":        len(activeJobs),
+			},
+		})
 	}
 }
 
@@ -3343,7 +3308,7 @@ func cleanupCoordinationState(server *server.Server) gin.HandlerFunc {
 			// Tüm coordination state'ini temizle
 			cleanedCount = server.CleanupAllCoordination()
 		case "cleanup_old":
-			// Sadece eski kayıtları temizle (10 dakikadan eski)
+			// Sadece eski kayıtları temizle (5 dakikadan eski)
 			cleanedCount = server.CleanupOldCoordination()
 		case "cleanup_key":
 			// Belirli bir key'i temizle
@@ -3364,10 +3329,18 @@ func cleanupCoordinationState(server *server.Server) gin.HandlerFunc {
 				})
 				return
 			}
+		case "cleanup_stuck_jobs":
+			// 🔧 NEW: Stuck coordination jobs'ları temizle
+			cleanedCount = server.CleanupStuckCoordinationJobs()
+		case "cleanup_aggressive":
+			// 🔧 NEW: Comprehensive cleanup - everything at once
+			allCleanedCount := server.CleanupAllCoordination()
+			stuckJobsCount := server.CleanupStuckCoordinationJobs()
+			cleanedCount = allCleanedCount + stuckJobsCount
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{
 				"status": "error",
-				"error":  "Geçersiz action. Kullanılabilir: cleanup_all, cleanup_old, cleanup_key",
+				"error":  "Geçersiz action. Kullanılabilir: cleanup_all, cleanup_old, cleanup_key, cleanup_stuck_jobs, cleanup_aggressive",
 			})
 			return
 		}

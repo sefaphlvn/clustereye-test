@@ -5252,13 +5252,14 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 			s.coordinationMu.Lock()
 			lastProcessed, alreadyProcessed := s.processedCoordinations[coordinationKey]
 
-			// Eğer son 2 dakika içinde işlenmişse skip et (timeout'u düşürdük, ikinci promotion'a izin vermek için)
-			if alreadyProcessed && time.Since(lastProcessed) < 2*time.Minute {
+			// 🔧 FIX: Reduced timeout from 2 minutes to 30 seconds for faster retry
+			// This allows users to retry promotion sooner if the first attempt fails
+			if alreadyProcessed && time.Since(lastProcessed) < 30*time.Second {
 				s.coordinationMu.Unlock()
 				logger.Warn().
 					Str("coordination_key", coordinationKey).
 					Dur("last_processed_ago", time.Since(lastProcessed).Round(time.Second)).
-					Msg("Duplicate coordination request skipped (within 2 minutes)")
+					Msg("Duplicate coordination request skipped (within 30 seconds)")
 				return &pb.ProcessLogResponse{
 					Status:  "ok",
 					Message: "Process logları başarıyla alındı (duplicate coordination skipped)",
@@ -5268,7 +5269,8 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 			// Bu coordination'ı işlenmiş olarak işaretle
 			s.processedCoordinations[coordinationKey] = time.Now()
 
-			// Eski kayıtları temizle (5 dakikadan eski olanları, daha agresif cleanup)
+			// 🔧 FIX: More aggressive cleanup - every coordination request triggers cleanup
+			// This helps prevent memory leaks and stuck coordination states
 			go s.cleanupOldCoordinations()
 
 			s.coordinationMu.Unlock()
@@ -6512,6 +6514,58 @@ func (s *Server) CleanupCoordinationKey(key string) bool {
 	}
 
 	return false
+}
+
+// 🔧 NEW: CleanupStuckCoordinationJobs cleans up coordination jobs that are stuck
+func (s *Server) CleanupStuckCoordinationJobs() int {
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+
+	cutoff := time.Now().Add(-10 * time.Minute) // Jobs stuck for more than 10 minutes
+	stuckJobsCount := 0
+
+	for jobId, job := range s.jobs {
+		if job.Type == pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE {
+			// Check if job is stuck in PENDING or RUNNING state for too long
+			if (job.Status == pb.JobStatus_JOB_STATUS_PENDING || job.Status == pb.JobStatus_JOB_STATUS_RUNNING) &&
+				job.CreatedAt.AsTime().Before(cutoff) {
+
+				logger.Warn().
+					Str("job_id", jobId).
+					Str("job_status", job.Status.String()).
+					Dur("age", time.Since(job.CreatedAt.AsTime())).
+					Msg("Cleaning up stuck coordination job")
+
+				// Mark job as failed
+				job.Status = pb.JobStatus_JOB_STATUS_FAILED
+				job.ErrorMessage = "Job timed out and was automatically cleaned up"
+				job.UpdatedAt = timestamppb.Now()
+
+				s.jobs[jobId] = job
+				stuckJobsCount++
+
+				// Also update in database
+				go func(j *pb.Job) {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					if err := s.updateJobInDatabase(ctx, j); err != nil {
+						logger.Error().
+							Err(err).
+							Str("job_id", j.JobId).
+							Msg("Failed to update stuck job in database")
+					}
+				}(job)
+			}
+		}
+	}
+
+	if stuckJobsCount > 0 {
+		logger.Info().
+			Int("cleaned_jobs", stuckJobsCount).
+			Msg("Cleaned up stuck coordination jobs")
+	}
+
+	return stuckJobsCount
 }
 
 // GetRecentAlarms, dashboard için optimize edilmiş son alarmları getirir
