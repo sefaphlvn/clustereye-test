@@ -6701,6 +6701,131 @@ func (s *Server) CleanupEmergencyDeadlock() map[string]int {
 	return result
 }
 
+// 🔧 NEW: ForceCompleteProcess manually completes a stuck process
+func (s *Server) ForceCompleteProcess(processId string) bool {
+	logger.Warn().
+		Str("process_id", processId).
+		Msg("🔧 FORCE COMPLETING STUCK PROCESS")
+
+		// Check if process exists in database first
+	var currentStatus string
+	var agentId string
+	var processType string
+
+	err := s.db.QueryRow(`
+		SELECT status, agent_id, process_type
+		FROM process_logs 
+		WHERE process_id = $1
+	`, processId).Scan(&currentStatus, &agentId, &processType)
+
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Str("process_id", processId).
+			Msg("Process bulunamadı")
+		return false
+	}
+	logger.Info().
+		Str("process_id", processId).
+		Str("current_status", currentStatus).
+		Str("agent_id", agentId).
+		Str("process_type", processType).
+		Msg("Process bulundu, zorla tamamlanıyor")
+
+	if currentStatus == "completed" {
+		logger.Info().
+			Str("process_id", processId).
+			Msg("Process zaten completed durumunda")
+		return true
+	}
+
+	// Force update process logs to completed
+	completionTime := time.Now()
+
+	// Get existing logs first
+	var existingLogsJSON []byte
+	err = s.db.QueryRow(`
+		SELECT log_messages FROM process_logs WHERE process_id = $1
+	`, processId).Scan(&existingLogsJSON)
+
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Str("process_id", processId).
+			Msg("Existing logs alınamadı")
+		return false
+	}
+
+	// Parse existing logs
+	var existingLogs []string
+	if err := json.Unmarshal(existingLogsJSON, &existingLogs); err != nil {
+		logger.Error().
+			Err(err).
+			Str("process_id", processId).
+			Msg("Existing logs parse edilemedi")
+		return false
+	}
+
+	// Add completion message
+	completionMessage := fmt.Sprintf("[%s] 🔧 FORCE COMPLETED: Process manually completed via API",
+		completionTime.Format("15:04:05"))
+	existingLogs = append(existingLogs, completionMessage)
+
+	// Convert back to JSON
+	updatedLogsJSON, err := json.Marshal(existingLogs)
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Str("process_id", processId).
+			Msg("Updated logs JSON'a çevrilemedi")
+		return false
+	}
+
+	// Update metadata to include force completion info
+	metadata := map[string]string{
+		"force_completed":   "true",
+		"completion_source": "manual_api",
+		"completion_time":   completionTime.Format(time.RFC3339),
+	}
+	metadataJSON, _ := json.Marshal(metadata)
+
+	// Force update in database
+	_, err = s.db.Exec(`
+		UPDATE process_logs SET 
+			status = 'completed',
+			log_messages = $1,
+			metadata = $2,
+			updated_at = $3
+		WHERE process_id = $4
+	`, updatedLogsJSON, metadataJSON, completionTime, processId)
+
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Str("process_id", processId).
+			Msg("Process force completion veritabanında güncellenemedi")
+		return false
+	}
+
+	// Also update in-memory job if it exists
+	s.jobMu.Lock()
+	if job, jobExists := s.jobs[processId]; jobExists {
+		job.Status = pb.JobStatus_JOB_STATUS_COMPLETED
+		job.Result = "Process force completed via API"
+		job.UpdatedAt = timestamppb.Now()
+		s.jobs[processId] = job
+	}
+	s.jobMu.Unlock()
+
+	logger.Warn().
+		Str("process_id", processId).
+		Str("agent_id", agentId).
+		Str("process_type", processType).
+		Msg("🔧 PROCESS FORCE COMPLETED SUCCESSFULLY")
+
+	return true
+}
+
 // GetRecentAlarms, dashboard için optimize edilmiş son alarmları getirir
 func (s *Server) GetRecentAlarms(ctx context.Context, limit int, onlyUnacknowledged bool) ([]map[string]interface{}, error) {
 	// Veritabanı bağlantısını kontrol et

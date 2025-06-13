@@ -3352,10 +3352,29 @@ func cleanupCoordinationState(server *server.Server) gin.HandlerFunc {
 				},
 			})
 			return
+		case "complete_process":
+			// 🔧 NEW: Manually complete a stuck process
+			if req.Key == "" {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"status": "error",
+					"error":  "Process ID (key parameter) gerekli",
+				})
+				return
+			}
+			success := server.ForceCompleteProcess(req.Key)
+			if success {
+				cleanedCount = 1
+			} else {
+				c.JSON(http.StatusNotFound, gin.H{
+					"status": "error",
+					"error":  "Belirtilen process bulunamadı",
+				})
+				return
+			}
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{
 				"status": "error",
-				"error":  "Geçersiz action. Kullanılabilir: cleanup_all, cleanup_old, cleanup_key, cleanup_stuck_jobs, cleanup_aggressive, cleanup_emergency",
+				"error":  "Geçersiz action. Kullanılabilir: cleanup_all, cleanup_old, cleanup_key, cleanup_stuck_jobs, cleanup_aggressive, cleanup_emergency, complete_process",
 			})
 			return
 		}
