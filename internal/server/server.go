@@ -5465,7 +5465,7 @@ if currentStatus == "completed" || currentStatus == "failed" {
 		`
 
 		_, err = s.db.ExecContext(ctx, updateQuery,
-			finalStatus
+			finalStatus,
 			combinedLogsJSON,
 			logUpdate.ElapsedTimeS,
 			metadataJSON,
