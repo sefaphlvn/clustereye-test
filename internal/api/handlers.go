@@ -162,6 +162,10 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 		jobs.POST("/postgres/promote-master", promotePostgresToMaster(server))
 		// PostgreSQL convert to slave
 		jobs.POST("/postgres/convert-to-slave", convertPostgresToSlave(server))
+		// PostgreSQL rollback failover
+		jobs.POST("/postgres/rollback", rollbackPostgresFailover(server))
+		// PostgreSQL rollback info
+		jobs.GET("/postgres/rollback/:agent_id", getPostgresRollbackInfo(server))
 		// Job durumunu sorgula
 		jobs.GET("/:job_id", getJob(server))
 		// Job listesini getir
@@ -3409,6 +3413,108 @@ func cleanupCoordinationState(server *server.Server) gin.HandlerFunc {
 				"action":        req.Action,
 				"cleaned_count": cleanedCount,
 				"message":       fmt.Sprintf("%d coordination key temizlendi", cleanedCount),
+			},
+		})
+	}
+}
+
+// rollbackPostgresFailover, PostgreSQL failover işlemini geri alır
+func rollbackPostgresFailover(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			JobID   string `json:"job_id" binding:"required"`
+			AgentID string `json:"agent_id" binding:"required"`
+			Reason  string `json:"reason"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "Geçersiz JSON verisi: " + err.Error(),
+			})
+			return
+		}
+
+		// Context oluştur
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		// Rollback isteği oluştur
+		rollbackReq := &pb.PostgresRollbackRequest{
+			JobId:   req.JobID,
+			AgentId: req.AgentID,
+			Reason:  req.Reason,
+		}
+
+		// Server'a rollback isteği gönder
+		response, err := server.RollbackPostgresFailover(ctx, rollbackReq)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Rollback işlemi başlatılamadı: " + err.Error(),
+			})
+			return
+		}
+
+		// Başarılı yanıt
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"job_id":        response.JobId,
+				"status":        response.Status.String(),
+				"result":        response.Result,
+				"error_message": response.ErrorMessage,
+			},
+		})
+	}
+}
+
+// getPostgresRollbackInfo, PostgreSQL rollback durumunu sorgular
+func getPostgresRollbackInfo(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Param("agent_id")
+		if agentID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status": "error",
+				"error":  "agent_id parametresi gerekli",
+			})
+			return
+		}
+
+		// Context oluştur
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
+
+		// Rollback info isteği oluştur
+		infoReq := &pb.PostgresRollbackInfoRequest{
+			AgentId: agentID,
+		}
+
+		// Server'a rollback info isteği gönder
+		response, err := server.GetPostgresRollbackInfo(ctx, infoReq)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "Rollback bilgileri alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		// Başarılı yanıt
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data": gin.H{
+				"has_state":            response.HasState,
+				"job_id":               response.JobId,
+				"start_time":           response.StartTime,
+				"current_step":         response.CurrentStep,
+				"completed_steps":      response.CompletedSteps,
+				"original_node_status": response.OriginalNodeStatus,
+				"data_directory":       response.DataDirectory,
+				"postgresql_version":   response.PostgresqlVersion,
+				"can_rollback":         response.CanRollback,
+				"rollback_reason":      response.RollbackReason,
+				"last_error":           response.LastError,
 			},
 		})
 	}
