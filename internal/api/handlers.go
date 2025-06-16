@@ -1269,6 +1269,11 @@ func promotePostgresToMaster(server *server.Server) gin.HandlerFunc {
 			NodeHostname      string `json:"node_hostname" binding:"required"`
 			DataDirectory     string `json:"data_directory" binding:"required"`
 			CurrentMasterHost string `json:"current_master_host"` // Eski master bilgisi
+			CurrentMasterIP   string `json:"current_master_ip"`   // Eski master IP adresi
+			Slaves            []struct {
+				Hostname string `json:"hostname"`
+				IP       string `json:"ip"`
+			} `json:"slaves"` // Diğer slave node'ların listesi
 		}
 
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -1282,6 +1287,15 @@ func promotePostgresToMaster(server *server.Server) gin.HandlerFunc {
 		// Job ID oluştur
 		jobID := uuid.New().String()
 
+		// Slave node'ları protobuf formatına dönüştür
+		var slaves []*pb.SlaveNode
+		for _, slave := range req.Slaves {
+			slaves = append(slaves, &pb.SlaveNode{
+				Hostname: slave.Hostname,
+				Ip:       slave.IP,
+			})
+		}
+
 		// gRPC isteği oluştur
 		grpcReq := &pb.PostgresPromoteMasterRequest{
 			JobId:             jobID,
@@ -1289,6 +1303,8 @@ func promotePostgresToMaster(server *server.Server) gin.HandlerFunc {
 			NodeHostname:      req.NodeHostname,
 			DataDirectory:     req.DataDirectory,
 			CurrentMasterHost: req.CurrentMasterHost, // Eski master bilgisini ekle
+			CurrentMasterIp:   req.CurrentMasterIP,   // Eski master IP adresi
+			Slaves:            slaves,                // Diğer slave node'ların listesi
 		}
 
 		// Context oluştur
