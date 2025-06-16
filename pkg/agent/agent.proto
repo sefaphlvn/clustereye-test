@@ -525,6 +525,12 @@ message MongoPromotePrimaryResponse {
   string result = 4;
 }
 
+// Slave node bilgisi için yardımcı mesaj
+message SlaveNode {
+  string hostname = 1;
+  string ip = 2;
+}
+
 // PostgreSQL Master Promotion
 message PostgresPromoteMasterRequest {
   string job_id = 1;
@@ -532,6 +538,8 @@ message PostgresPromoteMasterRequest {
   string node_hostname = 3;
   string data_directory = 4;
   string current_master_host = 5; // Eski master node bilgisi (koordinasyon için)
+  string current_master_ip = 6;   // Eski master IP adresi
+  repeated SlaveNode slaves = 7;  // Diğer slave node'ların listesi
 }
 
 message PostgresPromoteMasterResponse {

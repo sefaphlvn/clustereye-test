@@ -3414,21 +3414,62 @@ func (s *Server) PromoteMongoToPrimary(ctx context.Context, req *pb.MongoPromote
 }
 
 // PromotePostgresToMaster, PostgreSQL node'unu master'a yükseltir
+//
+// Yeni JSON formatı:
+//
+//	{
+//	  "agent_id": "agent_slave_hostname",
+//	  "node_hostname": "slave_hostname",
+//	  "data_directory": "/var/lib/postgresql/data",
+//	  "current_master_host": "master_hostname",
+//	  "current_master_ip": "master_ip_address",
+//	  "slaves": [
+//	    {"hostname": "other_slave1_hostname", "ip": "other_slave1_ip"},
+//	    {"hostname": "other_slave2_hostname", "ip": "other_slave2_ip"}
+//	  ]
+//	}
+//
+// ✅ Protobuf güncellendi ve yeni alanlar eklendi:
+// - CurrentMasterIp string
+// - Slaves []*SlaveNode (SlaveNode: Hostname, Ip alanları olan struct)
+//
+// NOT: Replication user/password bilgileri artık güvenlik nedeniyle agent config'inden alınacak
 func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPromoteMasterRequest) (*pb.PostgresPromoteMasterResponse, error) {
 	logger.Info().
 		Str("agent_id", req.AgentId).
 		Str("node_hostname", req.NodeHostname).
 		Str("data_directory", req.DataDirectory).
 		Str("current_master_host", req.CurrentMasterHost).
+		Str("current_master_ip", req.CurrentMasterIp).
+		Int("slave_count", len(req.Slaves)).
 		Str("job_id", req.JobId).
 		Msg("PromotePostgresToMaster çağrıldı")
+
+	// Slave bilgilerini logla
+	if len(req.Slaves) > 0 {
+		for i, slave := range req.Slaves {
+			logger.Debug().
+				Int("slave_index", i).
+				Str("slave_hostname", slave.Hostname).
+				Str("slave_ip", slave.Ip).
+				Msg("Other slave node")
+		}
+	}
 
 	// Process log takibi için metadata oluştur
 	metadata := map[string]string{
 		"node_hostname":       req.NodeHostname,
 		"data_directory":      req.DataDirectory,
 		"job_id":              req.JobId,
-		"current_master_host": req.CurrentMasterHost, // Eski master bilgisini ekle
+		"current_master_host": req.CurrentMasterHost,
+		"current_master_ip":   req.CurrentMasterIp,
+		"slave_count":         fmt.Sprintf("%d", len(req.Slaves)),
+	}
+
+	// Slave bilgilerini metadata'ya ekle
+	for i, slave := range req.Slaves {
+		metadata[fmt.Sprintf("slave_%d_hostname", i)] = slave.Hostname
+		metadata[fmt.Sprintf("slave_%d_ip", i)] = slave.Ip
 	}
 
 	// Job oluştur
@@ -3440,13 +3481,20 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 		CreatedAt: timestamppb.Now(),
 		UpdatedAt: timestamppb.Now(),
 		Parameters: map[string]string{
-			"node_hostname":        req.NodeHostname,
-			"data_directory":       req.DataDirectory,
-			"process_id":           req.JobId,               // Process ID olarak job ID'yi kullan
-			"current_master_host":  req.CurrentMasterHost,   // Eski master bilgisi
-			"replication_user":     req.ReplicationUser,     // Replication kullanıcı adı
-			"replication_password": req.ReplicationPassword, // Replication şifresi
+			"node_hostname":       req.NodeHostname,
+			"data_directory":      req.DataDirectory,
+			"process_id":          req.JobId,                          // Process ID olarak job ID'yi kullan
+			"current_master_host": req.CurrentMasterHost,              // Eski master bilgisi
+			"current_master_ip":   req.CurrentMasterIp,                // Eski master IP bilgisi
+			"slave_count":         fmt.Sprintf("%d", len(req.Slaves)), // Diğer slave sayısı
+			// Replication user/password artık agent config'inden alınacak (güvenlik)
 		},
+	}
+
+	// Slave bilgilerini job parameters'a ekle
+	for i, slave := range req.Slaves {
+		job.Parameters[fmt.Sprintf("slave_%d_hostname", i)] = slave.Hostname
+		job.Parameters[fmt.Sprintf("slave_%d_ip", i)] = slave.Ip
 	}
 
 	// Job'ı kaydet
@@ -3533,12 +3581,24 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 		s.updateJobInDatabase(dbCtx, job)
 		dbCancel()
 
-		// Yeni komut formatı: "postgres_promote|data_dir|process_id|old_master_host"
+		// Yeni komut formatı: "postgres_promote|data_dir|process_id|old_master_host|old_master_ip|slave_count|slaves_info"
 		// Agent tarafındaki ProcessLogger'ı etkinleştirmek için process_id gönderiyoruz
-		// Eski master bilgisini de gönderiyoruz (koordinasyon için)
+		// Eski master bilgisini ve diğer slave bilgilerini de gönderiyoruz (koordinasyon için)
 		// Agent kendi config'inden replication bilgilerini alacak
-		command := fmt.Sprintf("postgres_promote|%s|%s|%s",
-			req.DataDirectory, req.JobId, req.CurrentMasterHost)
+
+		// Slave bilgilerini string formatına çevir
+		slave_info := ""
+		if len(req.Slaves) > 0 {
+			var slaveInfos []string
+			for _, slave := range req.Slaves {
+				slaveInfos = append(slaveInfos, fmt.Sprintf("%s:%s", slave.Hostname, slave.Ip))
+			}
+			slave_info = strings.Join(slaveInfos, ",")
+		}
+
+		// Tam komut formatı
+		command := fmt.Sprintf("postgres_promote|%s|%s|%s|%s|%d|%s",
+			req.DataDirectory, req.JobId, req.CurrentMasterHost, req.CurrentMasterIp, len(req.Slaves), slave_info)
 
 		// 🔧 FIX: Timeout ile Stream.Send() çağrısı
 		sendCtx, sendCancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -3680,9 +3740,9 @@ func (s *Server) ConvertPostgresToSlave(ctx context.Context, req *pb.ConvertPost
 	}
 
 	// Komutu oluştur ve gönder (process tracking için job ID'yi de ekle)
-	command := fmt.Sprintf("convert_postgres_to_slave|%s|%d|%s|%s|%s|%s",
-		req.NewMasterHost, req.NewMasterPort, req.DataDirectory,
-		req.ReplicationUser, req.ReplicationPassword, req.JobId)
+	// NOT: Replication bilgileri artık agent config'inden alınacak (güvenlik)
+	command := fmt.Sprintf("convert_postgres_to_slave|%s|%d|%s|%s",
+		req.NewMasterHost, req.NewMasterPort, req.DataDirectory, req.JobId)
 
 	// 🔧 FIX: Timeout ile Stream.Send() çağrısı
 	sendCtx, sendCancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -4115,12 +4175,10 @@ func (s *Server) CreateJob(ctx context.Context, job *pb.Job) error {
 			newMasterHost := job.Parameters["new_master_host"]
 			newMasterPort := job.Parameters["new_master_port"]
 			dataDir := job.Parameters["data_directory"]
-			replUser := job.Parameters["replication_user"]
-			replPass := job.Parameters["replication_password"]
 
-			if newMasterHost == "" || dataDir == "" || replUser == "" {
+			if newMasterHost == "" || dataDir == "" {
 				job.Status = pb.JobStatus_JOB_STATUS_FAILED
-				job.ErrorMessage = "Eksik parametreler: new_master_host, data_directory veya replication_user"
+				job.ErrorMessage = "Eksik parametreler: new_master_host veya data_directory"
 				break
 			}
 
@@ -4129,8 +4187,9 @@ func (s *Server) CreateJob(ctx context.Context, job *pb.Job) error {
 			}
 
 			// Process tracking için job ID'yi de komuta ekle
-			command = fmt.Sprintf("convert_postgres_to_slave|%s|%s|%s|%s|%s|%s",
-				newMasterHost, newMasterPort, dataDir, replUser, replPass, job.JobId)
+			// NOT: Replication bilgileri artık agent config'inden alınacak (güvenlik)
+			command = fmt.Sprintf("convert_postgres_to_slave|%s|%s|%s|%s",
+				newMasterHost, newMasterPort, dataDir, job.JobId)
 
 		default:
 			job.Status = pb.JobStatus_JOB_STATUS_FAILED
@@ -5413,30 +5472,29 @@ func (s *Server) saveProcessLogs(ctx context.Context, logUpdate *pb.ProcessLogUp
 			Str("agent_id", logUpdate.AgentId).
 			Msg("Mevcut işlem kaydı güncelleniyor")
 
-		
-// Mevcut log mesajlarını ve status'u al
-var existingLogs []byte
-var currentStatus string
-err = s.db.QueryRowContext(ctx, `
+		// Mevcut log mesajlarını ve status'u al
+		var existingLogs []byte
+		var currentStatus string
+		err = s.db.QueryRowContext(ctx, `
     SELECT log_messages, status FROM process_logs 
     WHERE process_id = $1 AND agent_id = $2
 `, logUpdate.ProcessId, logUpdate.AgentId).Scan(&existingLogs, &currentStatus)
 
-if err != nil {
-    return fmt.Errorf("mevcut log mesajları alınırken hata: %v", err)
-}
+		if err != nil {
+			return fmt.Errorf("mevcut log mesajları alınırken hata: %v", err)
+		}
 
-// 🔧 FIX: Eğer process zaten 'completed' veya 'failed' durumundaysa,
-// sadece log mesajlarını ekle, status'u değiştirme (race condition koruması)
-finalStatus := logUpdate.Status
-if currentStatus == "completed" || currentStatus == "failed" {
-    logger.Debug().
-        Str("process_id", logUpdate.ProcessId).
-        Str("current_status", currentStatus).
-        Str("incoming_status", logUpdate.Status).
-        Msg("Process zaten final durumda, status korunuyor")
-    finalStatus = currentStatus // Mevcut final status'u koru
-}
+		// 🔧 FIX: Eğer process zaten 'completed' veya 'failed' durumundaysa,
+		// sadece log mesajlarını ekle, status'u değiştirme (race condition koruması)
+		finalStatus := logUpdate.Status
+		if currentStatus == "completed" || currentStatus == "failed" {
+			logger.Debug().
+				Str("process_id", logUpdate.ProcessId).
+				Str("current_status", currentStatus).
+				Str("incoming_status", logUpdate.Status).
+				Msg("Process zaten final durumda, status korunuyor")
+			finalStatus = currentStatus // Mevcut final status'u koru
+		}
 
 		// Mevcut log mesajlarını çözümle
 		var existingLogMessages []string
@@ -5852,11 +5910,12 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 		Str("job_id", jobID).
 		Msg("Coordination job kaydedildi")
 
-	// ConvertPostgresToSlave komutunu gönder - Agent'dan gelen replication bilgilerini kullan
-	// Format: convert_postgres_to_slave|new_master_host|port|data_dir|repl_user|repl_pass|process_id
+	// ConvertPostgresToSlave komutunu gönder
+	// Format: convert_postgres_to_slave|new_master_host|port|data_dir|process_id
 	// Process ID eklenerek coordination job tracking'i yapılacak
-	command := fmt.Sprintf("convert_postgres_to_slave|%s|5432|%s|%s|%s|%s",
-		newMasterHost, dataDirectory, replUser, replPass, jobID)
+	// NOT: Replication bilgileri artık agent config'inden alınacak (güvenlik)
+	command := fmt.Sprintf("convert_postgres_to_slave|%s|5432|%s|%s",
+		newMasterHost, dataDirectory, jobID)
 
 	logger.Debug().
 		Str("command", command).
@@ -6042,16 +6101,16 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 	if status == "success" || status == "completed" {
 		jobCopy.Status = pb.JobStatus_JOB_STATUS_COMPLETED
 		jobCopy.Result = fmt.Sprintf("Coordination completed successfully: %s converted to slave by %s", oldMasterHost, reportingAgentId)
-		   // FIX: Completed job'ı active coordination jobs map'inden sil
-		   s.jobMu.Lock()
-		   delete(s.jobs, coordinationJobId)
-		   s.jobMu.Unlock()
+		// FIX: Completed job'ı active coordination jobs map'inden sil
+		s.jobMu.Lock()
+		delete(s.jobs, coordinationJobId)
+		s.jobMu.Unlock()
 
-		   // FIX: Completed job'ın processed coordination key'ini de temizle
-		   s.coordinationMu.Lock()
-		   coordinationKey := fmt.Sprintf("%s_%s_%s_convert_master_to_slave", coordinationJobId, oldMasterHost, newMasterHost)
-		   delete(s.processedCoordinations, coordinationKey)
-		   s.coordinationMu.Unlock()
+		// FIX: Completed job'ın processed coordination key'ini de temizle
+		s.coordinationMu.Lock()
+		coordinationKey := fmt.Sprintf("%s_%s_%s_convert_master_to_slave", coordinationJobId, oldMasterHost, newMasterHost)
+		delete(s.processedCoordinations, coordinationKey)
+		s.coordinationMu.Unlock()
 
 		logger.Info().
 			Str("coordination_job_id", coordinationJobId).
