@@ -3445,6 +3445,18 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 		Str("job_id", req.JobId).
 		Msg("PromotePostgresToMaster çağrıldı")
 
+	// DEBUG: Request içeriğini detaylı logla
+	logger.Debug().
+		Str("agent_id", req.AgentId).
+		Str("node_hostname", req.NodeHostname).
+		Str("data_directory", req.DataDirectory).
+		Str("current_master_host", req.CurrentMasterHost).
+		Str("current_master_ip", req.CurrentMasterIp).
+		Int("slaves_count", len(req.Slaves)).
+		Interface("slaves_raw", req.Slaves).
+		Str("job_id", req.JobId).
+		Msg("DEBUG: PromotePostgresToMaster request detayları")
+
 	// Slave bilgilerini logla
 	if len(req.Slaves) > 0 {
 		for i, slave := range req.Slaves {
