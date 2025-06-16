@@ -5439,6 +5439,34 @@ func (s *Server) ReportProcessLogs(ctx context.Context, req *pb.ProcessLogReques
 		} else {
 			logger.Debug().Msg("coordination_completion metadata bulunamadı")
 		}
+
+		// 3. Coordination Rollback Request (Rollback sırasında gelen)
+		if rollbackRequest, exists := metadata["coordination_rollback_request"]; exists && rollbackRequest == "true" {
+			logger.Info().
+				Str("agent_id", req.LogUpdate.AgentId).
+				Str("process_id", req.LogUpdate.ProcessId).
+				Msg("Coordination rollback request detected")
+
+			// Rollback parametrelerini al
+			targetHost := metadata["rollback_target_host"]
+			targetIP := metadata["rollback_target_ip"]
+			rollbackAction := metadata["rollback_action"]
+			rollbackReason := metadata["rollback_reason"]
+			originalMasterHost := metadata["original_master_host"]
+			originalMasterIP := metadata["original_master_ip"]
+
+			logger.Info().
+				Str("target_host", targetHost).
+				Str("target_ip", targetIP).
+				Str("rollback_action", rollbackAction).
+				Str("rollback_reason", rollbackReason).
+				Str("original_master_host", originalMasterHost).
+				Str("original_master_ip", originalMasterIP).
+				Msg("Coordination rollback parameters")
+
+			// Asenkron olarak koordinasyon rollback'i başlat
+			go s.handleCoordinationRollback(targetHost, targetIP, originalMasterHost, originalMasterIP, rollbackReason)
+		}
 	}
 
 	// Normal process log işleme devam et...
@@ -7779,4 +7807,122 @@ func convertToFloat64(v interface{}) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// handleCoordinationRollback koordinasyon rollback işlemini yönetir
+func (s *Server) handleCoordinationRollback(targetHost, targetIP, originalMasterHost, originalMasterIP, reason string) {
+	logger.Info().
+		Str("target_host", targetHost).
+		Str("target_ip", targetIP).
+		Str("original_master_host", originalMasterHost).
+		Str("original_master_ip", originalMasterIP).
+		Str("reason", reason).
+		Msg("Starting coordination rollback")
+
+	// 1. Target node'u (Fenrir) STANDBY'ye döndür
+	if err := s.revertNodeToStandby(targetHost, targetIP, originalMasterHost, originalMasterIP); err != nil {
+		logger.Error().
+			Err(err).
+			Str("target_host", targetHost).
+			Msg("Failed to revert node to standby")
+		// Hata durumunda alarm gönder
+		s.sendSplitBrainAlert(targetHost, originalMasterHost, err)
+		return
+	}
+
+	logger.Info().
+		Str("target_host", targetHost).
+		Msg("Coordination rollback completed successfully - node reverted to STANDBY")
+}
+
+// revertNodeToStandby bir node'u STANDBY moduna döndürür
+func (s *Server) revertNodeToStandby(targetHost, targetIP, newMasterHost, newMasterIP string) error {
+	logger.Info().
+		Str("target_host", targetHost).
+		Str("target_ip", targetIP).
+		Str("new_master_host", newMasterHost).
+		Str("new_master_ip", newMasterIP).
+		Msg("Reverting node to standby mode")
+
+	// Target node'a convert_postgres_to_slave komutu gönder
+	convertCommand := fmt.Sprintf("convert_postgres_to_slave|%s|%s|5432|/var/lib/postgresql/15/main|rollback_%d|%s",
+		newMasterHost, newMasterIP, time.Now().Unix(), targetHost)
+
+	logger.Info().
+		Str("target_host", targetHost).
+		Str("command", convertCommand).
+		Msg("Sending coordination rollback command")
+
+	// Query gönderme sistemi ile komutu target node'a gönder
+	queryID := fmt.Sprintf("coordination_rollback_%d", time.Now().Unix())
+
+	// Timeout context oluştur
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Target node'a komutu gönder
+	result, err := s.SendQuery(ctx, targetHost, queryID, convertCommand, "")
+	if err != nil {
+		return fmt.Errorf("failed to send rollback command to %s: %v", targetHost, err)
+	}
+
+	// Sonucu kontrol et - result.Result *anypb.Any tipinde olduğu için string'e çevirmek gerekiyor
+	var resultStr string
+	if result.Result != nil {
+		// Any tipini string'e çevir
+		var structValue structpb.Struct
+		if err := result.Result.UnmarshalTo(&structValue); err == nil {
+			if resultMap := structValue.AsMap(); resultMap != nil {
+				if status, ok := resultMap["status"].(string); ok && status != "success" {
+					return fmt.Errorf("rollback command failed on %s: status=%s", targetHost, status)
+				}
+				if resultBytes, err := json.Marshal(resultMap); err == nil {
+					resultStr = string(resultBytes)
+				}
+			}
+		}
+	}
+
+	logger.Info().
+		Str("target_host", targetHost).
+		Str("result", resultStr).
+		Msg("Coordination rollback command completed successfully")
+
+	return nil
+}
+
+// sendSplitBrainAlert split-brain durumu için alarm gönderir
+func (s *Server) sendSplitBrainAlert(targetHost, originalMasterHost string, err error) {
+	logger.Error().
+		Str("target_host", targetHost).
+		Str("original_master_host", originalMasterHost).
+		Err(err).
+		Msg("CRITICAL: Split-brain situation detected!")
+
+	logger.Error().
+		Str("target_node", targetHost+" (still PRIMARY)").
+		Str("original_master", originalMasterHost+" (reverted to MASTER)").
+		Str("rollback_error", err.Error()).
+		Msg("MANUAL INTERVENTION REQUIRED!")
+
+	// Koordinasyon rollback event'ini kaydet
+	s.logCoordinationRollback(targetHost, originalMasterHost, "revert_to_standby", "failed")
+
+	// Burada alarm sisteminize göre kritik alarm gönderebilirsiniz
+	// Örnek: Slack, email, monitoring system, vs.
+}
+
+// logCoordinationRollback koordinasyon rollback için özel logging
+func (s *Server) logCoordinationRollback(targetHost, originalHost, action, status string) {
+	logger.Info().
+		Str("event_type", "coordination_rollback").
+		Str("target_host", targetHost).
+		Str("original_host", originalHost).
+		Str("action", action).
+		Str("status", status).
+		Time("timestamp", time.Now()).
+		Msg("Coordination rollback event logged")
+
+	// Database'e kaydet veya monitoring sistemine gönder
+	// Bu kısım isteğe bağlı olarak genişletilebilir
 }
