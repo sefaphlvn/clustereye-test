@@ -3791,7 +3791,7 @@ func (s *Server) ConvertPostgresToSlave(ctx context.Context, req *pb.ConvertPost
 	command := fmt.Sprintf("convert_postgres_to_slave|%s|%s|%d|%s|%s|%s",
 		req.NewMasterHost,     // new_master_host
 		req.NewMasterIp,       // new_master_ip (YENİ)
-		req.NewMasterPort,     // new_master_port
+		req.NewMasterPort,     // new_master_port (INT)
 		req.DataDirectory,     // data_dir
 		req.CoordinationJobId, // coordination_job_id (opsiyonel)
 		req.OldMasterHost)     // old_master_host (opsiyonel)
@@ -4249,7 +4249,7 @@ func (s *Server) CreateJob(ctx context.Context, job *pb.Job) error {
 			command = fmt.Sprintf("convert_postgres_to_slave|%s|%s|%s|%s|%s|%s",
 				newMasterHost,     // new_master_host
 				newMasterIp,       // new_master_ip
-				newMasterPort,     // new_master_port
+				newMasterPort,     // new_master_port (STRING)
 				dataDir,           // data_dir
 				coordinationJobId, // coordination_job_id (opsiyonel)
 				oldMasterHost)     // old_master_host (opsiyonel)
@@ -5844,6 +5844,7 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 
 	oldMasterHost := metadata["old_master_host"]
 	newMasterHost := metadata["new_master_host"]
+	newMasterIp := metadata["new_master_ip"] // ✅ YENİ: new_master_ip'yi metadata'dan al
 	dataDirectory := metadata["data_directory"]
 	replUser := metadata["replication_user"]
 	replPass := metadata["replication_pass"]
@@ -5856,6 +5857,7 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 	logger.Info().
 		Str("old_master_host", oldMasterHost).
 		Str("new_master_host", newMasterHost).
+		Str("new_master_ip", newMasterIp).
 		Str("requesting_agent_id", requestingAgentId).
 		Str("action", action).
 		Str("data_directory", dataDirectory).
@@ -5976,7 +5978,15 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 	// ConvertPostgresToSlave komutunu gönder
 	// Format: convert_postgres_to_slave|new_master_host|new_master_ip|port|data_dir|coordination_job_id|old_master_host
 	// NOT: Replication bilgileri artık agent config'inden alınacak (güvenlik)
-	newMasterIp := newMasterHost // Fallback: hostname'i IP olarak kullan
+
+	// ✅ FIX: newMasterIp artık metadata'dan alınıyor, fallback gerekirse uygula
+	if newMasterIp == "" {
+		newMasterIp = newMasterHost // Fallback: hostname'i IP olarak kullan
+		logger.Warn().
+			Str("new_master_host", newMasterHost).
+			Msg("new_master_ip metadata'da boş, hostname fallback kullanılıyor")
+	}
+
 	command := fmt.Sprintf("convert_postgres_to_slave|%s|%s|5432|%s|%s|%s",
 		newMasterHost, newMasterIp, dataDirectory, jobID, oldMasterHost)
 
