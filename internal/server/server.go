@@ -6046,6 +6046,9 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 			go s.bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHost,
 				fmt.Sprintf("[%s] Coordination başlatıldı: Eski master (%s) slave'e dönüştürülüyor...",
 					time.Now().Format("15:04:05"), oldMasterHost))
+
+			// 🚀 YENİ: Diğer slave node'ları için reconfiguration komutları gönder
+			go s.handleSlaveReconfiguration(metadata, newMasterHost, newMasterIp, requestingAgentId, jobID)
 		}
 	case <-ctx.Done():
 		logger.Error().
@@ -6344,6 +6347,164 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 		Str("coordination_job_id", coordinationJobId).
 		Str("completion_status", status).
 		Msg("Coordination completion işlemi tamamlandı")
+}
+
+// handleSlaveReconfiguration diğer slave node'ları için reconfiguration komutları gönderir
+func (s *Server) handleSlaveReconfiguration(metadata map[string]string, newMasterHost, newMasterIp, requestingAgentId, parentJobId string) {
+	logger.Info().
+		Str("new_master_host", newMasterHost).
+		Str("new_master_ip", newMasterIp).
+		Str("requesting_agent_id", requestingAgentId).
+		Str("parent_job_id", parentJobId).
+		Msg("Slave reconfiguration işlemi başlatılıyor")
+
+	// Metadata'dan slave bilgilerini al
+	slaveCount := 0
+	if slaveCountStr, exists := metadata["slave_count"]; exists {
+		if count, err := strconv.Atoi(slaveCountStr); err == nil {
+			slaveCount = count
+		}
+	}
+
+	logger.Info().
+		Int("slave_count", slaveCount).
+		Msg("Reconfigure edilecek slave sayısı")
+
+	if slaveCount == 0 {
+		logger.Info().Msg("Reconfigure edilecek slave node yok")
+		return
+	}
+
+	// Her slave için reconfiguration komutu gönder
+	for i := 0; i < slaveCount; i++ {
+		slaveHostnameKey := fmt.Sprintf("slave_%d_hostname", i)
+		slaveIpKey := fmt.Sprintf("slave_%d_ip", i)
+
+		slaveHostname, hostnameExists := metadata[slaveHostnameKey]
+		slaveIp, ipExists := metadata[slaveIpKey]
+
+		if !hostnameExists || !ipExists || slaveHostname == "" {
+			logger.Warn().
+				Int("slave_index", i).
+				Str("hostname_key", slaveHostnameKey).
+				Str("ip_key", slaveIpKey).
+				Bool("hostname_exists", hostnameExists).
+				Bool("ip_exists", ipExists).
+				Str("hostname", slaveHostname).
+				Msg("Slave bilgileri eksik, atlanıyor")
+			continue
+		}
+
+		logger.Info().
+			Int("slave_index", i).
+			Str("slave_hostname", slaveHostname).
+			Str("slave_ip", slaveIp).
+			Msg("Slave reconfiguration komutu gönderiliyor")
+
+		// Slave agent'ını bul
+		slaveAgentId := fmt.Sprintf("agent_%s", slaveHostname)
+
+		s.mu.RLock()
+		slaveAgent, exists := s.agents[slaveAgentId]
+		var slaveStreamCopy pb.AgentService_ConnectServer
+		if exists {
+			slaveStreamCopy = slaveAgent.Stream
+		}
+		s.mu.RUnlock()
+
+		if !exists {
+			logger.Error().
+				Str("slave_agent_id", slaveAgentId).
+				Str("slave_hostname", slaveHostname).
+				Msg("Slave agent bulunamadı, reconfiguration atlanıyor")
+
+			// Bridge log gönder
+			go s.bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHost,
+				fmt.Sprintf("[%s] ⚠️ Slave (%s) agent bulunamadı, reconfiguration atlandı",
+					time.Now().Format("15:04:05"), slaveHostname))
+			continue
+		}
+
+		// Reconfiguration komutu oluştur
+		// Format: reconfigure_slave_master|new_master_host|new_master_ip|new_master_port|parent_job_id
+		reconfigCommand := fmt.Sprintf("reconfigure_slave_master|%s|%s|5432|%s",
+			newMasterHost, newMasterIp, parentJobId)
+
+		logger.Debug().
+			Str("reconfigure_command", reconfigCommand).
+			Str("slave_agent_id", slaveAgentId).
+			Str("slave_hostname", slaveHostname).
+			Msg("Reconfiguration komutu hazırlandı")
+
+		// Unique query ID oluştur
+		queryID := fmt.Sprintf("reconfig_%s_%d", parentJobId, i)
+
+		// Timeout ile komut gönder
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+		// Channel kullanarak timeout kontrollü gönderme
+		sendDone := make(chan error, 1)
+		go func(agentStream pb.AgentService_ConnectServer, qID, cmd string) {
+			err := agentStream.Send(&pb.ServerMessage{
+				Payload: &pb.ServerMessage_Query{
+					Query: &pb.Query{
+						QueryId: qID,
+						Command: cmd,
+					},
+				},
+			})
+			sendDone <- err
+		}(slaveStreamCopy, queryID, reconfigCommand)
+
+		// Timeout veya başarı durumunu bekle
+		select {
+		case err := <-sendDone:
+			if err != nil {
+				logger.Error().
+					Err(err).
+					Str("slave_agent_id", slaveAgentId).
+					Str("slave_hostname", slaveHostname).
+					Str("query_id", queryID).
+					Msg("Slave reconfiguration komutu gönderilemedi")
+
+				// Bridge log gönder
+				go s.bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHost,
+					fmt.Sprintf("[%s] ❌ Slave (%s) reconfiguration komutu gönderilemedi: %v",
+						time.Now().Format("15:04:05"), slaveHostname, err))
+			} else {
+				logger.Info().
+					Str("slave_agent_id", slaveAgentId).
+					Str("slave_hostname", slaveHostname).
+					Str("query_id", queryID).
+					Str("new_master_host", newMasterHost).
+					Str("new_master_ip", newMasterIp).
+					Msg("Slave reconfiguration komutu başarıyla gönderildi")
+
+				// Bridge log gönder
+				go s.bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHost,
+					fmt.Sprintf("[%s] 🔄 Slave (%s) reconfiguration başlatıldı: %s -> %s",
+						time.Now().Format("15:04:05"), slaveHostname, slaveHostname, newMasterHost))
+			}
+		case <-ctx.Done():
+			logger.Error().
+				Str("slave_agent_id", slaveAgentId).
+				Str("slave_hostname", slaveHostname).
+				Str("query_id", queryID).
+				Msg("Timeout: Slave reconfiguration komutu gönderilemedi (10s timeout)")
+
+			// Bridge log gönder
+			go s.bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHost,
+				fmt.Sprintf("[%s] ⏰ Slave (%s) reconfiguration timeout (10s)",
+					time.Now().Format("15:04:05"), slaveHostname))
+		}
+
+		cancel()
+	}
+
+	logger.Info().
+		Int("slave_count", slaveCount).
+		Str("new_master_host", newMasterHost).
+		Msg("Slave reconfiguration komutları gönderildi")
 }
 
 // completeRelatedPromotionJob ilgili promotion job'unu complete eder
