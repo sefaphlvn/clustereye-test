@@ -3596,14 +3596,17 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 			slave_info = strings.Join(slaveInfos, ",")
 		}
 
-		// Tam komut formatı
-		command := fmt.Sprintf("postgres_promote|%s|%s|%s|%s|%d|%s",
-			req.DataDirectory, req.JobId, req.CurrentMasterHost, req.CurrentMasterIp, len(req.Slaves), slave_info)
+		// Tam komut formatı: postgres_promote|data_dir|process_id|new_master_host|old_master_host|old_master_ip|slave_count|slaves_info
+		command := fmt.Sprintf("postgres_promote|%s|%s|%s|%s|%s|%d|%s",
+			req.DataDirectory, req.JobId, req.NodeHostname, req.CurrentMasterHost, req.CurrentMasterIp, len(req.Slaves), slave_info)
 
 		// Slave bilgilerini ve komut detaylarını logla
 		logger.Info().
 			Str("job_id", req.JobId).
 			Str("agent_id", req.AgentId).
+			Str("new_master_host", req.NodeHostname).
+			Str("old_master_host", req.CurrentMasterHost).
+			Str("old_master_ip", req.CurrentMasterIp).
 			Str("slave_info", slave_info).
 			Int("slave_count", len(req.Slaves)).
 			Str("command", command).
