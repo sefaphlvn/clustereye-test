@@ -7447,6 +7447,173 @@ func (s *Server) ForceCompleteProcess(processId string) bool {
 	return true
 }
 
+// RollbackPostgresFailover PostgreSQL failover işlemini geri alır
+func (s *Server) RollbackPostgresFailover(ctx context.Context, req *pb.PostgresRollbackRequest) (*pb.PostgresRollbackResponse, error) {
+	logger.Info().
+		Str("agent_id", req.AgentId).
+		Str("job_id", req.JobId).
+		Str("reason", req.Reason).
+		Msg("PostgreSQL rollback işlemi başlatılıyor")
+
+	// Agent'ı bul
+	s.mu.RLock()
+	agent, exists := s.agents[req.AgentId]
+	s.mu.RUnlock()
+
+	if !exists {
+		logger.Error().
+			Str("agent_id", req.AgentId).
+			Msg("Rollback için agent bulunamadı")
+		return &pb.PostgresRollbackResponse{
+			JobId:        req.JobId,
+			Status:       pb.JobStatus_JOB_STATUS_FAILED,
+			ErrorMessage: "Agent bulunamadı",
+		}, nil
+	}
+
+	// Rollback komutunu gönder
+	command := fmt.Sprintf("rollback_postgres_failover|%s|%s", req.JobId, req.Reason)
+
+	logger.Debug().
+		Str("agent_id", req.AgentId).
+		Str("command", command).
+		Msg("Rollback komutu agent'a gönderiliyor")
+
+	// Timeout ile komut gönder
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	sendDone := make(chan error, 1)
+	go func() {
+		err := agent.Stream.Send(&pb.ServerMessage{
+			Payload: &pb.ServerMessage_Query{
+				Query: &pb.Query{
+					QueryId: req.JobId,
+					Command: command,
+				},
+			},
+		})
+		sendDone <- err
+	}()
+
+	select {
+	case err := <-sendDone:
+		if err != nil {
+			logger.Error().
+				Err(err).
+				Str("agent_id", req.AgentId).
+				Str("job_id", req.JobId).
+				Msg("Rollback komutu gönderilemedi")
+			return &pb.PostgresRollbackResponse{
+				JobId:        req.JobId,
+				Status:       pb.JobStatus_JOB_STATUS_FAILED,
+				ErrorMessage: fmt.Sprintf("Rollback komutu gönderilemedi: %v", err),
+			}, nil
+		}
+	case <-ctx.Done():
+		logger.Error().
+			Str("agent_id", req.AgentId).
+			Str("job_id", req.JobId).
+			Msg("Rollback komutu gönderme timeout")
+		return &pb.PostgresRollbackResponse{
+			JobId:        req.JobId,
+			Status:       pb.JobStatus_JOB_STATUS_FAILED,
+			ErrorMessage: "Rollback komutu gönderme timeout (10s)",
+		}, nil
+	}
+
+	logger.Info().
+		Str("agent_id", req.AgentId).
+		Str("job_id", req.JobId).
+		Msg("Rollback komutu başarıyla gönderildi")
+
+	return &pb.PostgresRollbackResponse{
+		JobId:  req.JobId,
+		Status: pb.JobStatus_JOB_STATUS_PENDING,
+		Result: "Rollback işlemi başlatıldı",
+	}, nil
+}
+
+// GetPostgresRollbackInfo PostgreSQL rollback durumunu sorgular
+func (s *Server) GetPostgresRollbackInfo(ctx context.Context, req *pb.PostgresRollbackInfoRequest) (*pb.PostgresRollbackInfoResponse, error) {
+	logger.Debug().
+		Str("agent_id", req.AgentId).
+		Msg("PostgreSQL rollback durumu sorgulanıyor")
+
+	// Agent'ı bul
+	s.mu.RLock()
+	agent, exists := s.agents[req.AgentId]
+	s.mu.RUnlock()
+
+	if !exists {
+		logger.Warn().
+			Str("agent_id", req.AgentId).
+			Msg("Rollback info için agent bulunamadı")
+		return &pb.PostgresRollbackInfoResponse{
+			HasState: false,
+		}, nil
+	}
+
+	// Rollback durumu sorgu komutunu gönder
+	command := "get_postgres_rollback_info"
+	queryId := fmt.Sprintf("rollback_info_%d", time.Now().Unix())
+
+	logger.Debug().
+		Str("agent_id", req.AgentId).
+		Str("query_id", queryId).
+		Str("command", command).
+		Msg("Rollback info komutu agent'a gönderiliyor")
+
+	// Timeout ile komut gönder
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	sendDone := make(chan error, 1)
+	go func() {
+		err := agent.Stream.Send(&pb.ServerMessage{
+			Payload: &pb.ServerMessage_Query{
+				Query: &pb.Query{
+					QueryId: queryId,
+					Command: command,
+				},
+			},
+		})
+		sendDone <- err
+	}()
+
+	select {
+	case err := <-sendDone:
+		if err != nil {
+			logger.Error().
+				Err(err).
+				Str("agent_id", req.AgentId).
+				Msg("Rollback info komutu gönderilemedi")
+			return &pb.PostgresRollbackInfoResponse{
+				HasState: false,
+			}, nil
+		}
+	case <-ctx.Done():
+		logger.Error().
+			Str("agent_id", req.AgentId).
+			Msg("Rollback info komutu gönderme timeout")
+		return &pb.PostgresRollbackInfoResponse{
+			HasState: false,
+		}, nil
+	}
+
+	// TODO: Agent'tan gelen response'u beklemek için async handling gerekebilir
+	// Şimdilik basic response döndürüyoruz
+	logger.Info().
+		Str("agent_id", req.AgentId).
+		Msg("Rollback info komutu başarıyla gönderildi")
+
+	return &pb.PostgresRollbackInfoResponse{
+		HasState: true,
+		// Diğer alanlar agent'tan gelen yanıta göre doldurulacak
+		// Bu kısım agent response handling sistemi ile tamamlanacak
+	}, nil
+}
+
 // GetRecentAlarms, dashboard için optimize edilmiş son alarmları getirir
 func (s *Server) GetRecentAlarms(ctx context.Context, limit int, onlyUnacknowledged bool) ([]map[string]interface{}, error) {
 	// Veritabanı bağlantısını kontrol et

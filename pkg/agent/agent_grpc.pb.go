@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v3.21.12
-// source: agent.proto
+// source: pkg/agent/agent.proto
 
 package agent
 
@@ -49,6 +49,8 @@ const (
 	AgentService_GetProcessStatus_FullMethodName         = "/agent.AgentService/GetProcessStatus"
 	AgentService_SendMetrics_FullMethodName              = "/agent.AgentService/SendMetrics"
 	AgentService_CollectMetrics_FullMethodName           = "/agent.AgentService/CollectMetrics"
+	AgentService_RollbackPostgresFailover_FullMethodName = "/agent.AgentService/RollbackPostgresFailover"
+	AgentService_GetPostgresRollbackInfo_FullMethodName  = "/agent.AgentService/GetPostgresRollbackInfo"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -108,6 +110,9 @@ type AgentServiceClient interface {
 	SendMetrics(ctx context.Context, in *SendMetricsRequest, opts ...grpc.CallOption) (*SendMetricsResponse, error)
 	// Server'dan agent'a metric toplama talebi
 	CollectMetrics(ctx context.Context, in *CollectMetricsRequest, opts ...grpc.CallOption) (*CollectMetricsResponse, error)
+	// Rollback işlemleri
+	RollbackPostgresFailover(ctx context.Context, in *PostgresRollbackRequest, opts ...grpc.CallOption) (*PostgresRollbackResponse, error)
+	GetPostgresRollbackInfo(ctx context.Context, in *PostgresRollbackInfoRequest, opts ...grpc.CallOption) (*PostgresRollbackInfoResponse, error)
 }
 
 type agentServiceClient struct {
@@ -427,6 +432,26 @@ func (c *agentServiceClient) CollectMetrics(ctx context.Context, in *CollectMetr
 	return out, nil
 }
 
+func (c *agentServiceClient) RollbackPostgresFailover(ctx context.Context, in *PostgresRollbackRequest, opts ...grpc.CallOption) (*PostgresRollbackResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PostgresRollbackResponse)
+	err := c.cc.Invoke(ctx, AgentService_RollbackPostgresFailover_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) GetPostgresRollbackInfo(ctx context.Context, in *PostgresRollbackInfoRequest, opts ...grpc.CallOption) (*PostgresRollbackInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PostgresRollbackInfoResponse)
+	err := c.cc.Invoke(ctx, AgentService_GetPostgresRollbackInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -484,6 +509,9 @@ type AgentServiceServer interface {
 	SendMetrics(context.Context, *SendMetricsRequest) (*SendMetricsResponse, error)
 	// Server'dan agent'a metric toplama talebi
 	CollectMetrics(context.Context, *CollectMetricsRequest) (*CollectMetricsResponse, error)
+	// Rollback işlemleri
+	RollbackPostgresFailover(context.Context, *PostgresRollbackRequest) (*PostgresRollbackResponse, error)
+	GetPostgresRollbackInfo(context.Context, *PostgresRollbackInfoRequest) (*PostgresRollbackInfoResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -583,6 +611,12 @@ func (UnimplementedAgentServiceServer) SendMetrics(context.Context, *SendMetrics
 }
 func (UnimplementedAgentServiceServer) CollectMetrics(context.Context, *CollectMetricsRequest) (*CollectMetricsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CollectMetrics not implemented")
+}
+func (UnimplementedAgentServiceServer) RollbackPostgresFailover(context.Context, *PostgresRollbackRequest) (*PostgresRollbackResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RollbackPostgresFailover not implemented")
+}
+func (UnimplementedAgentServiceServer) GetPostgresRollbackInfo(context.Context, *PostgresRollbackInfoRequest) (*PostgresRollbackInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPostgresRollbackInfo not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -1112,6 +1146,42 @@ func _AgentService_CollectMetrics_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_RollbackPostgresFailover_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PostgresRollbackRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).RollbackPostgresFailover(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_RollbackPostgresFailover_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).RollbackPostgresFailover(ctx, req.(*PostgresRollbackRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_GetPostgresRollbackInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PostgresRollbackInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).GetPostgresRollbackInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_GetPostgresRollbackInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).GetPostgresRollbackInfo(ctx, req.(*PostgresRollbackInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1227,6 +1297,14 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "CollectMetrics",
 			Handler:    _AgentService_CollectMetrics_Handler,
 		},
+		{
+			MethodName: "RollbackPostgresFailover",
+			Handler:    _AgentService_RollbackPostgresFailover_Handler,
+		},
+		{
+			MethodName: "GetPostgresRollbackInfo",
+			Handler:    _AgentService_GetPostgresRollbackInfo_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -1248,5 +1326,5 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "agent.proto",
+	Metadata: "pkg/agent/agent.proto",
 }

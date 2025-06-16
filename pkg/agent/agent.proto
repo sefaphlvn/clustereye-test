@@ -757,6 +757,41 @@ message CollectMetricsResponse {
   string message = 2;
 }
 
+// Rollback işlemi için request
+message PostgresRollbackRequest {
+  string job_id = 1;
+  string agent_id = 2;
+  string reason = 3; // Rollback sebebi (opsiyonel)
+}
+
+// Rollback işlemi için response
+message PostgresRollbackResponse {
+  string job_id = 1;
+  JobStatus status = 2;
+  string result = 3;
+  string error_message = 4;
+}
+
+// Rollback durumu sorgusu için request
+message PostgresRollbackInfoRequest {
+  string agent_id = 1;
+}
+
+// Rollback durumu sorgusu için response
+message PostgresRollbackInfoResponse {
+  bool has_state = 1;
+  string job_id = 2;
+  string start_time = 3;
+  string current_step = 4;
+  repeated string completed_steps = 5;
+  string original_node_status = 6;
+  string data_directory = 7;
+  string postgresql_version = 8;
+  bool can_rollback = 9;
+  string rollback_reason = 10;
+  string last_error = 11;
+}
+
 // MongoDB Operations Metrics - Özel metric yapıları
 message MongoOperationMetrics {
   string database = 1;
@@ -905,5 +940,9 @@ service AgentService {
 
   // Server'dan agent'a metric toplama talebi
   rpc CollectMetrics(CollectMetricsRequest) returns (CollectMetricsResponse);
+  
+  // Rollback işlemleri
+  rpc RollbackPostgresFailover(PostgresRollbackRequest) returns (PostgresRollbackResponse);
+  rpc GetPostgresRollbackInfo(PostgresRollbackInfoRequest) returns (PostgresRollbackInfoResponse);
 
 }
