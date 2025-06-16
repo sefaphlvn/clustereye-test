@@ -6654,6 +6654,32 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 			Msg("Promotion job veritabanında güncellendi")
 	}
 
+	// 🔧 FIX: Mevcut metadata'yı al ve completion bilgilerini ekle (override etme!)
+	completionMetadata := make(map[string]string)
+
+	// Veritabanından mevcut metadata'yı al
+	var completionMetadataJSON []byte
+	completionDbErr := s.db.QueryRow(`
+		SELECT metadata FROM process_logs 
+		WHERE process_id = $1 AND agent_id = $2
+	`, promotionJobId, requestingAgentId).Scan(&completionMetadataJSON)
+
+	if completionDbErr == nil && len(completionMetadataJSON) > 0 {
+		// Mevcut metadata'yı parse et
+		if parseErr := json.Unmarshal(completionMetadataJSON, &completionMetadata); parseErr != nil {
+			logger.Warn().
+				Err(parseErr).
+				Str("promotion_job_id", promotionJobId).
+				Msg("COMPLETION: Mevcut metadata parse edilemedi, yeni metadata oluşturuluyor")
+			completionMetadata = make(map[string]string)
+		}
+	}
+
+	// Completion bilgilerini mevcut metadata'ya ekle (override etmeden)
+	completionMetadata["auto_completed"] = "true"
+	completionMetadata["completion_source"] = "coordination_system"
+	completionMetadata["completed_at"] = time.Now().Format(time.RFC3339)
+
 	// 🔧 FIX: Process logs tablosunu da "completed" olarak güncelle (no locks held)
 	completionLogUpdate := &pb.ProcessLogUpdate{
 		AgentId:      requestingAgentId,
@@ -6663,10 +6689,7 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 		LogMessages:  []string{fmt.Sprintf("[%s] 🎉 PostgreSQL promotion başarıyla tamamlandı! (Auto-completed by coordination system)", time.Now().Format("15:04:05"))},
 		ElapsedTimeS: 0,
 		UpdatedAt:    time.Now().Format(time.RFC3339),
-		Metadata: map[string]string{
-			"auto_completed":    "true",
-			"completion_source": "coordination_system",
-		},
+		Metadata:     completionMetadata, // Merged metadata kullan
 	}
 
 	err = s.saveProcessLogs(context.Background(), completionLogUpdate)
