@@ -5975,6 +5975,9 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 		Str("job_id", jobID).
 		Msg("Coordination job kaydedildi")
 
+	// 🔧 FIX: Coordination job ID'sini promotion metadata'sına ekle (job oluşturulduktan SONRA)
+	go s.addCoordinationJobIdToPromotionMetadata(requestingAgentId, newMasterHost, jobID)
+
 	// ConvertPostgresToSlave komutunu gönder
 	// Format: convert_postgres_to_slave|new_master_host|new_master_ip|port|data_dir|coordination_job_id|old_master_host
 	// NOT: Replication bilgileri artık agent config'inden alınacak (güvenlik)
@@ -6046,9 +6049,6 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 			go s.bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHost,
 				fmt.Sprintf("[%s] Coordination başlatıldı: Eski master (%s) slave'e dönüştürülüyor...",
 					time.Now().Format("15:04:05"), oldMasterHost))
-
-			// 🔧 NEW: Coordination job ID'sini promotion process metadata'sına ekle
-			go s.addCoordinationJobIdToPromotionMetadata(requestingAgentId, newMasterHost, jobID)
 
 			// 🚀 YENİ: Diğer slave node'ları için reconfiguration komutları gönder
 			go s.handleSlaveReconfiguration(metadata, newMasterHost, newMasterIp, requestingAgentId, jobID)
@@ -6699,7 +6699,10 @@ func (s *Server) addCoordinationJobIdToPromotionMetadata(requestingAgentId, newM
 	var promotionProcessId string
 
 	s.jobMu.RLock()
+	var availableJobs []string
 	for jobId, job := range s.jobs {
+		availableJobs = append(availableJobs, fmt.Sprintf("%s:%s:%s", jobId, job.Type.String(), job.AgentId))
+
 		if job.AgentId == requestingAgentId &&
 			job.Type == pb.JobType_JOB_TYPE_POSTGRES_PROMOTE_MASTER &&
 			(job.Status == pb.JobStatus_JOB_STATUS_RUNNING || job.Status == pb.JobStatus_JOB_STATUS_COMPLETED) {
@@ -6708,24 +6711,31 @@ func (s *Server) addCoordinationJobIdToPromotionMetadata(requestingAgentId, newM
 			if nodeHostname, exists := job.Parameters["node_hostname"]; exists {
 				if nodeHostname == newMasterHost {
 					promotionProcessId = jobId
-					logger.Debug().
+					logger.Info().
 						Str("job_id", jobId).
 						Str("node_hostname", nodeHostname).
 						Str("new_master_host", newMasterHost).
-						Msg("Promotion process ID bulundu")
+						Msg("✅ Promotion process ID bulundu (hostname match)")
 					break
 				}
 			} else {
 				// Node hostname yoksa ilk eşleşen job'u al
 				promotionProcessId = jobId
-				logger.Debug().
+				logger.Info().
 					Str("job_id", jobId).
-					Msg("Promotion process ID bulundu (hostname yok)")
+					Msg("✅ Promotion process ID bulundu (hostname yok)")
 				break
 			}
 		}
 	}
 	s.jobMu.RUnlock()
+
+	logger.Debug().
+		Str("requesting_agent_id", requestingAgentId).
+		Str("new_master_host", newMasterHost).
+		Strs("available_jobs", availableJobs).
+		Str("found_promotion_process_id", promotionProcessId).
+		Msg("Job arama sonucu")
 
 	if promotionProcessId == "" {
 		logger.Warn().
@@ -6764,6 +6774,13 @@ func (s *Server) addCoordinationJobIdToPromotionMetadata(requestingAgentId, newM
 	// Coordination job ID'sini ekle
 	existingMetadata["coordination_job_id"] = coordinationJobId
 	existingMetadata["coordination_status"] = "started"
+	existingMetadata["coordination_added_at"] = time.Now().Format(time.RFC3339)
+
+	logger.Info().
+		Str("promotion_process_id", promotionProcessId).
+		Str("coordination_job_id", coordinationJobId).
+		Interface("updated_metadata", existingMetadata).
+		Msg("Metadata güncelleniyor")
 
 	// Güncellenmiş metadata'yı JSON'a çevir
 	updatedMetadataJSON, err := json.Marshal(existingMetadata)
@@ -6775,8 +6792,14 @@ func (s *Server) addCoordinationJobIdToPromotionMetadata(requestingAgentId, newM
 		return
 	}
 
+	logger.Debug().
+		Str("promotion_process_id", promotionProcessId).
+		Str("requesting_agent_id", requestingAgentId).
+		Str("updated_metadata_json", string(updatedMetadataJSON)).
+		Msg("Database update SQL çalıştırılıyor")
+
 	// Veritabanında güncelle
-	_, err = s.db.Exec(`
+	result, err := s.db.Exec(`
 		UPDATE process_logs SET 
 			metadata = $1,
 			updated_at = $2
@@ -6788,12 +6811,15 @@ func (s *Server) addCoordinationJobIdToPromotionMetadata(requestingAgentId, newM
 			Err(err).
 			Str("promotion_process_id", promotionProcessId).
 			Str("coordination_job_id", coordinationJobId).
-			Msg("Promotion process metadata güncellenemedi")
+			Msg("❌ Promotion process metadata güncellenemedi")
 	} else {
+		// Etkilenen satır sayısını kontrol et
+		rowsAffected, _ := result.RowsAffected()
 		logger.Info().
 			Str("promotion_process_id", promotionProcessId).
 			Str("coordination_job_id", coordinationJobId).
-			Msg("Coordination job ID başarıyla promotion metadata'sına eklendi")
+			Int64("rows_affected", rowsAffected).
+			Msg("✅ Coordination job ID başarıyla promotion metadata'sına eklendi")
 	}
 }
 
