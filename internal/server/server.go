@@ -3600,6 +3600,15 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 		command := fmt.Sprintf("postgres_promote|%s|%s|%s|%s|%d|%s",
 			req.DataDirectory, req.JobId, req.CurrentMasterHost, req.CurrentMasterIp, len(req.Slaves), slave_info)
 
+		// Slave bilgilerini ve komut detaylarını logla
+		logger.Info().
+			Str("job_id", req.JobId).
+			Str("agent_id", req.AgentId).
+			Str("slave_info", slave_info).
+			Int("slave_count", len(req.Slaves)).
+			Str("command", command).
+			Msg("PostgreSQL promotion komutu agent'a gönderiliyor")
+
 		// 🔧 FIX: Timeout ile Stream.Send() çağrısı
 		sendCtx, sendCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer sendCancel()
