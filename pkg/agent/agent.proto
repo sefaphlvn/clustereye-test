@@ -555,10 +555,12 @@ message ConvertPostgresToSlaveRequest {
   string agent_id = 2;
   string node_hostname = 3;
   string new_master_host = 4;
-  int32 new_master_port = 5;
-  string data_directory = 6;
-  string replication_user = 7;
-  string replication_password = 8;
+  string new_master_ip = 5;        // ✅ YENİ ALAN
+  int32 new_master_port = 6;
+  string data_directory = 7;
+  string coordination_job_id = 8;  // ✅ YENİ ALAN
+  string old_master_host = 9;      // ✅ YENİ ALAN
+  // replication_user ve replication_password KALDIRILDI - artık agent config'den okunacak
 }
 
 message ConvertPostgresToSlaveResponse {

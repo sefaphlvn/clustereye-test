@@ -3705,7 +3705,10 @@ func (s *Server) ConvertPostgresToSlave(ctx context.Context, req *pb.ConvertPost
 		Str("agent_id", req.AgentId).
 		Str("node_hostname", req.NodeHostname).
 		Str("new_master_host", req.NewMasterHost).
+		Str("new_master_ip", req.NewMasterIp).
 		Int32("new_master_port", req.NewMasterPort).
+		Str("coordination_job_id", req.CoordinationJobId).
+		Str("old_master_host", req.OldMasterHost).
 		Str("job_id", req.JobId).
 		Msg("ConvertPostgresToSlave çağrıldı")
 
@@ -3718,11 +3721,14 @@ func (s *Server) ConvertPostgresToSlave(ctx context.Context, req *pb.ConvertPost
 		CreatedAt: timestamppb.Now(),
 		UpdatedAt: timestamppb.Now(),
 		Parameters: map[string]string{
-			"node_hostname":    req.NodeHostname,
-			"new_master_host":  req.NewMasterHost,
-			"new_master_port":  fmt.Sprintf("%d", req.NewMasterPort),
-			"data_directory":   req.DataDirectory,
-			"replication_user": req.ReplicationUser,
+			"node_hostname":       req.NodeHostname,
+			"new_master_host":     req.NewMasterHost,
+			"new_master_ip":       req.NewMasterIp,
+			"new_master_port":     fmt.Sprintf("%d", req.NewMasterPort),
+			"data_directory":      req.DataDirectory,
+			"coordination_job_id": req.CoordinationJobId,
+			"old_master_host":     req.OldMasterHost,
+			// replication_user KALDIRILDI - artık agent config'den okunacak
 		},
 	}
 
@@ -3739,10 +3745,15 @@ func (s *Server) ConvertPostgresToSlave(ctx context.Context, req *pb.ConvertPost
 		}, fmt.Errorf("agent bulunamadı: %s", req.AgentId)
 	}
 
-	// Komutu oluştur ve gönder (process tracking için job ID'yi de ekle)
+	// Komutu oluştur ve gönder (yeni format)
 	// NOT: Replication bilgileri artık agent config'inden alınacak (güvenlik)
-	command := fmt.Sprintf("convert_postgres_to_slave|%s|%d|%s|%s",
-		req.NewMasterHost, req.NewMasterPort, req.DataDirectory, req.JobId)
+	command := fmt.Sprintf("convert_postgres_to_slave|%s|%s|%d|%s|%s|%s",
+		req.NewMasterHost,     // new_master_host
+		req.NewMasterIp,       // new_master_ip (YENİ)
+		req.NewMasterPort,     // new_master_port
+		req.DataDirectory,     // data_dir
+		req.CoordinationJobId, // coordination_job_id (opsiyonel)
+		req.OldMasterHost)     // old_master_host (opsiyonel)
 
 	// 🔧 FIX: Timeout ile Stream.Send() çağrısı
 	sendCtx, sendCancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -4173,8 +4184,11 @@ func (s *Server) CreateJob(ctx context.Context, job *pb.Job) error {
 		case pb.JobType_JOB_TYPE_POSTGRES_CONVERT_TO_SLAVE:
 			// PostgreSQL convert to slave işlemi
 			newMasterHost := job.Parameters["new_master_host"]
+			newMasterIp := job.Parameters["new_master_ip"]
 			newMasterPort := job.Parameters["new_master_port"]
 			dataDir := job.Parameters["data_directory"]
+			coordinationJobId := job.Parameters["coordination_job_id"]
+			oldMasterHost := job.Parameters["old_master_host"]
 
 			if newMasterHost == "" || dataDir == "" {
 				job.Status = pb.JobStatus_JOB_STATUS_FAILED
@@ -4185,11 +4199,19 @@ func (s *Server) CreateJob(ctx context.Context, job *pb.Job) error {
 			if newMasterPort == "" {
 				newMasterPort = "5432" // Varsayılan port
 			}
+			if newMasterIp == "" {
+				newMasterIp = newMasterHost // Fallback: hostname'i IP olarak kullan
+			}
 
-			// Process tracking için job ID'yi de komuta ekle
+			// Yeni komut formatı
 			// NOT: Replication bilgileri artık agent config'inden alınacak (güvenlik)
-			command = fmt.Sprintf("convert_postgres_to_slave|%s|%s|%s|%s",
-				newMasterHost, newMasterPort, dataDir, job.JobId)
+			command = fmt.Sprintf("convert_postgres_to_slave|%s|%s|%s|%s|%s|%s",
+				newMasterHost,     // new_master_host
+				newMasterIp,       // new_master_ip
+				newMasterPort,     // new_master_port
+				dataDir,           // data_dir
+				coordinationJobId, // coordination_job_id (opsiyonel)
+				oldMasterHost)     // old_master_host (opsiyonel)
 
 		default:
 			job.Status = pb.JobStatus_JOB_STATUS_FAILED
@@ -5911,11 +5933,11 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 		Msg("Coordination job kaydedildi")
 
 	// ConvertPostgresToSlave komutunu gönder
-	// Format: convert_postgres_to_slave|new_master_host|port|data_dir|process_id
-	// Process ID eklenerek coordination job tracking'i yapılacak
+	// Format: convert_postgres_to_slave|new_master_host|new_master_ip|port|data_dir|coordination_job_id|old_master_host
 	// NOT: Replication bilgileri artık agent config'inden alınacak (güvenlik)
-	command := fmt.Sprintf("convert_postgres_to_slave|%s|5432|%s|%s",
-		newMasterHost, dataDirectory, jobID)
+	newMasterIp := newMasterHost // Fallback: hostname'i IP olarak kullan
+	command := fmt.Sprintf("convert_postgres_to_slave|%s|%s|5432|%s|%s|%s",
+		newMasterHost, newMasterIp, dataDirectory, jobID, oldMasterHost)
 
 	logger.Debug().
 		Str("command", command).

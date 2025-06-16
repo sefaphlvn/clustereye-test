@@ -4878,17 +4878,18 @@ func (x *PostgresPromoteMasterResponse) GetResult() string {
 
 // PostgreSQL Convert to Slave
 type ConvertPostgresToSlaveRequest struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	JobId               string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
-	AgentId             string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	NodeHostname        string                 `protobuf:"bytes,3,opt,name=node_hostname,json=nodeHostname,proto3" json:"node_hostname,omitempty"`
-	NewMasterHost       string                 `protobuf:"bytes,4,opt,name=new_master_host,json=newMasterHost,proto3" json:"new_master_host,omitempty"`
-	NewMasterPort       int32                  `protobuf:"varint,5,opt,name=new_master_port,json=newMasterPort,proto3" json:"new_master_port,omitempty"`
-	DataDirectory       string                 `protobuf:"bytes,6,opt,name=data_directory,json=dataDirectory,proto3" json:"data_directory,omitempty"`
-	ReplicationUser     string                 `protobuf:"bytes,7,opt,name=replication_user,json=replicationUser,proto3" json:"replication_user,omitempty"`
-	ReplicationPassword string                 `protobuf:"bytes,8,opt,name=replication_password,json=replicationPassword,proto3" json:"replication_password,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	JobId             string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	AgentId           string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	NodeHostname      string                 `protobuf:"bytes,3,opt,name=node_hostname,json=nodeHostname,proto3" json:"node_hostname,omitempty"`
+	NewMasterHost     string                 `protobuf:"bytes,4,opt,name=new_master_host,json=newMasterHost,proto3" json:"new_master_host,omitempty"`
+	NewMasterIp       string                 `protobuf:"bytes,5,opt,name=new_master_ip,json=newMasterIp,proto3" json:"new_master_ip,omitempty"` // ✅ YENİ ALAN
+	NewMasterPort     int32                  `protobuf:"varint,6,opt,name=new_master_port,json=newMasterPort,proto3" json:"new_master_port,omitempty"`
+	DataDirectory     string                 `protobuf:"bytes,7,opt,name=data_directory,json=dataDirectory,proto3" json:"data_directory,omitempty"`
+	CoordinationJobId string                 `protobuf:"bytes,8,opt,name=coordination_job_id,json=coordinationJobId,proto3" json:"coordination_job_id,omitempty"` // ✅ YENİ ALAN
+	OldMasterHost     string                 `protobuf:"bytes,9,opt,name=old_master_host,json=oldMasterHost,proto3" json:"old_master_host,omitempty"`             // ✅ YENİ ALAN
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *ConvertPostgresToSlaveRequest) Reset() {
@@ -4949,6 +4950,13 @@ func (x *ConvertPostgresToSlaveRequest) GetNewMasterHost() string {
 	return ""
 }
 
+func (x *ConvertPostgresToSlaveRequest) GetNewMasterIp() string {
+	if x != nil {
+		return x.NewMasterIp
+	}
+	return ""
+}
+
 func (x *ConvertPostgresToSlaveRequest) GetNewMasterPort() int32 {
 	if x != nil {
 		return x.NewMasterPort
@@ -4963,16 +4971,16 @@ func (x *ConvertPostgresToSlaveRequest) GetDataDirectory() string {
 	return ""
 }
 
-func (x *ConvertPostgresToSlaveRequest) GetReplicationUser() string {
+func (x *ConvertPostgresToSlaveRequest) GetCoordinationJobId() string {
 	if x != nil {
-		return x.ReplicationUser
+		return x.CoordinationJobId
 	}
 	return ""
 }
 
-func (x *ConvertPostgresToSlaveRequest) GetReplicationPassword() string {
+func (x *ConvertPostgresToSlaveRequest) GetOldMasterHost() string {
 	if x != nil {
-		return x.ReplicationPassword
+		return x.OldMasterHost
 	}
 	return ""
 }
@@ -7765,16 +7773,17 @@ const file_pkg_agent_agent_proto_rawDesc = "" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12(\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x10.agent.JobStatusR\x06status\x12#\n" +
 	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\x12\x16\n" +
-	"\x06result\x18\x04 \x01(\tR\x06result\"\xcb\x02\n" +
+	"\x06result\x18\x04 \x01(\tR\x06result\"\xe9\x02\n" +
 	"\x1dConvertPostgresToSlaveRequest\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x19\n" +
 	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12#\n" +
 	"\rnode_hostname\x18\x03 \x01(\tR\fnodeHostname\x12&\n" +
-	"\x0fnew_master_host\x18\x04 \x01(\tR\rnewMasterHost\x12&\n" +
-	"\x0fnew_master_port\x18\x05 \x01(\x05R\rnewMasterPort\x12%\n" +
-	"\x0edata_directory\x18\x06 \x01(\tR\rdataDirectory\x12)\n" +
-	"\x10replication_user\x18\a \x01(\tR\x0freplicationUser\x121\n" +
-	"\x14replication_password\x18\b \x01(\tR\x13replicationPassword\"\x9e\x01\n" +
+	"\x0fnew_master_host\x18\x04 \x01(\tR\rnewMasterHost\x12\"\n" +
+	"\rnew_master_ip\x18\x05 \x01(\tR\vnewMasterIp\x12&\n" +
+	"\x0fnew_master_port\x18\x06 \x01(\x05R\rnewMasterPort\x12%\n" +
+	"\x0edata_directory\x18\a \x01(\tR\rdataDirectory\x12.\n" +
+	"\x13coordination_job_id\x18\b \x01(\tR\x11coordinationJobId\x12&\n" +
+	"\x0fold_master_host\x18\t \x01(\tR\roldMasterHost\"\x9e\x01\n" +
 	"\x1eConvertPostgresToSlaveResponse\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12(\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x10.agent.JobStatusR\x06status\x12\x16\n" +
