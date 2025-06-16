@@ -6047,6 +6047,9 @@ func (s *Server) handleFailoverCoordination(update *pb.ProcessLogUpdate, request
 				fmt.Sprintf("[%s] Coordination başlatıldı: Eski master (%s) slave'e dönüştürülüyor...",
 					time.Now().Format("15:04:05"), oldMasterHost))
 
+			// 🔧 NEW: Coordination job ID'sini promotion process metadata'sına ekle
+			go s.addCoordinationJobIdToPromotionMetadata(requestingAgentId, newMasterHost, jobID)
+
 			// 🚀 YENİ: Diğer slave node'ları için reconfiguration komutları gönder
 			go s.handleSlaveReconfiguration(metadata, newMasterHost, newMasterIp, requestingAgentId, jobID)
 		}
@@ -6289,6 +6292,9 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 			time.Now().Format("15:04:05"), displayOldMaster)
 		go s.bridgeCoordinationLogToPromotion(bridgeAgentId, newMasterHost, completionMessage)
 
+		// 🔧 NEW: Coordination completion'ı promotion metadata'sına ekle
+		go s.updateCoordinationStatusInPromotionMetadata(bridgeAgentId, newMasterHost, coordinationJobId, "completed")
+
 		// Final completion message
 		finalMessage := fmt.Sprintf("[%s] 🎉 PostgreSQL Failover başarıyla tamamlandı! (%s -> %s)",
 			time.Now().Format("15:04:05"), oldMasterHost, newMasterHost)
@@ -6338,6 +6344,9 @@ func (s *Server) handleCoordinationCompletion(update *pb.ProcessLogUpdate, repor
 		failureMessage := fmt.Sprintf("[%s] ❌ Coordination başarısız: Eski master (%s) slave'e dönüştürülemedi!",
 			time.Now().Format("15:04:05"), oldMasterHost)
 		go s.bridgeCoordinationLogToPromotion(bridgeAgentId, newMasterHost, failureMessage)
+
+		// 🔧 NEW: Coordination failure'ı promotion metadata'sına ekle
+		go s.updateCoordinationStatusInPromotionMetadata(bridgeAgentId, newMasterHost, coordinationJobId, "failed")
 	}
 
 	// Coordination completion sonrasında duplicate prevention key'ini temizle
@@ -6676,6 +6685,224 @@ func (s *Server) completeRelatedPromotionJob(requestingAgentId, newMasterHost st
 		Str("promotion_job_id", promotionJobId).
 		Str("requesting_agent_id", requestingAgentId).
 		Msg("İlgili promotion job başarıyla complete edildi")
+}
+
+// addCoordinationJobIdToPromotionMetadata coordination job ID'sini promotion process metadata'sına ekler
+func (s *Server) addCoordinationJobIdToPromotionMetadata(requestingAgentId, newMasterHost, coordinationJobId string) {
+	logger.Debug().
+		Str("requesting_agent_id", requestingAgentId).
+		Str("new_master_host", newMasterHost).
+		Str("coordination_job_id", coordinationJobId).
+		Msg("Coordination job ID promotion metadata'sına ekleniyor")
+
+	// 🔧 FIX: Find promotion process ID without holding lock
+	var promotionProcessId string
+
+	s.jobMu.RLock()
+	for jobId, job := range s.jobs {
+		if job.AgentId == requestingAgentId &&
+			job.Type == pb.JobType_JOB_TYPE_POSTGRES_PROMOTE_MASTER &&
+			(job.Status == pb.JobStatus_JOB_STATUS_RUNNING || job.Status == pb.JobStatus_JOB_STATUS_COMPLETED) {
+
+			// Node hostname kontrolü (opsiyonel)
+			if nodeHostname, exists := job.Parameters["node_hostname"]; exists {
+				if nodeHostname == newMasterHost {
+					promotionProcessId = jobId
+					logger.Debug().
+						Str("job_id", jobId).
+						Str("node_hostname", nodeHostname).
+						Str("new_master_host", newMasterHost).
+						Msg("Promotion process ID bulundu")
+					break
+				}
+			} else {
+				// Node hostname yoksa ilk eşleşen job'u al
+				promotionProcessId = jobId
+				logger.Debug().
+					Str("job_id", jobId).
+					Msg("Promotion process ID bulundu (hostname yok)")
+				break
+			}
+		}
+	}
+	s.jobMu.RUnlock()
+
+	if promotionProcessId == "" {
+		logger.Warn().
+			Str("requesting_agent_id", requestingAgentId).
+			Str("new_master_host", newMasterHost).
+			Msg("Promotion process bulunamadı, coordination job ID eklenemedi")
+		return
+	}
+
+	// Mevcut metadata'yı al ve coordination job ID'sini ekle
+	var existingMetadata map[string]string
+	var existingMetadataJSON []byte
+
+	err := s.db.QueryRow(`
+		SELECT metadata FROM process_logs 
+		WHERE process_id = $1 AND agent_id = $2
+	`, promotionProcessId, requestingAgentId).Scan(&existingMetadataJSON)
+
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Str("promotion_process_id", promotionProcessId).
+			Msg("Promotion process metadata alınamadı")
+		return
+	}
+
+	// Mevcut metadata'yı parse et
+	if err := json.Unmarshal(existingMetadataJSON, &existingMetadata); err != nil {
+		logger.Error().
+			Err(err).
+			Str("promotion_process_id", promotionProcessId).
+			Msg("Promotion process metadata parse edilemedi")
+		return
+	}
+
+	// Coordination job ID'sini ekle
+	existingMetadata["coordination_job_id"] = coordinationJobId
+	existingMetadata["coordination_status"] = "started"
+
+	// Güncellenmiş metadata'yı JSON'a çevir
+	updatedMetadataJSON, err := json.Marshal(existingMetadata)
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Str("promotion_process_id", promotionProcessId).
+			Msg("Güncellenmiş metadata JSON'a çevrilemedi")
+		return
+	}
+
+	// Veritabanında güncelle
+	_, err = s.db.Exec(`
+		UPDATE process_logs SET 
+			metadata = $1,
+			updated_at = $2
+		WHERE process_id = $3 AND agent_id = $4
+	`, updatedMetadataJSON, time.Now(), promotionProcessId, requestingAgentId)
+
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Str("promotion_process_id", promotionProcessId).
+			Str("coordination_job_id", coordinationJobId).
+			Msg("Promotion process metadata güncellenemedi")
+	} else {
+		logger.Info().
+			Str("promotion_process_id", promotionProcessId).
+			Str("coordination_job_id", coordinationJobId).
+			Msg("Coordination job ID başarıyla promotion metadata'sına eklendi")
+	}
+}
+
+// updateCoordinationStatusInPromotionMetadata coordination status'unu promotion metadata'sında günceller
+func (s *Server) updateCoordinationStatusInPromotionMetadata(requestingAgentId, newMasterHost, coordinationJobId, status string) {
+	logger.Debug().
+		Str("requesting_agent_id", requestingAgentId).
+		Str("new_master_host", newMasterHost).
+		Str("coordination_job_id", coordinationJobId).
+		Str("status", status).
+		Msg("Coordination status promotion metadata'sında güncelleniyor")
+
+	// 🔧 FIX: Find promotion process ID without holding lock
+	var promotionProcessId string
+
+	s.jobMu.RLock()
+	for jobId, job := range s.jobs {
+		if job.AgentId == requestingAgentId &&
+			job.Type == pb.JobType_JOB_TYPE_POSTGRES_PROMOTE_MASTER {
+
+			// Node hostname kontrolü (opsiyonel)
+			if nodeHostname, exists := job.Parameters["node_hostname"]; exists {
+				if nodeHostname == newMasterHost {
+					promotionProcessId = jobId
+					break
+				}
+			} else {
+				// Node hostname yoksa ilk eşleşen job'u al
+				promotionProcessId = jobId
+				break
+			}
+		}
+	}
+	s.jobMu.RUnlock()
+
+	if promotionProcessId == "" {
+		logger.Warn().
+			Str("requesting_agent_id", requestingAgentId).
+			Str("new_master_host", newMasterHost).
+			Msg("Promotion process bulunamadı, coordination status güncellenemedi")
+		return
+	}
+
+	// Mevcut metadata'yı al ve coordination status'unu güncelle
+	var existingMetadata map[string]string
+	var existingMetadataJSON []byte
+
+	err := s.db.QueryRow(`
+		SELECT metadata FROM process_logs 
+		WHERE process_id = $1 AND agent_id = $2
+	`, promotionProcessId, requestingAgentId).Scan(&existingMetadataJSON)
+
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Str("promotion_process_id", promotionProcessId).
+			Msg("Promotion process metadata alınamadı")
+		return
+	}
+
+	// Mevcut metadata'yı parse et
+	if err := json.Unmarshal(existingMetadataJSON, &existingMetadata); err != nil {
+		logger.Error().
+			Err(err).
+			Str("promotion_process_id", promotionProcessId).
+			Msg("Promotion process metadata parse edilemedi")
+		return
+	}
+
+	// Coordination status'unu güncelle
+	existingMetadata["coordination_status"] = status
+	if status == "completed" {
+		existingMetadata["coordination_completed_at"] = time.Now().Format(time.RFC3339)
+	} else if status == "failed" {
+		existingMetadata["coordination_failed_at"] = time.Now().Format(time.RFC3339)
+	}
+
+	// Güncellenmiş metadata'yı JSON'a çevir
+	updatedMetadataJSON, err := json.Marshal(existingMetadata)
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Str("promotion_process_id", promotionProcessId).
+			Msg("Güncellenmiş metadata JSON'a çevrilemedi")
+		return
+	}
+
+	// Veritabanında güncelle
+	_, err = s.db.Exec(`
+		UPDATE process_logs SET 
+			metadata = $1,
+			updated_at = $2
+		WHERE process_id = $3 AND agent_id = $4
+	`, updatedMetadataJSON, time.Now(), promotionProcessId, requestingAgentId)
+
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Str("promotion_process_id", promotionProcessId).
+			Str("coordination_job_id", coordinationJobId).
+			Str("status", status).
+			Msg("Promotion process coordination status güncellenemedi")
+	} else {
+		logger.Info().
+			Str("promotion_process_id", promotionProcessId).
+			Str("coordination_job_id", coordinationJobId).
+			Str("status", status).
+			Msg("Coordination status başarıyla promotion metadata'sında güncellendi")
+	}
 }
 
 // bridgeCoordinationLogToPromotion coordination loglarını promotion process logs'una bridge eder
