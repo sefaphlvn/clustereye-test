@@ -6979,6 +6979,32 @@ func (s *Server) bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHo
 		return
 	}
 
+	// 🔧 FIX: Mevcut metadata'yı al ve bridge bilgilerini ekle (override etme!)
+	existingMetadata := make(map[string]string)
+
+	// Veritabanından mevcut metadata'yı al
+	var metadataJSON []byte
+	dbErr := s.db.QueryRow(`
+		SELECT metadata FROM process_logs 
+		WHERE process_id = $1 AND agent_id = $2
+	`, promotionProcessId, requestingAgentId).Scan(&metadataJSON)
+
+	if dbErr == nil && len(metadataJSON) > 0 {
+		// Mevcut metadata'yı parse et
+		if parseErr := json.Unmarshal(metadataJSON, &existingMetadata); parseErr != nil {
+			logger.Warn().
+				Err(parseErr).
+				Str("promotion_process_id", promotionProcessId).
+				Msg("BRIDGE: Mevcut metadata parse edilemedi, yeni metadata oluşturuluyor")
+			existingMetadata = make(map[string]string)
+		}
+	}
+
+	// Bridge bilgilerini mevcut metadata'ya ekle (override etmeden)
+	existingMetadata["bridge_source"] = "coordination"
+	existingMetadata["bridge_type"] = "coordination_update"
+	existingMetadata["bridge_last_update"] = time.Now().Format(time.RFC3339)
+
 	// 🔧 FIX: Process log update oluştur ve kaydet (hiç lock tutmadan)
 	logUpdate := &pb.ProcessLogUpdate{
 		AgentId:      requestingAgentId,
@@ -6988,10 +7014,7 @@ func (s *Server) bridgeCoordinationLogToPromotion(requestingAgentId, newMasterHo
 		LogMessages:  []string{logMessage},
 		ElapsedTimeS: 0,
 		UpdatedAt:    time.Now().Format(time.RFC3339),
-		Metadata: map[string]string{
-			"bridge_source": "coordination",
-			"bridge_type":   "coordination_update",
-		},
+		Metadata:     existingMetadata, // Merged metadata kullan
 	}
 
 	// Process logs'a kaydet (no locks held - prevents deadlock)
