@@ -3457,6 +3457,23 @@ func (s *Server) PromotePostgresToMaster(ctx context.Context, req *pb.PostgresPr
 		Str("job_id", req.JobId).
 		Msg("DEBUG: PromotePostgresToMaster request detayları")
 
+	// EXTRA DEBUG: Her slave'i ayrı ayrı logla
+	for i, slave := range req.Slaves {
+		logger.Debug().
+			Int("slave_index", i).
+			Str("slave_hostname", slave.Hostname).
+			Str("slave_ip", slave.Ip).
+			Msg("DEBUG: Individual slave node")
+	}
+
+	// EXTRA DEBUG: Request'in nil olup olmadığını kontrol et
+	if req.CurrentMasterIp == "" {
+		logger.Warn().Msg("DEBUG: current_master_ip is EMPTY!")
+	}
+	if len(req.Slaves) == 0 {
+		logger.Warn().Msg("DEBUG: slaves array is EMPTY!")
+	}
+
 	// Slave bilgilerini logla
 	if len(req.Slaves) > 0 {
 		for i, slave := range req.Slaves {
