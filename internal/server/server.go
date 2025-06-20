@@ -94,9 +94,24 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 		in, err := stream.Recv()
 		if err != nil {
 			logger.Error().Err(err).Str("agent_id", currentAgentID).Msg("Agent bağlantısı kapandı")
-			s.mu.Lock()
-			delete(s.agents, currentAgentID)
-			s.mu.Unlock()
+
+			// Agent'ı silmek yerine, sadece Stream'i nil yap ve bağlantı durumunu güncelle
+			if currentAgentID != "" {
+				s.mu.Lock()
+				if conn, exists := s.agents[currentAgentID]; exists && conn != nil {
+					// Stream'i nil yap ama agent bilgilerini sakla
+					conn.Stream = nil
+				}
+				s.mu.Unlock()
+
+				// Son ping zamanını sıfırla ki "disconnected" olarak görünsün
+				s.lastPingMu.Lock()
+				delete(s.lastPingTime, currentAgentID)
+				s.lastPingMu.Unlock()
+
+				logger.Info().Str("agent_id", currentAgentID).Msg("Agent bağlantısı kapatıldı, disconnected olarak işaretlendi")
+			}
+
 			return err
 		}
 
@@ -583,10 +598,11 @@ func (s *Server) GetConnectedAgents() []map[string]interface{} {
 			lastPing, exists := s.lastPingTime[id]
 			s.lastPingMu.RUnlock()
 
-			if !exists || time.Since(lastPing) > 30*time.Second {
+			// Ping frekansını azalt - ENHANCE_YOUR_CALM hatasını önlemek için
+			if !exists || time.Since(lastPing) > 60*time.Second {
 				shouldPing = true
 			} else {
-				// Son 30 saniye içinde başarılı ping varsa, bağlı kabul et
+				// Son 60 saniye içinde başarılı ping varsa, bağlı kabul et
 				status = "connected"
 			}
 
@@ -614,13 +630,13 @@ func (s *Server) GetConnectedAgents() []map[string]interface{} {
 					logger.Debug().Str("agent_id", id).Msg("Ping gönderimi başarılı, bağlantı durumu güncellendi")
 				} else {
 					logger.Warn().Err(err).Str("agent_id", id).Msg("Agent ping hatası")
-					// Stream'i kapat ve agent'ı sil
-					delete(s.agents, id)
+					// Stream'i nil yap ama agent'ı silme
+					conn.Stream = nil
 					// Son ping zamanını da sil
 					s.lastPingMu.Lock()
 					delete(s.lastPingTime, id)
 					s.lastPingMu.Unlock()
-					continue
+					// Status zaten "disconnected" olarak ayarlandı
 				}
 			}
 		}
