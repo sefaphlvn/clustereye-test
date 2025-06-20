@@ -141,6 +141,11 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 			}
 			s.mu.Unlock()
 
+			// İlk bağlantıda ping zamanını başlat
+			s.lastPingMu.Lock()
+			s.lastPingTime[currentAgentID] = time.Now()
+			s.lastPingMu.Unlock()
+
 			logger.Info().
 				Str("agent_id", currentAgentID).
 				Int("total_connections", len(s.agents)).
@@ -164,6 +169,16 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 		case *pb.AgentMessage_QueryResult:
 			queryResult := payload.QueryResult
 			logger.Debug().Str("agent_id", currentAgentID).Msg("Agent sorguya cevap verdi")
+
+			// Ping yanıtlarını kontrol et
+			if strings.HasPrefix(queryResult.QueryId, "ping_") {
+				// Ping yanıtı alındı, son ping zamanını güncelle
+				s.lastPingMu.Lock()
+				s.lastPingTime[currentAgentID] = time.Now()
+				s.lastPingMu.Unlock()
+				logger.Debug().Str("agent_id", currentAgentID).Msg("Ping yanıtı alındı, bağlantı durumu güncellendi")
+				continue
+			}
 
 			// Sorgu sonucunu ilgili kanal üzerinden ilet
 			s.queryMu.RLock()
@@ -589,11 +604,14 @@ func (s *Server) GetConnectedAgents() []map[string]interface{} {
 				// Ping'i sadece gRPC stream üzerinden gönder
 				err := conn.Stream.Send(pingMsg)
 				if err == nil {
+					// Ping gönderimi başarılı olduğunda da bağlantıyı "connected" olarak işaretle
+					// Agent yanıt verdiğinde Connect metodu lastPingTime'ı güncelleyecek
 					status = "connected"
 					// Başarılı ping zamanını kaydet
 					s.lastPingMu.Lock()
 					s.lastPingTime[id] = time.Now()
 					s.lastPingMu.Unlock()
+					logger.Debug().Str("agent_id", id).Msg("Ping gönderimi başarılı, bağlantı durumu güncellendi")
 				} else {
 					logger.Warn().Err(err).Str("agent_id", id).Msg("Agent ping hatası")
 					// Stream'i kapat ve agent'ı sil
