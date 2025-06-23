@@ -109,6 +109,9 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 				delete(s.lastPingTime, currentAgentID)
 				s.lastPingMu.Unlock()
 
+				// Agent'ın veritabanındaki durumunu güncelle
+				s.UpdateAgentDisconnectedStatus(currentAgentID)
+
 				logger.Info().Str("agent_id", currentAgentID).Msg("Agent bağlantısı kapatıldı, disconnected olarak işaretlendi")
 			}
 
@@ -191,6 +194,10 @@ func (s *Server) Connect(stream pb.AgentService_ConnectServer) error {
 				s.lastPingMu.Lock()
 				s.lastPingTime[currentAgentID] = time.Now()
 				s.lastPingMu.Unlock()
+
+				// Veritabanındaki agent durumunu ve last_seen'i güncelle
+				s.UpdateAgentConnectedStatus(currentAgentID)
+
 				logger.Debug().Str("agent_id", currentAgentID).Msg("Ping yanıtı alındı, bağlantı durumu güncellendi")
 				continue
 			}
@@ -631,6 +638,10 @@ func (s *Server) GetConnectedAgents() []map[string]interface{} {
 					s.lastPingTime[id] = time.Now()
 					lastSeenTime = s.lastPingTime[id] // Son görülme zamanını güncelle
 					s.lastPingMu.Unlock()
+
+					// Veritabanındaki agent durumunu ve last_seen'i güncelle
+					s.UpdateAgentConnectedStatus(id)
+
 					logger.Debug().Str("agent_id", id).Msg("Ping gönderimi başarılı, bağlantı durumu güncellendi")
 				} else {
 					logger.Warn().Err(err).Str("agent_id", id).Msg("Agent ping hatası")
@@ -654,6 +665,14 @@ func (s *Server) GetConnectedAgents() []map[string]interface{} {
 			// Eğer hiç ping alınmadıysa, şu anki zamanı kullan
 			// Bu sadece yeni eklenen ve henüz ping almamış agentlar için geçerli olmalı
 			lastSeenStr = time.Now().In(loc).Format("2006-01-02T15:04:05-07:00")
+		}
+
+		// Agent'ın veritabanındaki durumunu kontrol et
+		var dbStatus string
+		err := s.db.QueryRow("SELECT status FROM agents WHERE agent_id = $1", id).Scan(&dbStatus)
+		if err == nil && dbStatus == "disconnected" {
+			// Eğer veritabanında disconnected olarak işaretlenmişse, status'u disconnected olarak ayarla
+			status = "disconnected"
 		}
 
 		agent := map[string]interface{}{
@@ -716,6 +735,42 @@ func (s *Server) checkDatabaseConnection() error {
 	}
 	return nil
 }
+
+// UpdateAgentDisconnectedStatus, agent'ın veritabanındaki durumunu disconnected olarak günceller
+func (s *Server) UpdateAgentDisconnectedStatus(agentID string) error {
+	query := `
+		UPDATE agents 
+		SET status = 'disconnected'
+		WHERE agent_id = $1
+	`
+	_, err := s.db.Exec(query, agentID)
+	if err != nil {
+		logger.Error().Err(err).Str("agent_id", agentID).Msg("Agent durumu veritabanında güncellenemedi")
+	} else {
+		logger.Info().Str("agent_id", agentID).Msg("Agent durumu veritabanında disconnected olarak güncellendi")
+	}
+	return err
+}
+
+// UpdateAgentConnectedStatus, agent'ın veritabanındaki durumunu active olarak günceller ve last_seen'i şimdiki zaman yapar
+func (s *Server) UpdateAgentConnectedStatus(agentID string) error {
+	query := `
+		UPDATE agents 
+		SET status = 'active', last_seen = CURRENT_TIMESTAMP
+		WHERE agent_id = $1
+	`
+	_, err := s.db.Exec(query, agentID)
+	if err != nil {
+		logger.Error().Err(err).Str("agent_id", agentID).Msg("Agent durumu veritabanında güncellenemedi")
+	} else {
+		logger.Debug().Str("agent_id", agentID).Msg("Agent durumu veritabanında active olarak güncellendi ve last_seen güncellendi")
+	}
+	return err
+}
+
+// SendQuery, belirli bir agent'a sorgu gönderir ve cevabı bekler
+
+// SendQuery, belirli bir agent'a sorgu gönderir ve cevabı bekler
 
 // SendQuery, belirli bir agent'a sorgu gönderir ve cevabı bekler
 func (s *Server) SendQuery(ctx context.Context, agentID, queryID, command, database string) (*pb.QueryResult, error) {
