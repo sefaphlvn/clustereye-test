@@ -590,13 +590,16 @@ func (s *Server) GetConnectedAgents() []map[string]interface{} {
 
 		// gRPC stream'in durumunu kontrol et
 		status := "disconnected"
+		// Son ping zamanını al
+		s.lastPingMu.RLock()
+		lastPing, exists := s.lastPingTime[id]
+		s.lastPingMu.RUnlock()
+
+		// Varsayılan olarak son görülme zamanını son ping zamanı olarak ayarla
+		lastSeenTime := lastPing
+
 		if conn.Stream != nil {
 			shouldPing := false
-
-			// Son ping zamanını kontrol et
-			s.lastPingMu.RLock()
-			lastPing, exists := s.lastPingTime[id]
-			s.lastPingMu.RUnlock()
 
 			// Ping frekansını azalt - ENHANCE_YOUR_CALM hatasını önlemek için
 			if !exists || time.Since(lastPing) > 60*time.Second {
@@ -626,6 +629,7 @@ func (s *Server) GetConnectedAgents() []map[string]interface{} {
 					// Başarılı ping zamanını kaydet
 					s.lastPingMu.Lock()
 					s.lastPingTime[id] = time.Now()
+					lastSeenTime = s.lastPingTime[id] // Son görülme zamanını güncelle
 					s.lastPingMu.Unlock()
 					logger.Debug().Str("agent_id", id).Msg("Ping gönderimi başarılı, bağlantı durumu güncellendi")
 				} else {
@@ -640,12 +644,24 @@ func (s *Server) GetConnectedAgents() []map[string]interface{} {
 				}
 			}
 		}
+
+		// last_seen için doğru zaman bilgisini kullan
+		var lastSeenStr string
+		if exists {
+			// Eğer son ping zamanı varsa, onu kullan
+			lastSeenStr = lastSeenTime.In(loc).Format("2006-01-02T15:04:05-07:00")
+		} else {
+			// Eğer hiç ping alınmadıysa, şu anki zamanı kullan
+			// Bu sadece yeni eklenen ve henüz ping almamış agentlar için geçerli olmalı
+			lastSeenStr = time.Now().In(loc).Format("2006-01-02T15:04:05-07:00")
+		}
+
 		agent := map[string]interface{}{
 			"id":         id,
 			"hostname":   conn.Info.Hostname,
 			"ip":         conn.Info.Ip,
 			"status":     status,
-			"last_seen":  time.Now().In(loc).Format("2006-01-02T15:04:05-07:00"),
+			"last_seen":  lastSeenStr,
 			"connection": "grpc",
 		}
 		agents = append(agents, agent)
