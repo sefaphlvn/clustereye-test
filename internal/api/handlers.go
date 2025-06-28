@@ -229,6 +229,7 @@ func RegisterHandlers(router *gin.Engine, server *server.Server) {
 				performance.GET("/query-time", getPostgreSQLPerformanceQueryTimeMetrics(server))
 				performance.GET("/slow-queries", getPostgreSQLPerformanceSlowQueriesMetrics(server))
 				performance.GET("/active-queries", getPostgreSQLPerformanceActiveQueriesMetrics(server))
+				performance.GET("/active-queries-details", getPostgreSQLActiveQueriesDetails(server))
 				performance.GET("/long-running-queries", getPostgreSQLPerformanceLongRunningQueriesMetrics(server))
 				performance.GET("/read-write-ratio", getPostgreSQLPerformanceReadWriteRatioMetrics(server))
 				performance.GET("/index-scan-ratio", getPostgreSQLPerformanceIndexScanRatioMetrics(server))

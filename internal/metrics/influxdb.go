@@ -386,6 +386,54 @@ func (w *InfluxDBWriter) createPostgreSQLPoints(agentID string, pgData map[strin
 		points = append(points, point)
 	}
 
+	// Active queries
+	if activeQueries, ok := pgData["active_queries"].([]interface{}); ok {
+		for _, queryInterface := range activeQueries {
+			if queryData, ok := queryInterface.(map[string]interface{}); ok {
+				// Create a point for each active query
+				point := influxdb2.NewPointWithMeasurement("postgresql_active_query")
+
+				// Add common tags
+				point.AddTag("agent_id", agentID)
+
+				// Add query-specific tags
+				if dbName, ok := queryData["database_name"].(string); ok {
+					point.AddTag("database", dbName)
+				}
+				if username, ok := queryData["username"].(string); ok {
+					point.AddTag("username", username)
+				}
+				if appName, ok := queryData["application_name"].(string); ok {
+					point.AddTag("application", appName)
+				}
+				if state, ok := queryData["state"].(string); ok {
+					point.AddTag("state", state)
+				}
+				if clientAddr, ok := queryData["client_addr"].(string); ok && clientAddr != "" {
+					point.AddTag("client_addr", clientAddr)
+				}
+				if waitEventType, ok := queryData["wait_event_type"].(string); ok && waitEventType != "" {
+					point.AddTag("wait_event_type", waitEventType)
+				}
+				if waitEvent, ok := queryData["wait_event"].(string); ok && waitEvent != "" {
+					point.AddTag("wait_event", waitEvent)
+				}
+
+				// Add fields
+				if duration, ok := w.getFloatValue(queryData, "duration_seconds"); ok {
+					point.AddField("duration_seconds", duration)
+				}
+				if queryText, ok := queryData["query"].(string); ok {
+					point.AddField("query_text", queryText)
+				}
+
+				// Set timestamp and add to points
+				point.SetTime(timestamp)
+				points = append(points, point)
+			}
+		}
+	}
+
 	return points
 }
 

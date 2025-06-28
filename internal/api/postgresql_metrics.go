@@ -1195,3 +1195,106 @@ func getPostgreSQLPerformanceAllMetrics(server *server.Server) gin.HandlerFunc {
 		})
 	}
 }
+
+// getPostgreSQLActiveQueriesDetails, PostgreSQL aktif query detaylarını getirir
+func getPostgreSQLActiveQueriesDetails(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		database := c.Query("database")
+		timeRange := c.DefaultQuery("range", "10m") // Varsayılan olarak son 10 dakika
+		limit := c.DefaultQuery("limit", "50")      // Varsayılan olarak en fazla 50 sorgu
+		fullAgentID := fixAgentID(agentID)
+
+		var query string
+		if fullAgentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_active_query") |> filter(fn: (r) => r.agent_id == "%s") |> filter(fn: (r) => r.database == "%s") |> sort(columns: ["_time"], desc: true) |> limit(n: %s)`, timeRange, fullAgentID, database, limit)
+		} else if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_active_query") |> filter(fn: (r) => r.agent_id == "%s") |> sort(columns: ["_time"], desc: true) |> limit(n: %s)`, timeRange, fullAgentID, limit)
+		} else {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_active_query") |> sort(columns: ["_time"], desc: true) |> limit(n: %s)`, timeRange, limit)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "PostgreSQL aktif query detayları alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		// Sonuçları daha kullanışlı bir formata dönüştür
+		type ActiveQuery struct {
+			QueryText       string    `json:"query_text"`
+			DurationSeconds float64   `json:"duration_seconds"`
+			Database        string    `json:"database"`
+			Username        string    `json:"username"`
+			Application     string    `json:"application"`
+			State           string    `json:"state"`
+			ClientAddr      string    `json:"client_addr,omitempty"`
+			WaitEventType   string    `json:"wait_event_type,omitempty"`
+			WaitEvent       string    `json:"wait_event,omitempty"`
+			Timestamp       time.Time `json:"timestamp"`
+		}
+
+		activeQueries := make([]ActiveQuery, 0)
+		for _, result := range results {
+			var query ActiveQuery
+
+			// Timestamp
+			if timeValue, ok := result["_time"].(time.Time); ok {
+				query.Timestamp = timeValue
+			}
+
+			// Fields
+			if queryText, ok := result["query_text"].(string); ok {
+				query.QueryText = queryText
+			}
+			if duration, ok := result["duration_seconds"].(float64); ok {
+				query.DurationSeconds = duration
+			}
+
+			// Tags
+			if db, ok := result["database"].(string); ok {
+				query.Database = db
+			}
+			if username, ok := result["username"].(string); ok {
+				query.Username = username
+			}
+			if app, ok := result["application"].(string); ok {
+				query.Application = app
+			}
+			if state, ok := result["state"].(string); ok {
+				query.State = state
+			}
+			if clientAddr, ok := result["client_addr"].(string); ok {
+				query.ClientAddr = clientAddr
+			}
+			if waitEventType, ok := result["wait_event_type"].(string); ok {
+				query.WaitEventType = waitEventType
+			}
+			if waitEvent, ok := result["wait_event"].(string); ok {
+				query.WaitEvent = waitEvent
+			}
+
+			activeQueries = append(activeQueries, query)
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   activeQueries,
+		})
+	}
+}
