@@ -996,7 +996,7 @@ func (s *Server) SendMetrics(ctx context.Context, req *pb.SendMetricsRequest) (*
 	// InfluxDB'ye metrikler yazılacaksa
 	if s.influxWriter != nil {
 		// PostgreSQL active queries metadata'sını kontrol et ve işle
-		if activeQueriesJSON, exists := batch.Metadata["active_queries"]; exists && batch.MetricType == "postgresql" {
+		if activeQueriesJSON, exists := batch.Metadata["active_queries"]; exists && batch.MetricType == "postgresql_database" {
 			if err := s.processActiveQueriesMetadata(ctx, batch.AgentId, activeQueriesJSON); err != nil {
 				errorMsg := fmt.Sprintf("Active queries metadata işleme hatası: %v", err)
 				errors = append(errors, errorMsg)
