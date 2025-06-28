@@ -1207,11 +1207,11 @@ func getPostgreSQLActiveQueriesDetails(server *server.Server) gin.HandlerFunc {
 
 		var query string
 		if fullAgentID != "" && database != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_active_query") |> filter(fn: (r) => r.agent_id == "%s") |> filter(fn: (r) => r.database == "%s") |> sort(columns: ["_time"], desc: true) |> limit(n: %s)`, timeRange, fullAgentID, database, limit)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_active_query") |> filter(fn: (r) => r.agent_id == "%s") |> filter(fn: (r) => r.database == "%s") |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value") |> sort(columns: ["_time"], desc: true) |> limit(n: %s)`, timeRange, fullAgentID, database, limit)
 		} else if fullAgentID != "" {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_active_query") |> filter(fn: (r) => r.agent_id == "%s") |> sort(columns: ["_time"], desc: true) |> limit(n: %s)`, timeRange, fullAgentID, limit)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_active_query") |> filter(fn: (r) => r.agent_id == "%s") |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value") |> sort(columns: ["_time"], desc: true) |> limit(n: %s)`, timeRange, fullAgentID, limit)
 		} else {
-			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_active_query") |> sort(columns: ["_time"], desc: true) |> limit(n: %s)`, timeRange, limit)
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_active_query") |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value") |> sort(columns: ["_time"], desc: true) |> limit(n: %s)`, timeRange, limit)
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
