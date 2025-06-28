@@ -1298,3 +1298,102 @@ func getPostgreSQLActiveQueriesDetails(server *server.Server) gin.HandlerFunc {
 		})
 	}
 }
+
+// getPostgreSQLQueryHistory, PostgreSQL tamamlanmış query geçmişini getirir
+func getPostgreSQLQueryHistory(server *server.Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentID := c.Query("agent_id")
+		database := c.Query("database")
+		timeRange := c.DefaultQuery("range", "1h") // Varsayılan olarak son 1 saat
+		limit := c.DefaultQuery("limit", "100")    // Varsayılan olarak en fazla 100 sorgu
+		fullAgentID := fixAgentID(agentID)
+
+		var query string
+		if fullAgentID != "" && database != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_query_history") |> filter(fn: (r) => r.agent_id == "%s") |> filter(fn: (r) => r.database == "%s") |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value") |> sort(columns: ["_time"], desc: true) |> limit(n: %s)`, timeRange, fullAgentID, database, limit)
+		} else if fullAgentID != "" {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_query_history") |> filter(fn: (r) => r.agent_id == "%s") |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value") |> sort(columns: ["_time"], desc: true) |> limit(n: %s)`, timeRange, fullAgentID, limit)
+		} else {
+			query = fmt.Sprintf(`from(bucket: "clustereye") |> range(start: -%s) |> filter(fn: (r) => r._measurement == "postgresql_query_history") |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value") |> sort(columns: ["_time"], desc: true) |> limit(n: %s)`, timeRange, limit)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		influxWriter := server.GetInfluxWriter()
+		if influxWriter == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "error",
+				"error":  "InfluxDB servisi kullanılamıyor",
+			})
+			return
+		}
+
+		results, err := influxWriter.QueryMetrics(ctx, query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "error",
+				"error":  "PostgreSQL query history alınamadı: " + err.Error(),
+			})
+			return
+		}
+
+		// Sonuçları daha kullanışlı bir formata dönüştür
+		type CompletedQuery struct {
+			QueryText       string    `json:"query"`
+			DurationSeconds float64   `json:"duration_seconds"`
+			Database        string    `json:"database"`
+			Username        string    `json:"username"`
+			Application     string    `json:"application"`
+			ClientAddr      string    `json:"client_addr,omitempty"`
+			PID             int64     `json:"pid"`
+			CompletionTime  time.Time `json:"completion_time"`
+			Timestamp       time.Time `json:"timestamp"`
+		}
+
+		completedQueries := make([]CompletedQuery, 0)
+		for _, result := range results {
+			var query CompletedQuery
+
+			// Timestamp
+			if timeValue, ok := result["_time"].(time.Time); ok {
+				query.Timestamp = timeValue
+			}
+
+			// Fields
+			if queryText, ok := result["query_text"].(string); ok {
+				query.QueryText = queryText
+			}
+			if duration, ok := result["duration_seconds"].(float64); ok {
+				query.DurationSeconds = duration
+			}
+			if pid, ok := result["pid"].(float64); ok {
+				query.PID = int64(pid)
+			}
+			if completionTime, ok := result["completion_time"].(time.Time); ok {
+				query.CompletionTime = completionTime
+			}
+
+			// Tags
+			if db, ok := result["database"].(string); ok {
+				query.Database = db
+			}
+			if username, ok := result["username"].(string); ok {
+				query.Username = username
+			}
+			if app, ok := result["application"].(string); ok {
+				query.Application = app
+			}
+			if clientAddr, ok := result["client_addr"].(string); ok {
+				query.ClientAddr = clientAddr
+			}
+
+			completedQueries = append(completedQueries, query)
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"data":   completedQueries,
+		})
+	}
+}

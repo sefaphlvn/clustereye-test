@@ -1062,20 +1062,23 @@ func (s *Server) SendMetrics(ctx context.Context, req *pb.SendMetricsRequest) (*
 // processActiveQueriesMetadata, metadata'daki active queries JSON'ını işler ve InfluxDB'ye yazar
 func (s *Server) processActiveQueriesMetadata(ctx context.Context, agentID, activeQueriesJSON string) error {
 	// JSON'ı parse et
-	var activeQueries []map[string]interface{}
-	if err := json.Unmarshal([]byte(activeQueriesJSON), &activeQueries); err != nil {
+	var queries []map[string]interface{}
+	if err := json.Unmarshal([]byte(activeQueriesJSON), &queries); err != nil {
 		return fmt.Errorf("active queries JSON parse hatası: %v", err)
 	}
 
 	logger.Debug().
 		Str("agent_id", agentID).
-		Int("query_count", len(activeQueries)).
+		Int("query_count", len(queries)).
 		Str("json_preview", activeQueriesJSON[:min(200, len(activeQueriesJSON))]).
-		Msg("Active queries metadata parse edildi")
+		Msg("Active/completed queries metadata parse edildi")
 
-	// Her active query için InfluxDB point'i oluştur
+	// Her query için InfluxDB point'i oluştur
 	timestamp := time.Now()
-	for i, queryData := range activeQueries {
+	activeCount := 0
+	completedCount := 0
+
+	for i, queryData := range queries {
 		// Debug: field'ları ve tiplerini logla
 		logger.Debug().
 			Str("agent_id", agentID).
@@ -1083,19 +1086,51 @@ func (s *Server) processActiveQueriesMetadata(ctx context.Context, agentID, acti
 			Interface("query_data", queryData).
 			Msg("Query data debug")
 
-		if err := s.writeActiveQueryToInfluxDB(ctx, agentID, queryData, timestamp); err != nil {
-			logger.Error().
+		// PID tracking ile gelen yeni alanları işle
+		pid := queryData["pid"]
+		state, _ := queryData["state"].(string)
+
+		// Query completion detection için state'i kontrol et
+		if state == "completed" {
+			completedCount++
+			logger.Debug().
 				Str("agent_id", agentID).
-				Err(err).
-				Msg("Active query InfluxDB yazma hatası")
-			return err
+				Interface("pid", pid).
+				Interface("duration", queryData["duration_seconds"]).
+				Msg("Completed query detected")
+
+			// Completed query'leri ayrı measurement'a yaz
+			if err := s.writeCompletedQueryToInfluxDB(ctx, agentID, queryData, timestamp); err != nil {
+				logger.Error().
+					Str("agent_id", agentID).
+					Err(err).
+					Msg("Completed query InfluxDB yazma hatası")
+				return err
+			}
+		} else {
+			activeCount++
+			// Active query'leri mevcut şekilde işle
+			if err := s.writeActiveQueryToInfluxDB(ctx, agentID, queryData, timestamp); err != nil {
+				logger.Error().
+					Str("agent_id", agentID).
+					Err(err).
+					Msg("Active query InfluxDB yazma hatası")
+				return err
+			}
 		}
 	}
+
+	logger.Debug().
+		Str("agent_id", agentID).
+		Int("active_queries", activeCount).
+		Int("completed_queries", completedCount).
+		Msg("Query processing completed")
 
 	return nil
 }
 
 // writeActiveQueryToInfluxDB, tek bir active query'yi InfluxDB'ye yazar
+// TTL: 10 dakika (otomatik expire)
 func (s *Server) writeActiveQueryToInfluxDB(ctx context.Context, agentID string, queryData map[string]interface{}, timestamp time.Time) error {
 	// Tags'leri oluştur
 	tags := map[string]string{
@@ -1127,6 +1162,24 @@ func (s *Server) writeActiveQueryToInfluxDB(ctx context.Context, agentID string,
 
 	// Fields'leri oluştur
 	fields := make(map[string]interface{})
+
+	// PID field'ı ekle
+	if pid, ok := queryData["pid"]; ok {
+		switch v := pid.(type) {
+		case float64:
+			fields["pid"] = int64(v)
+		case float32:
+			fields["pid"] = int64(v)
+		case int:
+			fields["pid"] = int64(v)
+		case int64:
+			fields["pid"] = v
+		case string:
+			if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
+				fields["pid"] = parsed
+			}
+		}
+	}
 
 	// Duration field'ı - debug ile birlikte
 	if duration, ok := queryData["duration_seconds"]; ok {
@@ -1172,10 +1225,90 @@ func (s *Server) writeActiveQueryToInfluxDB(ctx context.Context, agentID string,
 		Str("agent_id", agentID).
 		Interface("tags", tags).
 		Interface("fields", fields).
-		Msg("Final InfluxDB write data")
+		Msg("Final active query InfluxDB write data")
 
 	// InfluxDB'ye yaz
 	return s.influxWriter.WriteMetric(ctx, "postgresql_active_query", tags, fields, timestamp)
+}
+
+// writeCompletedQueryToInfluxDB, tamamlanmış query'leri InfluxDB'ye yazar
+// TTL: Yok (kalıcı history)
+func (s *Server) writeCompletedQueryToInfluxDB(ctx context.Context, agentID string, queryData map[string]interface{}, timestamp time.Time) error {
+	// Tags'leri oluştur
+	tags := map[string]string{
+		"agent_id":    agentID,
+		"query_state": "completed",
+	}
+
+	// Query-specific tags ekle
+	if dbName, ok := queryData["database_name"].(string); ok {
+		tags["database"] = dbName
+	}
+	if username, ok := queryData["username"].(string); ok {
+		tags["username"] = username
+	}
+	if appName, ok := queryData["application_name"].(string); ok {
+		tags["application"] = appName
+	}
+	if clientAddr, ok := queryData["client_addr"].(string); ok && clientAddr != "" {
+		tags["client_addr"] = clientAddr
+	}
+
+	// Fields'leri oluştur
+	fields := make(map[string]interface{})
+
+	// Query text field'ı
+	if queryText, ok := queryData["query"].(string); ok {
+		fields["query_text"] = queryText
+	}
+
+	// Duration field'ı
+	if duration, ok := queryData["duration_seconds"]; ok {
+		switch v := duration.(type) {
+		case float64:
+			fields["duration_seconds"] = v
+		case float32:
+			fields["duration_seconds"] = float64(v)
+		case int:
+			fields["duration_seconds"] = float64(v)
+		case int64:
+			fields["duration_seconds"] = float64(v)
+		case string:
+			if parsed, err := strconv.ParseFloat(v, 64); err == nil {
+				fields["duration_seconds"] = parsed
+			}
+		}
+	}
+
+	// PID field'ı
+	if pid, ok := queryData["pid"]; ok {
+		switch v := pid.(type) {
+		case float64:
+			fields["pid"] = int64(v)
+		case float32:
+			fields["pid"] = int64(v)
+		case int:
+			fields["pid"] = int64(v)
+		case int64:
+			fields["pid"] = v
+		case string:
+			if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
+				fields["pid"] = parsed
+			}
+		}
+	}
+
+	// Completion time
+	fields["completion_time"] = timestamp
+
+	logger.Debug().
+		Str("agent_id", agentID).
+		Interface("tags", tags).
+		Interface("fields", fields).
+		Msg("Final completed query InfluxDB write data")
+
+	// InfluxDB'ye yaz
+	return s.influxWriter.WriteMetric(ctx, "postgresql_query_history", tags, fields, timestamp)
 }
 
 // writeMetricToInfluxDB tek bir metric'i InfluxDB'ye yazar
