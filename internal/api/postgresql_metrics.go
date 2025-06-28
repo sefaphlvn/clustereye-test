@@ -1269,9 +1269,17 @@ func getPostgreSQLActiveQueriesDetails(server *server.Server) gin.HandlerFunc {
 			}
 			if pid, ok := result["pid"].(float64); ok {
 				query.PID = int64(pid)
+			} else if pidInt, ok := result["pid"].(int64); ok {
+				query.PID = pidInt
 			}
+
+			// Query start - string olarak gelirse parse et
 			if queryStart, ok := result["query_start"].(time.Time); ok {
 				query.QueryStart = queryStart
+			} else if queryStartStr, ok := result["query_start"].(string); ok {
+				if parsed, err := time.Parse(time.RFC3339Nano, queryStartStr); err == nil {
+					query.QueryStart = parsed
+				}
 			}
 
 			// Tags
@@ -1378,12 +1386,26 @@ func getPostgreSQLQueryHistory(server *server.Server) gin.HandlerFunc {
 			}
 			if pid, ok := result["pid"].(float64); ok {
 				query.PID = int64(pid)
+			} else if pidInt, ok := result["pid"].(int64); ok {
+				query.PID = pidInt
 			}
+
+			// Completion time - string olarak gelirse parse et
 			if completionTime, ok := result["completion_time"].(time.Time); ok {
 				query.CompletionTime = completionTime
+			} else if completionTimeStr, ok := result["completion_time"].(string); ok {
+				if parsed, err := time.Parse(time.RFC3339Nano, completionTimeStr); err == nil {
+					query.CompletionTime = parsed
+				}
 			}
+
+			// Query start - string olarak gelirse parse et
 			if queryStart, ok := result["query_start"].(time.Time); ok {
 				query.QueryStart = queryStart
+			} else if queryStartStr, ok := result["query_start"].(string); ok {
+				if parsed, err := time.Parse(time.RFC3339Nano, queryStartStr); err == nil {
+					query.QueryStart = parsed
+				}
 			}
 
 			// Tags
