@@ -1259,10 +1259,10 @@ func getPostgreSQLActiveQueriesDetails(server *server.Server) gin.HandlerFunc {
 			}
 
 			// Fields
-			if queryText, ok := result["query"].(string); ok {
+			if queryText, ok := result["text"].(string); ok {
 				query.QueryText = queryText
 			}
-			if duration, ok := result["duration_seconds"].(float64); ok {
+			if duration, ok := result["duration"].(float64); ok {
 				query.DurationSeconds = duration
 			}
 

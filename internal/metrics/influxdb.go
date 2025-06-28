@@ -421,10 +421,10 @@ func (w *InfluxDBWriter) createPostgreSQLPoints(agentID string, pgData map[strin
 
 				// Add fields
 				if duration, ok := w.getFloatValue(queryData, "duration_seconds"); ok {
-					point.AddField("duration_seconds", duration)
+					point.AddField("duration", duration)
 				}
 				if queryText, ok := queryData["query"].(string); ok {
-					point.AddField("query", queryText)
+					point.AddField("text", queryText)
 				}
 
 				// Set timestamp and add to points
