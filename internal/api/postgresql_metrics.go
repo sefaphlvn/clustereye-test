@@ -1237,7 +1237,7 @@ func getPostgreSQLActiveQueriesDetails(server *server.Server) gin.HandlerFunc {
 
 		// Sonuçları daha kullanışlı bir formata dönüştür
 		type ActiveQuery struct {
-			QueryText       string    `json:"query_text"`
+			QueryText       string    `json:"query"`
 			DurationSeconds float64   `json:"duration_seconds"`
 			Database        string    `json:"database"`
 			Username        string    `json:"username"`
