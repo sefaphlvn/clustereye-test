@@ -995,6 +995,22 @@ func (s *Server) SendMetrics(ctx context.Context, req *pb.SendMetricsRequest) (*
 
 	// InfluxDB'ye metrikler yazılacaksa
 	if s.influxWriter != nil {
+		// PostgreSQL active queries metadata'sını kontrol et ve işle
+		if activeQueriesJSON, exists := batch.Metadata["active_queries"]; exists && batch.MetricType == "postgresql" {
+			if err := s.processActiveQueriesMetadata(ctx, batch.AgentId, activeQueriesJSON); err != nil {
+				errorMsg := fmt.Sprintf("Active queries metadata işleme hatası: %v", err)
+				errors = append(errors, errorMsg)
+				logger.Error().
+					Str("agent_id", batch.AgentId).
+					Err(err).
+					Msg("Active queries metadata işleme hatası")
+			} else {
+				logger.Debug().
+					Str("agent_id", batch.AgentId).
+					Msg("Active queries metadata başarıyla işlendi")
+			}
+		}
+
 		// Her metric'i InfluxDB'ye yaz
 		for _, metric := range batch.Metrics {
 			if err := s.writeMetricToInfluxDB(ctx, batch, metric); err != nil {
@@ -1041,6 +1057,83 @@ func (s *Server) SendMetrics(ctx context.Context, req *pb.SendMetricsRequest) (*
 		ProcessedCount: processedCount,
 		Errors:         errors,
 	}, nil
+}
+
+// processActiveQueriesMetadata, metadata'daki active queries JSON'ını işler ve InfluxDB'ye yazar
+func (s *Server) processActiveQueriesMetadata(ctx context.Context, agentID, activeQueriesJSON string) error {
+	// JSON'ı parse et
+	var activeQueries []map[string]interface{}
+	if err := json.Unmarshal([]byte(activeQueriesJSON), &activeQueries); err != nil {
+		return fmt.Errorf("active queries JSON parse hatası: %v", err)
+	}
+
+	logger.Debug().
+		Str("agent_id", agentID).
+		Int("query_count", len(activeQueries)).
+		Msg("Active queries metadata parse edildi")
+
+	// Her active query için InfluxDB point'i oluştur
+	timestamp := time.Now()
+	for _, queryData := range activeQueries {
+		if err := s.writeActiveQueryToInfluxDB(ctx, agentID, queryData, timestamp); err != nil {
+			logger.Error().
+				Str("agent_id", agentID).
+				Err(err).
+				Msg("Active query InfluxDB yazma hatası")
+			return err
+		}
+	}
+
+	return nil
+}
+
+// writeActiveQueryToInfluxDB, tek bir active query'yi InfluxDB'ye yazar
+func (s *Server) writeActiveQueryToInfluxDB(ctx context.Context, agentID string, queryData map[string]interface{}, timestamp time.Time) error {
+	// Tags'leri oluştur
+	tags := map[string]string{
+		"agent_id": agentID,
+	}
+
+	// Query-specific tags ekle
+	if dbName, ok := queryData["database_name"].(string); ok {
+		tags["database"] = dbName
+	}
+	if username, ok := queryData["username"].(string); ok {
+		tags["username"] = username
+	}
+	if appName, ok := queryData["application_name"].(string); ok {
+		tags["application"] = appName
+	}
+	if state, ok := queryData["state"].(string); ok {
+		tags["state"] = state
+	}
+	if clientAddr, ok := queryData["client_addr"].(string); ok && clientAddr != "" {
+		tags["client_addr"] = clientAddr
+	}
+	if waitEventType, ok := queryData["wait_event_type"].(string); ok && waitEventType != "" {
+		tags["wait_event_type"] = waitEventType
+	}
+	if waitEvent, ok := queryData["wait_event"].(string); ok && waitEvent != "" {
+		tags["wait_event"] = waitEvent
+	}
+
+	// Fields'leri oluştur
+	fields := make(map[string]interface{})
+
+	// Duration field'ı
+	if duration, ok := queryData["duration_seconds"]; ok {
+		if durationFloat, ok := duration.(float64); ok {
+			fields["duration"] = durationFloat
+		}
+	}
+
+	// Query text field'ı
+	if queryText, ok := queryData["query"].(string); ok {
+		fields["text"] = queryText
+	}
+
+	// InfluxDB'ye yaz
+	return s.influxWriter.WriteMetric(ctx, "postgresql_active_query", tags, fields, timestamp)
 }
 
 // writeMetricToInfluxDB tek bir metric'i InfluxDB'ye yazar
