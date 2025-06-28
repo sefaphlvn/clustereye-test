@@ -1070,11 +1070,19 @@ func (s *Server) processActiveQueriesMetadata(ctx context.Context, agentID, acti
 	logger.Debug().
 		Str("agent_id", agentID).
 		Int("query_count", len(activeQueries)).
+		Str("json_preview", activeQueriesJSON[:min(200, len(activeQueriesJSON))]).
 		Msg("Active queries metadata parse edildi")
 
 	// Her active query için InfluxDB point'i oluştur
 	timestamp := time.Now()
-	for _, queryData := range activeQueries {
+	for i, queryData := range activeQueries {
+		// Debug: field'ları ve tiplerini logla
+		logger.Debug().
+			Str("agent_id", agentID).
+			Int("query_index", i).
+			Interface("query_data", queryData).
+			Msg("Query data debug")
+
 		if err := s.writeActiveQueryToInfluxDB(ctx, agentID, queryData, timestamp); err != nil {
 			logger.Error().
 				Str("agent_id", agentID).
@@ -1120,17 +1128,51 @@ func (s *Server) writeActiveQueryToInfluxDB(ctx context.Context, agentID string,
 	// Fields'leri oluştur
 	fields := make(map[string]interface{})
 
-	// Duration field'ı
+	// Duration field'ı - debug ile birlikte
 	if duration, ok := queryData["duration_seconds"]; ok {
-		if durationFloat, ok := duration.(float64); ok {
-			fields["duration"] = durationFloat
+		logger.Debug().
+			Str("agent_id", agentID).
+			Interface("duration_raw", duration).
+			Str("duration_type", fmt.Sprintf("%T", duration)).
+			Msg("Duration field debug")
+
+		// Farklı tip dönüşümlerini dene
+		switch v := duration.(type) {
+		case float64:
+			fields["duration"] = v
+		case float32:
+			fields["duration"] = float64(v)
+		case int:
+			fields["duration"] = float64(v)
+		case int64:
+			fields["duration"] = float64(v)
+		case string:
+			if parsed, err := strconv.ParseFloat(v, 64); err == nil {
+				fields["duration"] = parsed
+			}
 		}
 	}
 
-	// Query text field'ı
+	// Query text field'ı - debug ile birlikte
 	if queryText, ok := queryData["query"].(string); ok {
 		fields["text"] = queryText
+		logger.Debug().
+			Str("agent_id", agentID).
+			Str("query_text", queryText).
+			Msg("Query text field debug")
+	} else {
+		logger.Debug().
+			Str("agent_id", agentID).
+			Interface("query_raw", queryData["query"]).
+			Str("query_type", fmt.Sprintf("%T", queryData["query"])).
+			Msg("Query text field missing or wrong type")
 	}
+
+	logger.Debug().
+		Str("agent_id", agentID).
+		Interface("tags", tags).
+		Interface("fields", fields).
+		Msg("Final InfluxDB write data")
 
 	// InfluxDB'ye yaz
 	return s.influxWriter.WriteMetric(ctx, "postgresql_active_query", tags, fields, timestamp)
