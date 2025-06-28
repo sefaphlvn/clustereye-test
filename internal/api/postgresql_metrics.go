@@ -1246,6 +1246,8 @@ func getPostgreSQLActiveQueriesDetails(server *server.Server) gin.HandlerFunc {
 			ClientAddr      string    `json:"client_addr,omitempty"`
 			WaitEventType   string    `json:"wait_event_type,omitempty"`
 			WaitEvent       string    `json:"wait_event,omitempty"`
+			PID             int64     `json:"pid,omitempty"`
+			QueryStart      time.Time `json:"query_start,omitempty"`
 			Timestamp       time.Time `json:"timestamp"`
 		}
 
@@ -1264,6 +1266,12 @@ func getPostgreSQLActiveQueriesDetails(server *server.Server) gin.HandlerFunc {
 			}
 			if duration, ok := result["duration"].(float64); ok {
 				query.DurationSeconds = duration
+			}
+			if pid, ok := result["pid"].(float64); ok {
+				query.PID = int64(pid)
+			}
+			if queryStart, ok := result["query_start"].(time.Time); ok {
+				query.QueryStart = queryStart
 			}
 
 			// Tags
@@ -1347,6 +1355,7 @@ func getPostgreSQLQueryHistory(server *server.Server) gin.HandlerFunc {
 			Application     string    `json:"application"`
 			ClientAddr      string    `json:"client_addr,omitempty"`
 			PID             int64     `json:"pid"`
+			QueryStart      time.Time `json:"query_start,omitempty"`
 			CompletionTime  time.Time `json:"completion_time"`
 			Timestamp       time.Time `json:"timestamp"`
 		}
@@ -1372,6 +1381,9 @@ func getPostgreSQLQueryHistory(server *server.Server) gin.HandlerFunc {
 			}
 			if completionTime, ok := result["completion_time"].(time.Time); ok {
 				query.CompletionTime = completionTime
+			}
+			if queryStart, ok := result["query_start"].(time.Time); ok {
+				query.QueryStart = queryStart
 			}
 
 			// Tags

@@ -1073,12 +1073,18 @@ func (s *Server) processActiveQueriesMetadata(ctx context.Context, agentID, acti
 		Str("json_preview", activeQueriesJSON[:min(200, len(activeQueriesJSON))]).
 		Msg("Active/completed queries metadata parse edildi")
 
-	// Her query için InfluxDB point'i oluştur
-	timestamp := time.Now()
+		// Her query için InfluxDB point'i oluştur
 	activeCount := 0
 	completedCount := 0
 
 	for i, queryData := range queries {
+		// Agent'dan gelen timestamp'ı kullan, yoksa current time
+		timestamp := time.Now()
+		if timestampStr, ok := queryData["timestamp"].(string); ok && timestampStr != "" {
+			if parsedTime, err := time.Parse(time.RFC3339Nano, timestampStr); err == nil {
+				timestamp = parsedTime
+			}
+		}
 		// Debug: field'ları ve tiplerini logla
 		logger.Debug().
 			Str("agent_id", agentID).
@@ -1221,6 +1227,13 @@ func (s *Server) writeActiveQueryToInfluxDB(ctx context.Context, agentID string,
 			Msg("Query text field missing or wrong type")
 	}
 
+	// Query start time field'ı ekle
+	if queryStartStr, ok := queryData["query_start"].(string); ok && queryStartStr != "" {
+		if queryStart, err := time.Parse(time.RFC3339Nano, queryStartStr); err == nil {
+			fields["query_start"] = queryStart
+		}
+	}
+
 	logger.Debug().
 		Str("agent_id", agentID).
 		Interface("tags", tags).
@@ -1298,8 +1311,25 @@ func (s *Server) writeCompletedQueryToInfluxDB(ctx context.Context, agentID stri
 		}
 	}
 
-	// Completion time
-	fields["completion_time"] = timestamp
+	// Completion time - agent'dan gelen completion_time'ı kullan
+	if completionTimeStr, ok := queryData["completion_time"].(string); ok && completionTimeStr != "" {
+		if completionTime, err := time.Parse(time.RFC3339Nano, completionTimeStr); err == nil {
+			fields["completion_time"] = completionTime
+		} else {
+			// Parse edilemezse current time kullan
+			fields["completion_time"] = timestamp
+		}
+	} else {
+		// completion_time yoksa current time kullan
+		fields["completion_time"] = timestamp
+	}
+
+	// Query start time field'ı ekle
+	if queryStartStr, ok := queryData["query_start"].(string); ok && queryStartStr != "" {
+		if queryStart, err := time.Parse(time.RFC3339Nano, queryStartStr); err == nil {
+			fields["query_start"] = queryStart
+		}
+	}
 
 	logger.Debug().
 		Str("agent_id", agentID).
